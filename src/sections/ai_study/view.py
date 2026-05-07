@@ -1,4 +1,10 @@
-"""AI Study - main center view (matches the design screenshot)."""
+"""AI Study - main center view (matches the design screenshot).
+
+The Chat tab keeps the messages list **and** the recommended-sources
+strip below it (the strip only makes sense in chat context). The other
+five tabs (Summarise, Explain, Tasks & plan, Quizzes, Sources) swap in
+mock panels.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,9 @@ import flet as ft
 from src.components.chat_input import chat_input
 from src.components.chat_message import chat_message
 from src.components.header import header
-from src.components.tab_bar import tab_bar
+from src.components.mock_panel import mock_card_grid_panel, mock_form_panel
+from src.components.tabbed_panel import tabbed_panel
+from src.i18n import t
 from src.sections.ai_study.data import (
     SECTION_ICON,
     assistant_actions,
@@ -345,9 +353,8 @@ def _sources_card(theme: Theme, lang: str) -> ft.Container:
     )
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def _chat_panel(theme: Theme, lang: str) -> ft.Control:
     txt = s(lang)
-
     user_msg = chat_message(
         theme,
         lang,
@@ -358,15 +365,144 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     )
 
     messages_list = ft.ListView(
-        controls=[
-            user_msg,
-            _assistant_message(theme, lang),
-        ],
+        controls=[user_msg, _assistant_message(theme, lang)],
         spacing=22,
         padding=ft.padding.symmetric(horizontal=24, vertical=20),
         expand=True,
         auto_scroll=False,
     )
+
+    return ft.Column(
+        controls=[messages_list, _sources_card(theme, lang)],
+        spacing=0,
+        expand=True,
+        tight=True,
+    )
+
+
+def _summary_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.SHORT_TEXT,
+        title=txt["summary_title"],
+        description=txt["summary_desc"],
+        fields=[
+            {"label": t("mock_field_topic", lang), "hint": txt["summary_field_topic_hint"]},
+            {"label": txt["summary_field_input"], "hint": txt["summary_field_input_hint"], "multiline": True},
+            {"label": txt["summary_field_format"], "hint": txt["summary_field_format_hint"]},
+            {"label": t("mock_field_length", lang), "hint": t("mock_field_length_hint", lang)},
+        ],
+        examples=[txt["summary_example_1"], txt["summary_example_2"], txt["summary_example_3"]],
+    )
+
+
+def _explain_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.LIGHTBULB_OUTLINE,
+        title=txt["explain_title"],
+        description=txt["explain_desc"],
+        fields=[
+            {"label": txt["explain_field_term"], "hint": txt["explain_field_term_hint"]},
+            {"label": txt["explain_field_level"], "hint": txt["explain_field_level_hint"]},
+            {"label": txt["explain_field_context"], "hint": txt["explain_field_context_hint"], "multiline": True},
+        ],
+        examples=[txt["explain_example_1"], txt["explain_example_2"], txt["explain_example_3"]],
+    )
+
+
+def _tasks_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.EVENT_NOTE,
+        title=txt["tasks_panel_title"],
+        description=txt["tasks_panel_desc"],
+        fields=[
+            {"label": txt["tasks_field_subject"], "hint": txt["tasks_field_subject_hint"]},
+            {"label": txt["tasks_field_deadline"], "hint": txt["tasks_field_deadline_hint"]},
+            {"label": txt["tasks_field_hours"], "hint": txt["tasks_field_hours_hint"]},
+            {"label": txt["tasks_field_focus"], "hint": txt["tasks_field_focus_hint"], "multiline": True},
+        ],
+        examples=[txt["tasks_example_1"], txt["tasks_example_2"], txt["tasks_example_3"]],
+    )
+
+
+def _quizzes_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    cards = [
+        {
+            "icon": ft.Icons.SCIENCE_OUTLINED,
+            "title": txt["quiz_physics_title"],
+            "description": txt["quiz_physics_desc"],
+            "action_label": txt["quiz_use"],
+            "color": "#7C5CFC",
+        },
+        {
+            "icon": ft.Icons.FUNCTIONS,
+            "title": txt["quiz_math_title"],
+            "description": txt["quiz_math_desc"],
+            "action_label": txt["quiz_use"],
+            "color": "#38BDF8",
+        },
+        {
+            "icon": ft.Icons.CODE,
+            "title": txt["quiz_code_title"],
+            "description": txt["quiz_code_desc"],
+            "action_label": txt["quiz_use"],
+            "color": "#22C55E",
+        },
+        {
+            "icon": ft.Icons.TRENDING_UP,
+            "title": txt["quiz_econ_title"],
+            "description": txt["quiz_econ_desc"],
+            "action_label": txt["quiz_use"],
+            "color": "#F59E0B",
+        },
+    ]
+    return mock_card_grid_panel(
+        theme,
+        lang,
+        icon=ft.Icons.QUIZ_OUTLINED,
+        title=txt["quizzes_panel_title"],
+        description=txt["quizzes_panel_desc"],
+        cards=cards,
+    )
+
+
+def _sources_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.MENU_BOOK_OUTLINED,
+        title=txt["sources_panel_title"],
+        description=txt["sources_panel_desc"],
+        fields=[
+            {"label": txt["sources_field_topic"], "hint": txt["sources_field_topic_hint"]},
+            {"label": txt["sources_field_type"], "hint": txt["sources_field_type_hint"]},
+            {"label": txt["sources_field_lang"], "hint": txt["sources_field_lang_hint"]},
+        ],
+        examples=[txt["sources_example_1"], txt["sources_example_2"], txt["sources_example_3"]],
+    )
+
+
+def build_view(theme: Theme, lang: str) -> ft.Column:
+    txt = s(lang)
+
+    panels = [
+        _chat_panel(theme, lang),
+        _summary_panel(theme, lang),
+        _explain_panel(theme, lang),
+        _tasks_panel(theme, lang),
+        _quizzes_panel(theme, lang),
+        _sources_panel(theme, lang),
+    ]
 
     return ft.Column(
         controls=[
@@ -377,9 +513,7 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
                 title=txt["title"],
                 subtitle=txt["subtitle"],
             ),
-            tab_bar(theme, tabs=tabs(lang), active_index=0),
-            messages_list,
-            _sources_card(theme, lang),
+            tabbed_panel(theme, tabs=tabs(lang), panels=panels),
             chat_input(theme, lang),
         ],
         spacing=0,

@@ -1,4 +1,10 @@
-"""AI Marketing - main center view (matches the design screenshot)."""
+"""AI Marketing - main center view (matches the design screenshot).
+
+The first tab keeps the rich chat + phone-mockup composition. The other
+six tabs (Social posts, Ads, Email, Landing, Strategy, Templates) are
+swapped in via :func:`tabbed_panel` and use the shared mock helpers so
+clicking around feels alive without any AI being wired up.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,9 @@ import flet as ft
 from src.components.chat_input import chat_input
 from src.components.chat_message import chat_message
 from src.components.header import header
-from src.components.tab_bar import tab_bar
+from src.components.mock_panel import mock_card_grid_panel, mock_form_panel
+from src.components.tabbed_panel import tabbed_panel
+from src.i18n import t
 from src.sections.ai_marketing.data import (
     SECTION_ICON,
     assistant_actions,
@@ -195,9 +203,8 @@ def _assistant_message(theme: Theme, lang: str) -> ft.Row:
     )
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def _chat_panel(theme: Theme, lang: str) -> ft.Control:
     txt = s(lang)
-
     user_msg = chat_message(
         theme,
         lang,
@@ -207,16 +214,176 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
         text=txt["msg1_user"],
     )
 
-    messages_list = ft.ListView(
-        controls=[
-            user_msg,
-            _assistant_message(theme, lang),
-        ],
+    return ft.ListView(
+        controls=[user_msg, _assistant_message(theme, lang)],
         spacing=22,
         padding=ft.padding.symmetric(horizontal=24, vertical=20),
         expand=True,
         auto_scroll=False,
     )
+
+
+def _social_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.PHOTO_LIBRARY_OUTLINED,
+        title=txt["social_title"],
+        description=txt["social_desc"],
+        fields=[
+            {"label": t("mock_field_topic", lang), "hint": txt["social_field_topic_hint"]},
+            {"label": txt["social_field_channel"], "hint": txt["social_field_channel_hint"]},
+            {"label": t("mock_field_audience", lang), "hint": t("mock_field_audience_hint", lang)},
+            {"label": t("mock_field_tone", lang), "hint": t("mock_field_tone_hint", lang)},
+            {"label": txt["social_field_body"], "hint": txt["social_field_body_hint"], "multiline": True},
+        ],
+        examples=[txt["social_example_1"], txt["social_example_2"], txt["social_example_3"]],
+    )
+
+
+def _ads_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.CAMPAIGN_OUTLINED,
+        title=txt["ads_title"],
+        description=txt["ads_desc"],
+        fields=[
+            {"label": txt["ads_field_product"], "hint": txt["ads_field_product_hint"]},
+            {"label": t("mock_field_audience", lang), "hint": t("mock_field_audience_hint", lang)},
+            {"label": txt["ads_field_goal"], "hint": txt["ads_field_goal_hint"]},
+            {"label": txt["ads_field_format"], "hint": txt["ads_field_format_hint"]},
+            {"label": t("mock_field_tone", lang), "hint": t("mock_field_tone_hint", lang)},
+        ],
+        examples=[txt["ads_example_1"], txt["ads_example_2"], txt["ads_example_3"]],
+    )
+
+
+def _email_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.MAIL_OUTLINE,
+        title=txt["email_title"],
+        description=txt["email_desc"],
+        fields=[
+            {"label": txt["email_field_subject"], "hint": txt["email_field_subject_hint"]},
+            {"label": t("mock_field_audience", lang), "hint": txt["email_field_audience_hint"]},
+            {"label": txt["email_field_intro"], "hint": txt["email_field_intro_hint"], "multiline": True},
+            {"label": t("mock_field_tone", lang), "hint": t("mock_field_tone_hint", lang)},
+        ],
+        examples=[txt["email_example_1"], txt["email_example_2"], txt["email_example_3"]],
+    )
+
+
+def _landing_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.ARTICLE_OUTLINED,
+        title=txt["landing_title"],
+        description=txt["landing_desc"],
+        fields=[
+            {"label": txt["landing_field_offer"], "hint": txt["landing_field_offer_hint"]},
+            {"label": t("mock_field_audience", lang), "hint": txt["landing_field_audience_hint"]},
+            {"label": txt["landing_field_pains"], "hint": txt["landing_field_pains_hint"], "multiline": True},
+            {"label": t("mock_field_tone", lang), "hint": t("mock_field_tone_hint", lang)},
+        ],
+        examples=[txt["landing_example_1"], txt["landing_example_2"], txt["landing_example_3"]],
+    )
+
+
+def _strategy_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    return mock_form_panel(
+        theme,
+        lang,
+        icon=ft.Icons.INSIGHTS_OUTLINED,
+        title=txt["strategy_title"],
+        description=txt["strategy_desc"],
+        fields=[
+            {"label": txt["strategy_field_brand"], "hint": txt["strategy_field_brand_hint"]},
+            {"label": t("mock_field_audience", lang), "hint": t("mock_field_audience_hint", lang)},
+            {"label": txt["strategy_field_goal"], "hint": txt["strategy_field_goal_hint"]},
+            {"label": txt["strategy_field_budget"], "hint": txt["strategy_field_budget_hint"]},
+            {"label": txt["strategy_field_duration"], "hint": txt["strategy_field_duration_hint"]},
+        ],
+        examples=[txt["strategy_example_1"], txt["strategy_example_2"], txt["strategy_example_3"]],
+    )
+
+
+def _templates_panel(theme: Theme, lang: str) -> ft.Control:
+    txt = s(lang)
+    cards = [
+        {
+            "icon": ft.Icons.PHOTO_CAMERA_OUTLINED,
+            "title": txt["tpl_instagram_title"],
+            "description": txt["tpl_instagram_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#E1306C",
+        },
+        {
+            "icon": ft.Icons.THUMB_UP_OUTLINED,
+            "title": txt["tpl_facebook_title"],
+            "description": txt["tpl_facebook_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#1877F2",
+        },
+        {
+            "icon": ft.Icons.WORK_OUTLINE,
+            "title": txt["tpl_linkedin_title"],
+            "description": txt["tpl_linkedin_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#0A66C2",
+        },
+        {
+            "icon": ft.Icons.ALTERNATE_EMAIL,
+            "title": txt["tpl_x_title"],
+            "description": txt["tpl_x_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#1F2937",
+        },
+        {
+            "icon": ft.Icons.MAIL_OUTLINE,
+            "title": txt["tpl_email_title"],
+            "description": txt["tpl_email_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#F59E0B",
+        },
+        {
+            "icon": ft.Icons.WEB_OUTLINED,
+            "title": txt["tpl_landing_title"],
+            "description": txt["tpl_landing_desc"],
+            "action_label": txt["tpl_use"],
+            "color": "#22C55E",
+        },
+    ]
+    return mock_card_grid_panel(
+        theme,
+        lang,
+        icon=ft.Icons.GRID_VIEW_OUTLINED,
+        title=txt["templates_title"],
+        description=txt["templates_desc"],
+        cards=cards,
+    )
+
+
+def build_view(theme: Theme, lang: str) -> ft.Column:
+    txt = s(lang)
+
+    panels = [
+        _chat_panel(theme, lang),
+        _social_panel(theme, lang),
+        _ads_panel(theme, lang),
+        _email_panel(theme, lang),
+        _landing_panel(theme, lang),
+        _strategy_panel(theme, lang),
+        _templates_panel(theme, lang),
+    ]
 
     return ft.Column(
         controls=[
@@ -227,8 +394,7 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
                 title=txt["title"],
                 subtitle=txt["subtitle"],
             ),
-            tab_bar(theme, tabs=tabs(lang), active_index=0),
-            messages_list,
+            tabbed_panel(theme, tabs=tabs(lang), panels=panels),
             chat_input(theme, lang),
         ],
         spacing=0,
