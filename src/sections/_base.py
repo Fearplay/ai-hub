@@ -28,6 +28,7 @@ class Section:
     build_context: Optional[ViewBuilder] = None
     order: int = 100
     badge: Optional[str] = None
+    accent: Optional[str] = None  # hex like "#22C55E"; None = default theme primary
 
     def label(self, lang: str) -> str:
         return self.labels.get(lang) or self.labels.get("en") or self.key

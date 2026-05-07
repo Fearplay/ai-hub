@@ -4,6 +4,11 @@ Renders the brand mark, the "new chat" button, the section list (read from
 the auto-discovered registry), the secondary nav, the user card, and the
 language + theme toggles. Adding a new section to the sidebar happens by
 creating a folder under ``src/sections/`` - this file does not need editing.
+
+Returns a tuple ``(container, set_active)``. The ``set_active`` callback
+mutates the active row in place (icon color, text color/weight, background)
+so changing sections does not rebuild the whole sidebar - that is what made
+clicks feel sluggish before.
 """
 
 from __future__ import annotations
@@ -13,12 +18,15 @@ from typing import Callable
 import flet as ft
 
 from src.components.language_toggle import language_toggle
-from src.components.nav_item import nav_item
+from src.components.nav_item import NavItemHandle, nav_item_handle
 from src.components.theme_toggle import theme_toggle
 from src.components.user_card import user_card
 from src.i18n import SECONDARY_NAV, t
 from src.sections import SECTIONS
 from src.theme import Theme
+
+
+SetActive = Callable[[str], None]
 
 
 def _logo(theme: Theme, lang: str) -> ft.Row:
@@ -83,40 +91,36 @@ def sidebar(
     theme_mode: str,
     on_theme_toggle: Callable[[], None],
     on_lang_toggle: Callable[[], None],
-) -> ft.Container:
-    primary_nav = ft.Column(
-        controls=[
-            nav_item(
-                theme,
-                section.icon,
-                section.label(lang),
-                active=section.key == active_section,
-                badge=section.badge,
-                on_click=lambda e, k=section.key: on_section_change(k),
-            )
-            for section in SECTIONS
-        ],
-        spacing=2,
-        tight=True,
-    )
+) -> tuple[ft.Container, SetActive]:
+    handles: dict[str, NavItemHandle] = {}
 
-    secondary_nav = ft.Column(
-        controls=[
-            nav_item(
-                theme,
-                item["icon"],
-                t(item["label_key"], lang),
-                active=item["key"] == active_section,
-                badge=item.get("badge"),
-                on_click=lambda e, k=item["key"]: on_section_change(k),
-            )
-            for item in SECONDARY_NAV
-        ],
-        spacing=2,
-        tight=True,
-    )
+    primary_controls: list[ft.Control] = []
+    for section in SECTIONS:
+        handle = nav_item_handle(
+            theme,
+            section.icon,
+            section.label(lang),
+            active=section.key == active_section,
+            badge=section.badge,
+            on_click=lambda e, k=section.key: on_section_change(k),
+        )
+        handles[section.key] = handle
+        primary_controls.append(handle.container)
 
-    return ft.Container(
+    secondary_controls: list[ft.Control] = []
+    for item in SECONDARY_NAV:
+        handle = nav_item_handle(
+            theme,
+            item["icon"],
+            t(item["label_key"], lang),
+            active=item["key"] == active_section,
+            badge=item.get("badge"),
+            on_click=lambda e, k=item["key"]: on_section_change(k),
+        )
+        handles[item["key"]] = handle
+        secondary_controls.append(handle.container)
+
+    container = ft.Container(
         content=ft.Column(
             controls=[
                 ft.Container(
@@ -128,7 +132,7 @@ def sidebar(
                     padding=ft.padding.symmetric(horizontal=16),
                 ),
                 ft.Container(
-                    content=primary_nav,
+                    content=ft.Column(controls=primary_controls, spacing=2, tight=True),
                     padding=ft.padding.only(left=12, right=12, top=18, bottom=4),
                 ),
                 ft.Container(
@@ -136,7 +140,7 @@ def sidebar(
                     padding=ft.padding.symmetric(horizontal=16, vertical=8),
                 ),
                 ft.Container(
-                    content=secondary_nav,
+                    content=ft.Column(controls=secondary_controls, spacing=2, tight=True),
                     padding=ft.padding.symmetric(horizontal=12, vertical=4),
                 ),
                 ft.Container(expand=True),
@@ -155,3 +159,22 @@ def sidebar(
         bgcolor=theme.sidebar_bg,
         border=ft.border.only(right=ft.BorderSide(1, theme.border)),
     )
+
+    current = {"key": active_section}
+
+    def set_active(key: str) -> None:
+        if key == current["key"]:
+            return
+
+        prev = current["key"]
+        if prev in handles:
+            handles[prev].set_active(theme, active=False)
+            handles[prev].container.update()
+
+        if key in handles:
+            handles[key].set_active(theme, active=True)
+            handles[key].container.update()
+
+        current["key"] = key
+
+    return container, set_active
