@@ -46,3 +46,11 @@ SECTION = Section(
 
 `build_view(theme, lang)` and (optional) `build_context(theme, lang)`
 must return `ft.Control`. Both receive `lang` as `"en"` or `"cs"`.
+
+## Sections that call AI
+
+If your section talks to OpenAI / Anthropic, also follow
+[ai-section.mdc](ai-section.mdc): per-section `prompts.py` /
+`schema.py` / `pipeline.py`, single AI entry point through
+`src.services.ai_provider.run`, API keys only via
+`src.services.secrets`.

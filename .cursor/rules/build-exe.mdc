@@ -1,0 +1,66 @@
+---
+description: Always rebuild dist/AIHub.exe at the end of a Cursor task; keep build_exe.bat self-bootstrapping
+alwaysApply: true
+---
+
+# AI Hub - rebuild the .exe at the end of every task
+
+The user wants a single `dist\AIHub.exe` that they can double-click on a
+clean Windows machine. The `build_exe.bat` in the repo root takes care
+of everything (auto-installs Python via winget if missing, creates a
+`.venv\`, installs `requirements.txt` + `pyinstaller`, then runs
+`flet pack`).
+
+**At the end of a Cursor task you MUST:**
+
+1. Make sure every new pip dependency Cursor introduced is written into
+   [requirements.txt](../../requirements.txt). `build_exe.bat` reads
+   that file - if a dependency is missing there, the produced .exe
+   will crash at runtime even though dev mode worked.
+2. Make sure every new data file that needs to be inside the .exe
+   (icons, fonts, prompt JSONs, …) is wired into `build_exe.bat` via
+   the `flet pack ... --add-data <src>;<dst>` flag (Windows uses `;` as
+   the separator). Code-only changes do not need this.
+3. Run `build_exe.bat` via the Shell tool as the **last** step of the
+   task. The script is idempotent and a no-op when `dist\AIHub.exe`
+   is newer than every `.py` under `main.py` and `src\` (use
+   `build_exe.bat --force` if a forced rebuild is genuinely needed).
+4. If `flet pack` fails, fix the cause (missing data file, missing pip
+   dep, broken import, …) and rerun. The task is **not** done until
+   `build_exe.bat` exits with code 0 and `dist\AIHub.exe` exists.
+
+## Hard rules - never break these
+
+- Do **not** delete `build_exe.bat` or any of its self-bootstrap steps
+  ("works on a clean Windows machine" is the entire point).
+- Do **not** swap `flet pack` for `flet build windows` - the latter
+  needs the Flutter SDK + Visual Studio C++ workload, which violates
+  the "no prerequisites" promise.
+- Do **not** commit `build\`, `dist\`, `.venv\`, or `*.spec` (they are
+  in `.gitignore`).
+- Do **not** hard-code an absolute path inside `build_exe.bat`. The
+  script must run from the repo root via `pushd "%~dp0"`.
+
+## When NOT to rebuild
+
+Skip the final `build_exe.bat` only when **all** of these are true:
+
+- The change is documentation-only (`.md` files, comments) AND
+- No `.py` file under `main.py` or `src\` was touched AND
+- `requirements.txt` was not touched.
+
+In every other case, rebuild.
+
+## How to add a runtime asset to the .exe
+
+1. Drop the file under `assets\` (or another folder that is **not**
+   `src\`).
+2. Open `build_exe.bat` and append the asset to the `flet pack` line:
+
+   ```bat
+   flet pack main.py --name AIHub ^
+       --product-name "AI Hub" --product-version 0.1.0 --copyright "MIT" ^
+       --add-data "assets\icon.ico;assets" ^
+       %ICON_ARG%
+   ```
+3. Re-run the script. The asset is now embedded in the produced exe.

@@ -5,6 +5,15 @@ the auto-discovered registry), the secondary nav, the user card, and the
 language + theme toggles. Adding a new section to the sidebar happens by
 creating a folder under ``src/sections/`` - this file does not need editing.
 
+Layout has three vertical zones so the content scrolls cleanly even on
+short windows:
+
+* **header** — logo + "+ New chat" button, fixed height at the top.
+* **middle** — primary nav, divider, secondary nav. Wrapped in a scrolling
+  ``Column`` so long section lists never push the footer off-screen.
+* **footer** — user card, language toggle, theme toggle, fixed at the
+  bottom.
+
 Returns a tuple ``(container, set_active)``. The ``set_active`` callback
 mutates the active row in place (icon color, text color/weight, background)
 so changing sections does not rebuild the whole sidebar - that is what made
@@ -21,8 +30,8 @@ from src.components.language_toggle import language_toggle
 from src.components.nav_item import NavItemHandle, nav_item_handle
 from src.components.theme_toggle import theme_toggle
 from src.components.user_card import user_card
-from src.i18n import SECONDARY_NAV, t
-from src.sections import SECTIONS
+from src.i18n import t
+from src.sections import PRIMARY_SECTIONS, SECONDARY_SECTIONS
 from src.theme import Theme
 
 
@@ -94,47 +103,35 @@ def sidebar(
 ) -> tuple[ft.Container, SetActive]:
     handles: dict[str, NavItemHandle] = {}
 
+    def _build_handles(sections, into: list[ft.Control]) -> None:
+        for section in sections:
+            handle = nav_item_handle(
+                theme,
+                section.icon,
+                section.label(lang),
+                active=section.key == active_section,
+                badge=section.badge,
+                on_click=lambda e, k=section.key: on_section_change(k),
+            )
+            handles[section.key] = handle
+            into.append(handle.container)
+
     primary_controls: list[ft.Control] = []
-    for section in SECTIONS:
-        handle = nav_item_handle(
-            theme,
-            section.icon,
-            section.label(lang),
-            active=section.key == active_section,
-            badge=section.badge,
-            on_click=lambda e, k=section.key: on_section_change(k),
-        )
-        handles[section.key] = handle
-        primary_controls.append(handle.container)
+    _build_handles(PRIMARY_SECTIONS, primary_controls)
 
     secondary_controls: list[ft.Control] = []
-    for item in SECONDARY_NAV:
-        handle = nav_item_handle(
-            theme,
-            item["icon"],
-            t(item["label_key"], lang),
-            active=item["key"] == active_section,
-            badge=item.get("badge"),
-            on_click=lambda e, k=item["key"]: on_section_change(k),
-        )
-        handles[item["key"]] = handle
-        secondary_controls.append(handle.container)
+    _build_handles(SECONDARY_SECTIONS, secondary_controls)
 
-    container = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Container(
-                    content=_logo(theme, lang),
-                    padding=ft.padding.symmetric(horizontal=20, vertical=20),
-                ),
-                ft.Container(
-                    content=_new_chat_button(theme, lang),
-                    padding=ft.padding.symmetric(horizontal=16),
-                ),
-                ft.Container(
-                    content=ft.Column(controls=primary_controls, spacing=2, tight=True),
-                    padding=ft.padding.only(left=12, right=12, top=18, bottom=4),
-                ),
+    middle_children: list[ft.Control] = [
+        ft.Container(
+            content=ft.Column(controls=primary_controls, spacing=2, tight=True),
+            padding=ft.padding.only(left=12, right=12, top=18, bottom=4),
+        ),
+    ]
+
+    if secondary_controls:
+        middle_children.extend(
+            [
                 ft.Container(
                     content=ft.Divider(color=theme.border, height=1, thickness=1),
                     padding=ft.padding.symmetric(horizontal=16, vertical=8),
@@ -143,17 +140,50 @@ def sidebar(
                     content=ft.Column(controls=secondary_controls, spacing=2, tight=True),
                     padding=ft.padding.symmetric(horizontal=12, vertical=4),
                 ),
-                ft.Container(expand=True),
-                ft.Container(
-                    content=user_card(theme),
-                    padding=ft.padding.only(left=12, right=12, top=8, bottom=8),
-                ),
-                language_toggle(theme, lang, on_toggle=on_lang_toggle),
-                theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle),
-                ft.Container(height=12),
-            ],
+            ]
+        )
+
+    middle = ft.Column(
+        controls=middle_children,
+        spacing=0,
+        scroll=ft.ScrollMode.HIDDEN,
+        expand=True,
+    )
+
+    header = ft.Column(
+        controls=[
+            ft.Container(
+                content=_logo(theme, lang),
+                padding=ft.padding.symmetric(horizontal=20, vertical=20),
+            ),
+            ft.Container(
+                content=_new_chat_button(theme, lang),
+                padding=ft.padding.symmetric(horizontal=16),
+            ),
+        ],
+        spacing=0,
+        tight=True,
+    )
+
+    footer = ft.Column(
+        controls=[
+            ft.Container(
+                content=user_card(theme),
+                padding=ft.padding.only(left=12, right=12, top=8, bottom=8),
+            ),
+            language_toggle(theme, lang, on_toggle=on_lang_toggle),
+            theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle),
+            ft.Container(height=12),
+        ],
+        spacing=0,
+        tight=True,
+    )
+
+    container = ft.Container(
+        content=ft.Column(
+            controls=[header, middle, footer],
             spacing=0,
-            tight=True,
+            expand=True,
         ),
         width=280,
         bgcolor=theme.sidebar_bg,
