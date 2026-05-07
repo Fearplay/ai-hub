@@ -6,14 +6,17 @@ UI mockup AI Hubu postavený v Pythonu s knihovnou [Flet](https://flet.dev). Tř
 
 - Python 3.10+
 - Flet >= 0.25.0 (testováno na 0.84.0)
+- `flet-dropzone` (přidává OS drag-drop souborů — viz dále)
+
+### Pro jednorázový native build (kvůli `flet-dropzone`)
+
+`flet-dropzone` integruje Flutter package `desktop_drop`, takže vyžaduje, aby si aplikace **jednou** sestavila vlastní native client. Bez buildu aplikace pojede dál, jen drag-drop nebude aktivní (viz *Runtime fallback* níže).
+
+- **Flutter SDK** ≥ 3.22 — <https://docs.flutter.dev/get-started/install/windows>
+- **Visual Studio 2022** s workloadem *Desktop development with C++* (potřebné pro Windows desktop build — MSVC + Windows 10/11 SDK)
+- Po instalaci spusť `flutter doctor` a vyřeš případná chybějící „X" (typicky license agreement)
 
 ## Instalace
-
-```bash
-pip install -r requirements.txt
-```
-
-Doporučeno spustit ve virtuálním prostředí:
 
 ```bash
 python -m venv .venv
@@ -23,13 +26,37 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
-## Spuštění
+## První spuštění (jednorázové)
+
+Sestavení vlastního clientu, který obsahuje `flet-dropzone`:
 
 ```bash
-python main.py
+# Windows
+py -m flet build windows -v
+
+# Linux
+flet build linux -v
+
+# macOS
+flet build macos -v
 ```
+
+## Vývojové spuštění (denně)
+
+Po prvním buildu:
+
+```bash
+py -m flet run
+```
+
+Hot-reload zachován. Drag-and-drop souborů z OS funguje v sekci **AI Právní asistent**.
+
+### Runtime fallback bez buildu
+
+Pokud spustíš jen `python main.py` (nebo `py main.py`) bez `flet build`, aplikace funguje, jen `flet-dropzone` extension není napojená na native vrstvu — drop zóna v AI Právní asistent reaguje pouze na klik (otevře nativní file picker). Skutečný OS drag-drop ožije až po buildu.
 
 ## Struktura projektu
 
@@ -65,7 +92,7 @@ ai-hub/
     │   ├── SECTION_TEMPLATE/     # šablona pro novou sekci (READ ME)
     │   ├── dashboard/
     │   ├── ai_career/            # plně postavené (chat se životopisem)
-    │   ├── ai_legal/             # placeholder
+    │   ├── ai_legal/              # plně postavené (4 funkční taby + drag-drop)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # plně postavené podle návrhu
     │   ├── ai_finance/           # placeholder
@@ -95,6 +122,7 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
 - Přepínač světlý / tmavý režim
 - **AI Životopis / Kariéra** - chat se 4 ukázkovými zprávami, odrážkami, akčními chipy a přílohou
 - **AI Marketing** - plně postavený podle dodaného návrhu (vlastní záložky, chat s "Instagram příspěvkem", phone mockup nakreslený přes Flet, brief panel, rychlé akce)
+- **AI Právní asistent** - 4 funkční taby (Chat, Analýza dokumentu, Návrhy dokumentů, Šablony), reálný OS drag-drop PDF (přes `flet-dropzone`, viz *Požadavky*), bohatý editor šablon s živým A4 náhledem, mock LLM odpovědi
 - Pravý panel s dokumenty, rychlými akcemi a historií konverzací
 
 ## Co zatím **neumí** (záměrně)
