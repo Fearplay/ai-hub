@@ -5,17 +5,27 @@ wires the auto-discovered section registry into the three-column layout.
 This file should NOT reference any individual section by key. Adding a
 new section happens by creating a folder under ``src/sections/`` (see
 ``src/sections/SECTION_TEMPLATE/``).
+
+Section clicks do an in-place swap of the center + right panels (and
+re-highlight the sidebar row) instead of rebuilding the whole page;
+without this, the marketing/career sections feel sluggish to switch into
+because the sidebar + heavy phone mockup get re-instantiated every time.
+Theme and language toggles still do a full rebuild - they affect every
+control in the tree, so a partial update is not worth the complexity.
 """
 
 from __future__ import annotations
 
+from typing import Optional
+
 import flet as ft
 
 from src.components.context_panel import empty_context_panel
-from src.components.sidebar import sidebar
+from src.components.sidebar import SetActive, sidebar
 from src.i18n import DEFAULT_LANG, normalize_lang
 from src.sections import SECTION_BY_KEY, SECTIONS
-from src.theme import get_theme
+from src.sections._base import Section
+from src.theme import Theme, get_theme
 
 
 class AIHubApp:
@@ -24,6 +34,11 @@ class AIHubApp:
         self.active_section: str = SECTIONS[0].key if SECTIONS else ""
         self.theme_mode: str = "dark"
         self.lang: str = DEFAULT_LANG
+
+        self._main_container: Optional[ft.Container] = None
+        self._context_container: Optional[ft.Container] = None
+        self._sidebar_set_active: Optional[SetActive] = None
+
         self._configure_page()
 
     def _configure_page(self) -> None:
@@ -48,8 +63,26 @@ class AIHubApp:
             return
         if key not in SECTION_BY_KEY:
             return
+
         self.active_section = key
-        self.build()
+
+        if (
+            self._main_container is None
+            or self._context_container is None
+            or self._sidebar_set_active is None
+        ):
+            self.build()
+            return
+
+        section = SECTION_BY_KEY[key]
+        section_theme = self._section_theme(section)
+
+        self._main_container.content = section.build_view(section_theme, self.lang)
+        self._context_container.content = self._build_context_for(section, section_theme)
+
+        self._sidebar_set_active(key)
+        self._main_container.update()
+        self._context_container.update()
 
     def toggle_theme(self) -> None:
         self.theme_mode = "light" if self.theme_mode == "dark" else "dark"
@@ -63,43 +96,55 @@ class AIHubApp:
         self.lang = normalize_lang(self.lang)
         self.build()
 
-    def _build_main(self, theme) -> ft.Control:
-        section = SECTION_BY_KEY.get(self.active_section)
-        if section is None and SECTIONS:
-            section = SECTIONS[0]
-        if section is None:
-            return ft.Container()
-        return section.build_view(theme, self.lang)
+    def _section_theme(self, section: Optional[Section]) -> Theme:
+        base_theme = get_theme(self.theme_mode)
+        if section and section.accent:
+            return base_theme.with_accent(section.accent)
+        return base_theme
 
-    def _build_context(self, theme) -> ft.Control:
-        section = SECTION_BY_KEY.get(self.active_section)
+    def _build_context_for(self, section: Optional[Section], theme: Theme) -> ft.Control:
         if section and section.build_context:
             return section.build_context(theme, self.lang)
         return empty_context_panel(theme)
 
-    def build(self) -> None:
-        theme = get_theme(self.theme_mode)
-        self.page.bgcolor = theme.bg
+    def _resolve_section(self) -> Optional[Section]:
+        section = SECTION_BY_KEY.get(self.active_section)
+        if section is None and SECTIONS:
+            section = SECTIONS[0]
+        return section
 
-        main_content = ft.Container(
-            content=self._build_main(theme),
+    def build(self) -> None:
+        section = self._resolve_section()
+        section_theme = self._section_theme(section)
+
+        self.page.bgcolor = section_theme.bg
+
+        main_view = section.build_view(section_theme, self.lang) if section else ft.Container()
+        context_view = self._build_context_for(section, section_theme)
+
+        self._main_container = ft.Container(
+            content=main_view,
             expand=True,
-            bgcolor=theme.bg,
+            bgcolor=section_theme.bg,
         )
+        self._context_container = ft.Container(content=context_view)
+
+        sidebar_container, set_active = sidebar(
+            section_theme,
+            lang=self.lang,
+            active_section=self.active_section,
+            on_section_change=self.set_section,
+            theme_mode=self.theme_mode,
+            on_theme_toggle=self.toggle_theme,
+            on_lang_toggle=self.toggle_lang,
+        )
+        self._sidebar_set_active = set_active
 
         layout = ft.Row(
             controls=[
-                sidebar(
-                    theme,
-                    lang=self.lang,
-                    active_section=self.active_section,
-                    on_section_change=self.set_section,
-                    theme_mode=self.theme_mode,
-                    on_theme_toggle=self.toggle_theme,
-                    on_lang_toggle=self.toggle_lang,
-                ),
-                main_content,
-                self._build_context(theme),
+                sidebar_container,
+                self._main_container,
+                self._context_container,
             ],
             spacing=0,
             expand=True,

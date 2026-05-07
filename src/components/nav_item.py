@@ -1,7 +1,17 @@
-"""One row in the left sidebar."""
+"""One row in the left sidebar.
+
+Two flavors:
+
+* :func:`nav_item` - simple builder that just returns a Container. Use this
+  if you only need a one-shot row that you do not plan to mutate.
+* :func:`nav_item_handle` - returns the row plus references to the icon /
+  text controls so callers can flip the active state without rebuilding
+  (used by the sidebar to keep section clicks snappy).
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 import flet as ft
@@ -9,7 +19,20 @@ import flet as ft
 from src.theme import Theme
 
 
-def nav_item(
+@dataclass(frozen=True)
+class NavItemHandle:
+    container: ft.Container
+    icon: ft.Icon
+    text: ft.Text
+
+    def set_active(self, theme: Theme, *, active: bool) -> None:
+        self.container.bgcolor = theme.primary_tint if active else None
+        self.icon.color = theme.primary if active else theme.text_muted
+        self.text.color = theme.text if active else theme.text_muted
+        self.text.weight = ft.FontWeight.W_600 if active else ft.FontWeight.W_500
+
+
+def nav_item_handle(
     theme: Theme,
     icon: str,
     label: str,
@@ -17,23 +40,23 @@ def nav_item(
     active: bool = False,
     badge: Optional[str] = None,
     on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    icon_color = theme.primary if active else theme.text_muted
-    text_color = theme.text if active else theme.text_muted
-    text_weight = ft.FontWeight.W_600 if active else ft.FontWeight.W_500
+) -> NavItemHandle:
+    icon_control = ft.Icon(
+        icon,
+        color=theme.primary if active else theme.text_muted,
+        size=20,
+    )
+    text_control = ft.Text(
+        label,
+        color=theme.text if active else theme.text_muted,
+        size=14,
+        weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_500,
+        expand=True,
+        overflow=ft.TextOverflow.ELLIPSIS,
+        max_lines=1,
+    )
 
-    children: list[ft.Control] = [
-        ft.Icon(icon, color=icon_color, size=20),
-        ft.Text(
-            label,
-            color=text_color,
-            size=14,
-            weight=text_weight,
-            expand=True,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            max_lines=1,
-        ),
-    ]
+    children: list[ft.Control] = [icon_control, text_control]
 
     if badge:
         children.append(
@@ -51,7 +74,7 @@ def nav_item(
             )
         )
 
-    return ft.Container(
+    container = ft.Container(
         content=ft.Row(controls=children, spacing=12),
         padding=ft.padding.symmetric(horizontal=12, vertical=10),
         bgcolor=theme.primary_tint if active else None,
@@ -59,3 +82,24 @@ def nav_item(
         ink=True,
         on_click=on_click,
     )
+
+    return NavItemHandle(container=container, icon=icon_control, text=text_control)
+
+
+def nav_item(
+    theme: Theme,
+    icon: str,
+    label: str,
+    *,
+    active: bool = False,
+    badge: Optional[str] = None,
+    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
+) -> ft.Container:
+    return nav_item_handle(
+        theme,
+        icon,
+        label,
+        active=active,
+        badge=badge,
+        on_click=on_click,
+    ).container
