@@ -1,25 +1,29 @@
-"""Hlavní třída aplikace - drží stav, vykresluje tříslupcový layout."""
+"""Application shell.
+
+Owns three pieces of state - active section, theme mode, language - and
+wires the auto-discovered section registry into the three-column layout.
+This file should NOT reference any individual section by key. Adding a
+new section happens by creating a folder under ``src/sections/`` (see
+``src/sections/SECTION_TEMPLATE/``).
+"""
 
 from __future__ import annotations
 
 import flet as ft
 
-from src.components.context_panel import context_panel
+from src.components.context_panel import empty_context_panel
 from src.components.sidebar import sidebar
-from src.data.mock import NAV_ITEMS, SECONDARY_NAV
+from src.i18n import DEFAULT_LANG, normalize_lang
+from src.sections import SECTION_BY_KEY, SECTIONS
 from src.theme import get_theme
-from src.views.chat_view import chat_view
-from src.views.placeholder_view import placeholder_view
-
-
-CHAT_SECTION = "ai_career"
 
 
 class AIHubApp:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
-        self.active_section: str = CHAT_SECTION
+        self.active_section: str = SECTIONS[0].key if SECTIONS else ""
         self.theme_mode: str = "dark"
+        self.lang: str = DEFAULT_LANG
         self._configure_page()
 
     def _configure_page(self) -> None:
@@ -39,14 +43,10 @@ class AIHubApp:
             self.page.window_min_width = 1080
             self.page.window_min_height = 680
 
-    def _label_for_section(self, key: str) -> str:
-        for item in (*NAV_ITEMS, *SECONDARY_NAV):
-            if item["key"] == key:
-                return item["label"]
-        return ""
-
     def set_section(self, key: str) -> None:
         if key == self.active_section:
+            return
+        if key not in SECTION_BY_KEY:
             return
         self.active_section = key
         self.build()
@@ -58,10 +58,24 @@ class AIHubApp:
         )
         self.build()
 
+    def toggle_lang(self) -> None:
+        self.lang = "cs" if self.lang == "en" else "en"
+        self.lang = normalize_lang(self.lang)
+        self.build()
+
     def _build_main(self, theme) -> ft.Control:
-        if self.active_section == CHAT_SECTION:
-            return chat_view(theme)
-        return placeholder_view(theme, self._label_for_section(self.active_section))
+        section = SECTION_BY_KEY.get(self.active_section)
+        if section is None and SECTIONS:
+            section = SECTIONS[0]
+        if section is None:
+            return ft.Container()
+        return section.build_view(theme, self.lang)
+
+    def _build_context(self, theme) -> ft.Control:
+        section = SECTION_BY_KEY.get(self.active_section)
+        if section and section.build_context:
+            return section.build_context(theme, self.lang)
+        return empty_context_panel(theme)
 
     def build(self) -> None:
         theme = get_theme(self.theme_mode)
@@ -77,13 +91,15 @@ class AIHubApp:
             controls=[
                 sidebar(
                     theme,
+                    lang=self.lang,
                     active_section=self.active_section,
                     on_section_change=self.set_section,
                     theme_mode=self.theme_mode,
                     on_theme_toggle=self.toggle_theme,
+                    on_lang_toggle=self.toggle_lang,
                 ),
                 main_content,
-                context_panel(theme),
+                self._build_context(theme),
             ],
             spacing=0,
             expand=True,

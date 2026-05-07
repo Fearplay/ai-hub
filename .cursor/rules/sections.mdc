@@ -1,0 +1,48 @@
+---
+description: How to add or modify AI Hub sections without merge conflicts
+alwaysApply: true
+---
+
+# AI Hub - rules for sections
+
+The left-sidebar items are auto-discovered from `src/sections/<key>/`.
+**Adding or editing a section never touches shared files.**
+
+## Add a new section
+
+1. Copy `src/sections/SECTION_TEMPLATE/` to `src/sections/<your_key>/`.
+2. In your folder, edit `section.py`, `view.py`, `strings.py` (and add
+   `data.py` / `context.py` if you need them).
+3. Pick a free `order` value - see the table in
+   `src/sections/SECTION_TEMPLATE/README.md`.
+
+## Hard rules - never break these
+
+- Do **not** edit `src/app.py`, `src/components/sidebar.py`, or
+  `src/sections/__init__.py` to register a section. Auto-discovery handles it.
+- Do **not** put per-section translations in `src/i18n.py`. Per-section
+  copy lives in `src/sections/<key>/strings.py` with both `en` and `cs` keys.
+- Do **not** put per-section mock data in `src/data/`. Only `USER` is
+  global; everything else lives in `src/sections/<key>/data.py`.
+- Do **not** import from another section's folder. Sections are isolated.
+- Every visible string must have both `en` and `cs` entries.
+
+## Section file shape
+
+```python
+# src/sections/<key>/section.py
+from src.sections._base import Section
+from src.sections.<key>.view import build_view
+from src.sections.<key>.strings import STRINGS
+
+SECTION = Section(
+    key="<key>",
+    icon=ft.Icons.<SOMETHING>_OUTLINED,
+    labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
+    build_view=build_view,
+    order=<int>,
+)
+```
+
+`build_view(theme, lang)` and (optional) `build_context(theme, lang)`
+must return `ft.Control`. Both receive `lang` as `"en"` or `"cs"`.

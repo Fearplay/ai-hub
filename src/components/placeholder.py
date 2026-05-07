@@ -1,13 +1,14 @@
-"""Placeholder pro dosud neimplementované sekce."""
+"""Default "coming soon" view used by sections that aren't built out yet."""
 
 from __future__ import annotations
 
 import flet as ft
 
+from src.i18n import t
 from src.theme import Theme
 
 
-def placeholder_view(theme: Theme, title: str) -> ft.Container:
+def placeholder_view(theme: Theme, lang: str, *, title: str) -> ft.Container:
     return ft.Container(
         content=ft.Column(
             controls=[
@@ -30,7 +31,7 @@ def placeholder_view(theme: Theme, title: str) -> ft.Container:
                     weight=ft.FontWeight.W_700,
                 ),
                 ft.Text(
-                    "Tato sekce se právě připravuje.",
+                    t("coming_soon", lang),
                     color=theme.text_muted,
                     size=14,
                 ),

@@ -1,4 +1,4 @@
-"""Položka v levém sidebaru."""
+"""One row in the left sidebar."""
 
 from __future__ import annotations
 

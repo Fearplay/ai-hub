@@ -1,22 +1,56 @@
-"""Pravý sloupec - Kontext, Rychlé akce, Historie konverzace."""
+"""Right-hand panel scaffolding shared by every section view.
+
+The actual cards are owned by each section in ``sections/<key>/context.py``.
+This module gives you:
+
+* :func:`context_panel_shell` - the outer container + scrollable column
+  every section drops its cards into.
+* :func:`empty_context_panel`  - default for sections without a custom panel.
+* :func:`quick_action_row`     - reusable row used by quick-action cards.
+* :func:`history_row`          - reusable row used by history cards.
+* :func:`add_document_button`  - reusable purple "add document" button.
+"""
 
 from __future__ import annotations
 
+from typing import Sequence
+
 import flet as ft
 
-from src.components.document_chip import document_chip
-from src.components.section_card import section_card
-from src.data.mock import CONTEXT_DOCS, CONVO_HISTORY, QUICK_ACTIONS
+from src.i18n import t
 from src.theme import Theme
 
 
-def _add_document_button(theme: Theme) -> ft.Container:
+def context_panel_shell(theme: Theme, *cards: ft.Control) -> ft.Container:
+    return ft.Container(
+        content=ft.Column(
+            controls=list(cards),
+            spacing=16,
+            tight=True,
+            scroll=ft.ScrollMode.ADAPTIVE,
+        ),
+        width=336,
+        padding=16,
+        bgcolor=theme.bg,
+        border=ft.border.only(left=ft.BorderSide(1, theme.border)),
+    )
+
+
+def empty_context_panel(theme: Theme) -> ft.Container:
+    return ft.Container(
+        width=336,
+        bgcolor=theme.bg,
+        border=ft.border.only(left=ft.BorderSide(1, theme.border)),
+    )
+
+
+def add_document_button(theme: Theme, lang: str) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
                 ft.Icon(ft.Icons.ADD, color=theme.primary, size=16),
                 ft.Text(
-                    "Přidat dokument",
+                    t("add_document", lang),
                     color=theme.primary,
                     size=13,
                     weight=ft.FontWeight.W_500,
@@ -36,7 +70,7 @@ def _add_document_button(theme: Theme) -> ft.Container:
     )
 
 
-def _quick_action_row(theme: Theme, icon: str, label: str) -> ft.Container:
+def quick_action_row(theme: Theme, icon: str, label: str) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
@@ -61,17 +95,36 @@ def _quick_action_row(theme: Theme, icon: str, label: str) -> ft.Container:
     )
 
 
-def _history_row(theme: Theme, title: str, time: str) -> ft.Container:
+def history_row(
+    theme: Theme,
+    title: str,
+    time: str,
+    *,
+    pinned: bool = False,
+) -> ft.Container:
+    title_row_children: list[ft.Control] = [
+        ft.Text(
+            title,
+            color=theme.text,
+            size=13,
+            weight=ft.FontWeight.W_500,
+            expand=True,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            max_lines=1,
+        ),
+    ]
+    if pinned:
+        title_row_children.append(
+            ft.Icon(ft.Icons.PUSH_PIN, color=theme.primary, size=12)
+        )
+
     return ft.Container(
         content=ft.Column(
             controls=[
-                ft.Text(
-                    title,
-                    color=theme.text,
-                    size=13,
-                    weight=ft.FontWeight.W_500,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                    max_lines=1,
+                ft.Row(
+                    controls=title_row_children,
+                    spacing=6,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 ft.Text(time, color=theme.text_muted, size=11),
             ],
@@ -85,75 +138,26 @@ def _history_row(theme: Theme, title: str, time: str) -> ft.Container:
     )
 
 
-def context_panel(theme: Theme) -> ft.Container:
-    docs_content = ft.Column(
-        controls=[
-            ft.Text(
-                "Připojené dokumenty",
-                color=theme.text_muted,
-                size=11,
-                weight=ft.FontWeight.W_500,
-            ),
-            *[
-                document_chip(theme, d["name"], d["type"], d["size"])
-                for d in CONTEXT_DOCS
-            ],
-            _add_document_button(theme),
-        ],
-        spacing=10,
-        tight=True,
-    )
-
-    actions_content = ft.Column(
-        controls=[
-            _quick_action_row(theme, qa["icon"], qa["label"])
-            for qa in QUICK_ACTIONS
-        ],
+def quick_actions_column(
+    theme: Theme,
+    actions: Sequence[dict],
+) -> ft.Column:
+    return ft.Column(
+        controls=[quick_action_row(theme, a["icon"], a["label"]) for a in actions],
         spacing=2,
         tight=True,
     )
 
-    history_content = ft.Column(
+
+def history_column(
+    theme: Theme,
+    items: Sequence[dict],
+) -> ft.Column:
+    return ft.Column(
         controls=[
-            _history_row(theme, h["title"], h["time"])
-            for h in CONVO_HISTORY
+            history_row(theme, h["title"], h["time"], pinned=h.get("pinned", False))
+            for h in items
         ],
         spacing=4,
         tight=True,
-    )
-
-    cards = ft.Column(
-        controls=[
-            section_card(
-                theme,
-                ft.Icons.INFO_OUTLINE,
-                "Kontext",
-                docs_content,
-                action_label="Spravovat",
-            ),
-            section_card(
-                theme,
-                ft.Icons.BOLT_OUTLINED,
-                "Rychlé akce",
-                actions_content,
-            ),
-            section_card(
-                theme,
-                ft.Icons.HISTORY,
-                "Historie konverzace",
-                history_content,
-                action_label="Zobrazit vše",
-            ),
-        ],
-        spacing=16,
-        tight=True,
-        scroll=ft.ScrollMode.ADAPTIVE,
-    )
-
-    return ft.Container(
-        content=cards,
-        width=336,
-        padding=16,
-        bgcolor=theme.bg,
-        border=ft.border.only(left=ft.BorderSide(1, theme.border)),
     )

@@ -1,10 +1,10 @@
-"""Spodní profilová karta v sidebaru."""
+"""Bottom user card in the sidebar."""
 
 from __future__ import annotations
 
 import flet as ft
 
-from src.data.mock import USER
+from src.data.user import USER
 from src.theme import Theme
 
 

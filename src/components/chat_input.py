@@ -1,10 +1,10 @@
-"""Spodní vstupní pole - text + akce."""
+"""Bottom message input - text field + action chips."""
 
 from __future__ import annotations
 
 import flet as ft
 
-from src.data.mock import INPUT_ACTIONS, INPUT_HINT
+from src.i18n import t
 from src.theme import Theme
 
 
@@ -28,7 +28,7 @@ def _input_action_chip(theme: Theme, icon: str, label: str) -> ft.Container:
     )
 
 
-def _send_button(theme: Theme) -> ft.Container:
+def _send_button(theme: Theme, lang: str) -> ft.Container:
     return ft.Container(
         content=ft.Icon(ft.Icons.SEND, color=ft.Colors.WHITE, size=18),
         width=40,
@@ -38,13 +38,13 @@ def _send_button(theme: Theme) -> ft.Container:
         alignment=ft.Alignment.CENTER,
         ink=True,
         on_click=lambda e: None,
-        tooltip="Odeslat",
+        tooltip=t("send", lang),
     )
 
 
-def chat_input(theme: Theme) -> ft.Container:
+def chat_input(theme: Theme, lang: str) -> ft.Container:
     text_field = ft.TextField(
-        hint_text="Napište zprávu...",
+        hint_text=t("type_message", lang),
         hint_style=ft.TextStyle(color=theme.text_muted, size=14),
         text_style=ft.TextStyle(color=theme.text, size=14),
         border=ft.InputBorder.NONE,
@@ -59,13 +59,13 @@ def chat_input(theme: Theme) -> ft.Container:
         icon=ft.Icons.ATTACH_FILE,
         icon_color=theme.text_muted,
         icon_size=18,
-        tooltip="Připojit soubor",
+        tooltip=t("attach_file", lang),
         on_click=lambda e: None,
     )
 
     input_row = ft.Container(
         content=ft.Row(
-            controls=[attach_btn, text_field, _send_button(theme)],
+            controls=[attach_btn, text_field, _send_button(theme, lang)],
             spacing=8,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -77,13 +77,12 @@ def chat_input(theme: Theme) -> ft.Container:
 
     actions_row = ft.Row(
         controls=[
-            *[
-                _input_action_chip(theme, a["icon"], a["label"])
-                for a in INPUT_ACTIONS
-            ],
+            _input_action_chip(theme, ft.Icons.ATTACH_FILE, t("attach_file", lang)),
+            _input_action_chip(theme, ft.Icons.MIC_NONE_OUTLINED, t("voice_input", lang)),
+            _input_action_chip(theme, ft.Icons.AUTO_FIX_HIGH, t("improve_prompt", lang)),
             ft.Container(expand=True),
             ft.Text(
-                INPUT_HINT,
+                t("ai_disclaimer", lang),
                 color=theme.text_subtle,
                 size=11,
                 italic=True,

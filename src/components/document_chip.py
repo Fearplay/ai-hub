@@ -1,4 +1,4 @@
-"""Řádek se souborem (PDF/DOCX) - používá se v Kontextu i jako příloha."""
+"""File chip + badge - used in the context panel and as chat attachments."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 import flet as ft
 
+from src.i18n import t
 from src.theme import Theme
 
 
@@ -30,10 +31,11 @@ def file_badge(theme: Theme, ext: str, *, size: int = 36) -> ft.Container:
 
 def document_chip(
     theme: Theme,
+    lang: str,
+    *,
     name: str,
     ext: str,
     size: str,
-    *,
     on_remove: Optional[Callable[[ft.ControlEvent], None]] = None,
 ) -> ft.Container:
     return ft.Container(
@@ -64,7 +66,7 @@ def document_chip(
                     icon_color=theme.text_muted,
                     icon_size=16,
                     on_click=on_remove,
-                    tooltip="Odebrat",
+                    tooltip=t("remove", lang),
                     style=ft.ButtonStyle(
                         padding=ft.padding.all(4),
                     ),

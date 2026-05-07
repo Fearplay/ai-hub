@@ -1,4 +1,4 @@
-"""Obecná karta s nadpisem a obsahem (používaná v pravém panelu)."""
+"""Generic card with a header + content (used in the right context panel)."""
 
 from __future__ import annotations
 

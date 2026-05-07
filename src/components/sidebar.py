@@ -1,4 +1,10 @@
-"""Levý sidebar - logo, nová konverzace, navigace, profil, theme toggle."""
+"""Left sidebar.
+
+Renders the brand mark, the "new chat" button, the section list (read from
+the auto-discovered registry), the secondary nav, the user card, and the
+language + theme toggles. Adding a new section to the sidebar happens by
+creating a folder under ``src/sections/`` - this file does not need editing.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +12,16 @@ from typing import Callable
 
 import flet as ft
 
+from src.components.language_toggle import language_toggle
 from src.components.nav_item import nav_item
+from src.components.theme_toggle import theme_toggle
 from src.components.user_card import user_card
-from src.data.mock import NAV_ITEMS, SECONDARY_NAV
+from src.i18n import SECONDARY_NAV, t
+from src.sections import SECTIONS
 from src.theme import Theme
 
 
-def _logo(theme: Theme) -> ft.Row:
+def _logo(theme: Theme, lang: str) -> ft.Row:
     icon_box = ft.Container(
         content=ft.Icon(ft.Icons.PSYCHOLOGY_ALT_OUTLINED, color=ft.Colors.WHITE, size=22),
         width=38,
@@ -23,7 +32,7 @@ def _logo(theme: Theme) -> ft.Row:
     )
     title = ft.Row(
         controls=[
-            ft.Text("AI Hub", color=theme.text, size=18, weight=ft.FontWeight.W_700),
+            ft.Text(t("app_name", lang), color=theme.text, size=18, weight=ft.FontWeight.W_700),
             ft.Text("+", color=theme.primary, size=18, weight=ft.FontWeight.W_700),
         ],
         spacing=2,
@@ -36,73 +45,56 @@ def _logo(theme: Theme) -> ft.Row:
     )
 
 
-def _new_chat_button(theme: Theme) -> ft.Container:
+def _new_chat_button(theme: Theme, lang: str) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
                 ft.Icon(ft.Icons.ADD, color=ft.Colors.WHITE, size=18),
                 ft.Text(
-                    "Nová konverzace",
+                    t("new_chat", lang),
                     color=ft.Colors.WHITE,
                     size=14,
                     weight=ft.FontWeight.W_600,
+                    expand=True,
+                ),
+                ft.Text(
+                    t("new_chat_shortcut", lang),
+                    color=ft.Colors.with_opacity(0.7, ft.Colors.WHITE),
+                    size=11,
                 ),
             ],
             spacing=8,
-            alignment=ft.MainAxisAlignment.CENTER,
-            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         bgcolor=theme.primary,
         padding=ft.padding.symmetric(horizontal=14, vertical=12),
         border_radius=10,
         ink=True,
         on_click=lambda e: None,
-        alignment=ft.Alignment.CENTER,
-    )
-
-
-def _theme_toggle(
-    theme: Theme,
-    theme_mode: str,
-    on_theme_toggle: Callable[[], None],
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.WB_SUNNY_OUTLINED, color=theme.text_muted, size=18),
-                ft.Text("Světlý režim", color=theme.text_muted, size=13, expand=True),
-                ft.Switch(
-                    value=theme_mode == "light",
-                    active_color=theme.primary,
-                    on_change=lambda e: on_theme_toggle(),
-                    scale=0.85,
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=4),
     )
 
 
 def sidebar(
     theme: Theme,
     *,
+    lang: str,
     active_section: str,
     on_section_change: Callable[[str], None],
     theme_mode: str,
     on_theme_toggle: Callable[[], None],
+    on_lang_toggle: Callable[[], None],
 ) -> ft.Container:
     primary_nav = ft.Column(
         controls=[
             nav_item(
                 theme,
-                item["icon"],
-                item["label"],
-                active=item["key"] == active_section,
-                on_click=lambda e, k=item["key"]: on_section_change(k),
+                section.icon,
+                section.label(lang),
+                active=section.key == active_section,
+                badge=section.badge,
+                on_click=lambda e, k=section.key: on_section_change(k),
             )
-            for item in NAV_ITEMS
+            for section in SECTIONS
         ],
         spacing=2,
         tight=True,
@@ -113,7 +105,7 @@ def sidebar(
             nav_item(
                 theme,
                 item["icon"],
-                item["label"],
+                t(item["label_key"], lang),
                 active=item["key"] == active_section,
                 badge=item.get("badge"),
                 on_click=lambda e, k=item["key"]: on_section_change(k),
@@ -128,11 +120,11 @@ def sidebar(
         content=ft.Column(
             controls=[
                 ft.Container(
-                    content=_logo(theme),
+                    content=_logo(theme, lang),
                     padding=ft.padding.symmetric(horizontal=20, vertical=20),
                 ),
                 ft.Container(
-                    content=_new_chat_button(theme),
+                    content=_new_chat_button(theme, lang),
                     padding=ft.padding.symmetric(horizontal=16),
                 ),
                 ft.Container(
@@ -152,7 +144,8 @@ def sidebar(
                     content=user_card(theme),
                     padding=ft.padding.only(left=12, right=12, top=8, bottom=8),
                 ),
-                _theme_toggle(theme, theme_mode, on_theme_toggle),
+                language_toggle(theme, lang, on_toggle=on_lang_toggle),
+                theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle),
                 ft.Container(height=12),
             ],
             spacing=0,

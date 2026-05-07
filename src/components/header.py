@@ -1,16 +1,18 @@
-"""Horní lišta hlavního view (titulek, popisek, akce)."""
+"""Generic top bar of a section view (icon, title, subtitle, actions)."""
 
 from __future__ import annotations
 
+from typing import Optional
+
 import flet as ft
 
-from src.data.mock import CHAT_ICON, CHAT_SUBTITLE, CHAT_TITLE
+from src.i18n import t
 from src.theme import Theme
 
 
-def _category_icon(theme: Theme) -> ft.Container:
+def _category_icon(theme: Theme, icon: str) -> ft.Container:
     return ft.Container(
-        content=ft.Icon(CHAT_ICON, color=ft.Colors.WHITE, size=22),
+        content=ft.Icon(icon, color=ft.Colors.WHITE, size=22),
         width=44,
         height=44,
         bgcolor=theme.primary,
@@ -19,14 +21,14 @@ def _category_icon(theme: Theme) -> ft.Container:
     )
 
 
-def _pin_button(theme: Theme) -> ft.Container:
+def _help_button(theme: Theme, label: str) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
-                ft.Icon(ft.Icons.STAR_OUTLINE, color=theme.text, size=16),
-                ft.Text("Připnuto", color=theme.text, size=13, weight=ft.FontWeight.W_500),
+                ft.Icon(ft.Icons.MENU_BOOK_OUTLINED, color=theme.text, size=16),
+                ft.Text(label, color=theme.text, size=13, weight=ft.FontWeight.W_500),
             ],
-            spacing=6,
+            spacing=8,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -53,21 +55,28 @@ def _menu_button(theme: Theme) -> ft.Container:
     )
 
 
-def header(theme: Theme) -> ft.Container:
+def header(
+    theme: Theme,
+    lang: str,
+    *,
+    icon: str,
+    title: str,
+    subtitle: Optional[str] = None,
+) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
-                _category_icon(theme),
+                _category_icon(theme, icon),
                 ft.Column(
                     controls=[
                         ft.Text(
-                            CHAT_TITLE,
+                            title,
                             color=theme.text,
                             size=18,
                             weight=ft.FontWeight.W_700,
                         ),
                         ft.Text(
-                            CHAT_SUBTITLE,
+                            subtitle or "",
                             color=theme.text_muted,
                             size=12,
                         ),
@@ -75,7 +84,7 @@ def header(theme: Theme) -> ft.Container:
                     spacing=2,
                     expand=True,
                 ),
-                _pin_button(theme),
+                _help_button(theme, t("how_to_use", lang)),
                 _menu_button(theme),
             ],
             spacing=14,

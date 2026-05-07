@@ -1,6 +1,8 @@
-"""Tab bar pod headerem (Chat / Formulářový režim)."""
+"""Generic tab bar under the header."""
 
 from __future__ import annotations
+
+from typing import Sequence
 
 import flet as ft
 
@@ -33,14 +35,21 @@ def _tab(theme: Theme, label: str, *, active: bool) -> ft.Container:
     )
 
 
-def tab_bar(theme: Theme, *, active: str = "chat") -> ft.Container:
+def tab_bar(
+    theme: Theme,
+    *,
+    tabs: Sequence[str],
+    active_index: int = 0,
+) -> ft.Container:
+    children = [
+        _tab(theme, label, active=i == active_index)
+        for i, label in enumerate(tabs)
+    ]
     return ft.Container(
         content=ft.Row(
-            controls=[
-                _tab(theme, "Chat", active=active == "chat"),
-                _tab(theme, "Formulářový režim", active=active == "form"),
-            ],
+            controls=children,
             spacing=24,
+            scroll=ft.ScrollMode.HIDDEN,
         ),
         padding=ft.padding.only(left=24, right=24, top=4),
         border=ft.border.only(bottom=ft.BorderSide(1, theme.border)),
