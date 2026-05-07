@@ -1,0 +1,43 @@
+---
+description: Always work on a feature branch with the correct prefix; one branch per user request
+alwaysApply: true
+---
+
+# Git branch workflow
+
+When the user asks for code changes, **start by creating a new branch from `main`** before editing files. Use **one branch for the whole user request**, even if it covers several distinct tasks. Do not switch branches mid-conversation unless the user asks for it.
+
+If the user follows up with more tasks in the same conversation, **keep working on the same branch** - do not open a second one.
+
+## Branch naming
+
+Convention from [CONTRIBUTING.md](../../CONTRIBUTING.md):
+
+- `feat/<short-description>` - new feature (e.g. `feat/light-mode-polish`)
+- `fix/<short-description>` - bug fix (e.g. `fix/sidebar-overflow`)
+- `chore/<short-description>` - refactor, deps, build, small cleanup
+- `docs/<short-description>` - documentation only
+
+Description rules:
+
+- Lowercase, kebab-case (words separated by `-`).
+- ASCII only - strip Czech diacritics: `feat/pridat-formularovy-rezim`, not `feat/přidat-formulářový-režim`.
+- 2-5 words, short and concrete.
+- If the request bundles multiple tasks, pick the prefix that fits the **biggest** change and use a description that covers them all (e.g. `feat/marketing-section-and-i18n`).
+
+## Workflow
+
+```bash
+git checkout main
+git pull --ff-only
+git checkout -b feat/<short-description>
+```
+
+Then make the changes. Commit and push only when the user explicitly asks - per the global git-safety rules, never auto-commit.
+
+## Don'ts
+
+- Do **not** edit or commit directly on `main`.
+- Do **not** create a second branch in the same conversation just because the user added another task.
+- Do **not** use uppercase letters, spaces, underscores, or diacritics in the branch name.
+- Do **not** force-push or rebase main without an explicit request.
