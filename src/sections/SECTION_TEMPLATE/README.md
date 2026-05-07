@@ -34,17 +34,19 @@ startovací bod, když přidáváš novou sekci.
 Drž 10 mezer mezi existujícími sekcemi, ať máš kam vkládat nové bez
 nutnosti přečíslovávat:
 
-| order | section          | owner       |
-| ----- | ---------------- | ----------- |
-| 10    | `dashboard`      | volné       |
-| 20    | `ai_career`      | Fearplay    |
-| 30    | `ai_legal`       | volné       |
-| 40    | `ai_business`    | volné       |
-| 50    | `ai_marketing`   | Fearplay    |
-| 60    | `ai_finance`     | volné       |
-| 70    | `ai_study`       | volné       |
-| 80    | `ai_documents`   | volné       |
-| 100   | (default)        | -           |
+| order | section             | owner       |
+| ----- | ------------------- | ----------- |
+| 10    | `dashboard`         | volné       |
+| 20    | `ai_career`         | Fearplay    |
+| 25    | `ai_linkedin`       | volné       |
+| 30    | `ai_legal`          | volné       |
+| 40    | `ai_business`       | volné       |
+| 50    | `ai_marketing`      | Fearplay    |
+| 60    | `ai_finance`        | volné       |
+| 70    | `ai_study`          | volné       |
+| 80    | `ai_documents`      | volné       |
+| 85    | `ai_doc_assistant`  | Fearplay    |
+| 100   | (default)           | -           |
 
 Když dva lidi vyberou stejný `order`, řadí se podle `key` abecedně - žádný
 merge konflikt na sdíleném seznamu nevznikne.

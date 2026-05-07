@@ -12,8 +12,6 @@ Usage::
 
 from __future__ import annotations
 
-import flet as ft
-
 
 DEFAULT_LANG = "en"
 LANGUAGES = ("en", "cs")
@@ -113,13 +111,6 @@ GLOBAL_STRINGS: dict[str, dict[str, str]] = {
         "mock_field_your_text_hint": "Vlož pár poznámek, ze kterých vyjdeme.",
     },
 }
-
-
-SECONDARY_NAV: list[dict] = [
-    {"key": "history", "icon": ft.Icons.HISTORY, "label_key": "history"},
-    {"key": "favorites", "icon": ft.Icons.STAR_OUTLINE, "label_key": "favorites", "badge": "3"},
-    {"key": "settings", "icon": ft.Icons.SETTINGS_OUTLINED, "label_key": "settings"},
-]
 
 
 def t(key: str, lang: str) -> str:

@@ -1,0 +1,442 @@
+"""Match tab - score, categories, matches, gaps, ATS keywords.
+
+Renders the analysis output in a layout inspired by the user's old
+ApplyPilot screenshot: a big overall score on the left, category score
+bars on the right, three result columns (matches / gaps / ATS keywords)
+underneath, and an evidence preview list at the bottom.
+
+If the user has not run an analysis yet, a friendly empty state nudges
+them back to Setup.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+import flet as ft
+
+from src.sections.ai_career.refs import safe
+from src.sections.ai_career.state import STATE, TAB_DOCUMENTS, TAB_SETUP
+from src.sections.ai_career.strings import s
+from src.theme import Theme
+
+
+_OK_COLOR = "#22C55E"
+_RISK_COLOR = "#F97316"
+_INFO_COLOR = "#3B82F6"
+
+
+def _score_circle(theme: Theme, score: int, label: str) -> ft.Container:
+    score = max(0, min(100, int(score)))
+    color = _OK_COLOR if score >= 80 else (_RISK_COLOR if score < 60 else theme.primary)
+    return ft.Container(
+        content=ft.Stack(
+            controls=[
+                ft.ProgressRing(
+                    value=score / 100.0,
+                    width=152,
+                    height=152,
+                    stroke_width=10,
+                    color=color,
+                    bgcolor=ft.Colors.with_opacity(0.18, color),
+                ),
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Text(
+                                label,
+                                color=theme.text_muted,
+                                size=10,
+                                weight=ft.FontWeight.W_700,
+                                style=ft.TextStyle(letter_spacing=1.4),
+                            ),
+                            ft.Text(
+                                str(score),
+                                color=theme.text,
+                                size=44,
+                                weight=ft.FontWeight.W_700,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=2,
+                        tight=True,
+                    ),
+                    width=152,
+                    height=152,
+                    alignment=ft.Alignment.CENTER,
+                ),
+            ],
+        ),
+        bgcolor=theme.surface,
+        border=ft.border.all(1, theme.border),
+        border_radius=14,
+        padding=14,
+        width=180,
+        height=180,
+        alignment=ft.Alignment.CENTER,
+    )
+
+
+def _category_bar(theme: Theme, *, name: str, score: int, evidence: list[str]) -> ft.Container:
+    score = max(0, min(100, int(score)))
+    color = _OK_COLOR if score >= 75 else (_RISK_COLOR if score < 55 else theme.primary)
+    tooltip = "\n".join(f"• {e}" for e in evidence) if evidence else None
+    return ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Text(name, color=theme.text, size=12, weight=ft.FontWeight.W_600, expand=True),
+                        ft.Text(f"{score} / 100", color=theme.text_muted, size=11, weight=ft.FontWeight.W_500),
+                    ],
+                    spacing=8,
+                ),
+                ft.Container(
+                    content=ft.Container(
+                        width=score / 100.0 * 1.0,
+                        height=6,
+                        bgcolor=color,
+                        border_radius=3,
+                    ),
+                    height=6,
+                    bgcolor=ft.Colors.with_opacity(0.18, color),
+                    border_radius=3,
+                    expand=True,
+                ),
+            ],
+            spacing=6,
+            tight=True,
+        ),
+        padding=ft.padding.symmetric(horizontal=14, vertical=10),
+        bgcolor=theme.surface,
+        border=ft.border.all(1, theme.border),
+        border_radius=12,
+        tooltip=tooltip,
+    )
+
+
+def _bullet_column(
+    theme: Theme,
+    *,
+    title: str,
+    items: list[str],
+    accent: str,
+    bullet_marker: str = "•",
+) -> ft.Container:
+    body: list[ft.Control] = [
+        ft.Text(
+            title,
+            color=theme.text_muted,
+            size=10,
+            weight=ft.FontWeight.W_700,
+            style=ft.TextStyle(letter_spacing=1.4),
+        )
+    ]
+    if not items:
+        body.append(ft.Text("—", color=theme.text_subtle, size=12))
+    else:
+        for item in items:
+            body.append(
+                ft.Row(
+                    controls=[
+                        ft.Text(bullet_marker, color=accent, size=14, weight=ft.FontWeight.W_700),
+                        ft.Text(item, color=theme.text, size=12, expand=True, selectable=True),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                )
+            )
+    return ft.Container(
+        content=ft.Column(controls=body, spacing=8, tight=True),
+        padding=14,
+        bgcolor=theme.surface,
+        border_radius=12,
+        border=ft.border.all(1, theme.border),
+        expand=True,
+    )
+
+
+def _ats_column(theme: Theme, *, title: str, present: list[str], missing: list[str], present_label: str, missing_label: str) -> ft.Container:
+    def _chip(text: str, *, ok: bool) -> ft.Container:
+        color = _OK_COLOR if ok else _RISK_COLOR
+        return ft.Container(
+            content=ft.Text(text, color=color, size=11, weight=ft.FontWeight.W_500),
+            padding=ft.padding.symmetric(horizontal=8, vertical=4),
+            bgcolor=ft.Colors.with_opacity(0.14, color),
+            border_radius=8,
+        )
+
+    present_chips = ft.Row(
+        controls=[_chip(k, ok=True) for k in present] or [ft.Text("—", color=theme.text_subtle, size=12)],
+        wrap=True,
+        spacing=6,
+        run_spacing=6,
+    )
+    missing_chips = ft.Row(
+        controls=[_chip(k, ok=False) for k in missing] or [ft.Text("—", color=theme.text_subtle, size=12)],
+        wrap=True,
+        spacing=6,
+        run_spacing=6,
+    )
+
+    return ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text(
+                    title,
+                    color=theme.text_muted,
+                    size=10,
+                    weight=ft.FontWeight.W_700,
+                    style=ft.TextStyle(letter_spacing=1.4),
+                ),
+                ft.Text(present_label, color=theme.text_muted, size=11, weight=ft.FontWeight.W_500),
+                present_chips,
+                ft.Container(height=4),
+                ft.Text(missing_label, color=theme.text_muted, size=11, weight=ft.FontWeight.W_500),
+                missing_chips,
+            ],
+            spacing=6,
+            tight=True,
+        ),
+        padding=14,
+        bgcolor=theme.surface,
+        border_radius=12,
+        border=ft.border.all(1, theme.border),
+        expand=True,
+    )
+
+
+def _empty_state(theme: Theme, txt: dict, on_back: Callable[[], None]) -> ft.Container:
+    return ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Container(
+                    content=ft.Icon(ft.Icons.QUERY_STATS, color=theme.primary, size=42),
+                    width=84,
+                    height=84,
+                    bgcolor=theme.primary_tint,
+                    border_radius=22,
+                    alignment=ft.Alignment.CENTER,
+                ),
+                ft.Text(txt["match_no_results_title"], color=theme.text, size=18, weight=ft.FontWeight.W_700),
+                ft.Text(
+                    txt["match_no_results_desc"],
+                    color=theme.text_muted,
+                    size=13,
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                ft.Container(
+                    content=ft.Text(txt["tab_setup"], color=ft.Colors.WHITE, size=13, weight=ft.FontWeight.W_600),
+                    padding=ft.padding.symmetric(horizontal=18, vertical=10),
+                    bgcolor=theme.primary,
+                    border_radius=10,
+                    ink=True,
+                    on_click=lambda e: on_back(),
+                    alignment=ft.Alignment.CENTER,
+                ),
+            ],
+            spacing=14,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        alignment=ft.Alignment.CENTER,
+        expand=True,
+        padding=40,
+    )
+
+
+def build_match_tab(
+    theme: Theme,
+    lang: str,
+    *,
+    on_request_rerender: Callable[[], None],
+    on_navigate_tab: Callable[[int], None],
+) -> ft.Control:
+    txt = s(lang)
+    match = STATE.match
+
+    if not match:
+        return _empty_state(theme, txt, on_back=lambda: on_navigate_tab(TAB_SETUP))
+
+    overall = int(match.get("overall_score") or 0)
+    verdict = match.get("verdict") or ""
+    categories = match.get("categories") or []
+    matches = match.get("matches") or []
+    gaps = match.get("gaps") or []
+    ats_present = match.get("ats_keywords_present") or []
+    ats_missing = match.get("ats_keywords_missing") or []
+    evidence = match.get("evidence_preview") or []
+
+    score_block = _score_circle(theme, overall, txt["match_overall_label"])
+
+    category_controls = [
+        _category_bar(
+            theme,
+            name=str(c.get("name") or ""),
+            score=int(c.get("score") or 0),
+            evidence=[str(x) for x in (c.get("evidence") or [])],
+        )
+        for c in categories
+    ]
+    if not category_controls:
+        category_controls = [
+            ft.Container(
+                content=ft.Text(txt["match_per_category_hint"], color=theme.text_muted, size=12),
+                padding=14,
+                bgcolor=theme.surface,
+                border=ft.border.all(1, theme.border),
+                border_radius=12,
+            )
+        ]
+
+    top_row = ft.Row(
+        controls=[
+            score_block,
+            ft.Column(
+                controls=category_controls,
+                spacing=8,
+                expand=True,
+                tight=True,
+            ),
+        ],
+        spacing=18,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
+
+    verdict_text = ft.Text(
+        f"{txt['match_verdict_label']}: {verdict}" if verdict else "",
+        color=theme.text_muted,
+        size=12,
+        italic=True,
+    )
+
+    columns_row = ft.ResponsiveRow(
+        controls=[
+            ft.Container(
+                content=_bullet_column(theme, title=txt["match_matches_title"], items=[str(m) for m in matches], accent=_OK_COLOR, bullet_marker="✓"),
+                col={"xs": 12, "md": 4},
+            ),
+            ft.Container(
+                content=_bullet_column(theme, title=txt["match_gaps_title"], items=[str(g) for g in gaps], accent=_RISK_COLOR, bullet_marker="!"),
+                col={"xs": 12, "md": 4},
+            ),
+            ft.Container(
+                content=_ats_column(
+                    theme,
+                    title=txt["match_ats_title"],
+                    present=[str(x) for x in ats_present],
+                    missing=[str(x) for x in ats_missing],
+                    present_label=txt["match_ats_present_label"],
+                    missing_label=txt["match_ats_missing_label"],
+                ),
+                col={"xs": 12, "md": 4},
+            ),
+        ],
+        spacing=12,
+        run_spacing=12,
+    )
+
+    evidence_card = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text(
+                    txt["match_evidence_title"],
+                    color=theme.text_muted,
+                    size=10,
+                    weight=ft.FontWeight.W_700,
+                    style=ft.TextStyle(letter_spacing=1.4),
+                ),
+                ft.Column(
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Container(
+                                    width=6,
+                                    height=6,
+                                    bgcolor=theme.primary,
+                                    border_radius=3,
+                                    margin=ft.margin.only(top=8, right=10),
+                                ),
+                                ft.Text(str(e), color=theme.text, size=12, expand=True, selectable=True),
+                            ],
+                            spacing=0,
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                        )
+                        for e in evidence
+                    ]
+                    or [ft.Text("—", color=theme.text_subtle, size=12)],
+                    spacing=4,
+                    tight=True,
+                ),
+            ],
+            spacing=8,
+            tight=True,
+        ),
+        padding=14,
+        bgcolor=theme.surface,
+        border_radius=12,
+        border=ft.border.all(1, theme.border),
+    )
+
+    body = ft.Column(
+        controls=[
+            top_row,
+            verdict_text,
+            ft.Container(height=4),
+            columns_row,
+            evidence_card,
+        ],
+        spacing=14,
+        scroll=ft.ScrollMode.ADAPTIVE,
+        expand=True,
+        tight=True,
+    )
+
+    footer = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Container(expand=True),
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.WHITE, size=14),
+                            ft.Text(
+                                txt["match_open_documents_btn"],
+                                color=ft.Colors.WHITE,
+                                size=13,
+                                weight=ft.FontWeight.W_600,
+                            ),
+                        ],
+                        spacing=8,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    padding=ft.padding.symmetric(horizontal=18, vertical=10),
+                    bgcolor=theme.primary,
+                    border_radius=10,
+                    ink=True,
+                    on_click=lambda e: on_navigate_tab(TAB_DOCUMENTS),
+                ),
+            ],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.padding.symmetric(horizontal=24, vertical=12),
+        border=ft.border.only(top=ft.BorderSide(1, theme.border)),
+        bgcolor=theme.bg,
+    )
+
+    return ft.Column(
+        controls=[
+            ft.Container(
+                content=body,
+                expand=True,
+                padding=ft.padding.symmetric(horizontal=24, vertical=18),
+            ),
+            footer,
+        ],
+        spacing=0,
+        expand=True,
+        tight=True,
+    )

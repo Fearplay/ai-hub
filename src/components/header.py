@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 import flet as ft
 
@@ -21,7 +21,12 @@ def _category_icon(theme: Theme, icon: str) -> ft.Container:
     )
 
 
-def _help_button(theme: Theme, label: str) -> ft.Container:
+def _help_button(
+    theme: Theme,
+    label: str,
+    *,
+    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
+) -> ft.Container:
     return ft.Container(
         content=ft.Row(
             controls=[
@@ -37,7 +42,7 @@ def _help_button(theme: Theme, label: str) -> ft.Container:
         border_radius=10,
         border=ft.border.all(1, theme.border),
         ink=True,
-        on_click=lambda e: None,
+        on_click=on_click or (lambda e: None),
     )
 
 
@@ -62,7 +67,15 @@ def header(
     icon: str,
     title: str,
     subtitle: Optional[str] = None,
+    on_help_click: Optional[Callable[[ft.ControlEvent], None]] = None,
+    trailing: Optional[ft.Control] = None,
 ) -> ft.Container:
+    actions: list[ft.Control] = []
+    if trailing is not None:
+        actions.append(trailing)
+    actions.append(_help_button(theme, t("how_to_use", lang), on_click=on_help_click))
+    actions.append(_menu_button(theme))
+
     return ft.Container(
         content=ft.Row(
             controls=[
@@ -84,8 +97,7 @@ def header(
                     spacing=2,
                     expand=True,
                 ),
-                _help_button(theme, t("how_to_use", lang)),
-                _menu_button(theme),
+                *actions,
             ],
             spacing=14,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,

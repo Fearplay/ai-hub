@@ -5,6 +5,16 @@ imported and expected to expose a ``SECTION`` constant in its ``section.py``
 module. Sections are sorted by ``(order, key)`` so two contributors who pick
 the same ``order`` value still get a deterministic layout (and no merge
 conflict on a shared registry list).
+
+We expose two convenience views:
+
+* :data:`PRIMARY_SECTIONS` — feature sections rendered in the upper sidebar
+  list (Dashboard, AI Career, AI Legal, …).
+* :data:`SECONDARY_SECTIONS` — auxiliary sections rendered under a divider
+  at the bottom of the sidebar (History, Favorites, Settings).
+
+Both are filtered slices of :data:`SECTIONS`, which keeps every section
+addressable by key for ``app.set_section``.
 """
 
 from __future__ import annotations
@@ -44,5 +54,14 @@ def _discover() -> list[Section]:
 SECTIONS: list[Section] = _discover()
 SECTION_BY_KEY: dict[str, Section] = {s.key: s for s in SECTIONS}
 
+PRIMARY_SECTIONS: list[Section] = [s for s in SECTIONS if s.nav_group == "primary"]
+SECONDARY_SECTIONS: list[Section] = [s for s in SECTIONS if s.nav_group == "secondary"]
 
-__all__ = ["Section", "SECTIONS", "SECTION_BY_KEY"]
+
+__all__ = [
+    "Section",
+    "SECTIONS",
+    "SECTION_BY_KEY",
+    "PRIMARY_SECTIONS",
+    "SECONDARY_SECTIONS",
+]

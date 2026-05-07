@@ -1,0 +1,104 @@
+---
+description: How to wire AI features into a section without merge conflicts
+alwaysApply: true
+---
+
+# AI Hub - rules for AI sections
+
+This rule extends [sections.mdc](sections.mdc). Read it first.
+
+The shared services in `src/services/` are the **only** place where vendor
+SDKs (OpenAI, Anthropic, keyring, httpx, pypdf, …) live. Sections own
+their prompts and pipelines so we never touch a shared "prompts" file.
+
+## Per-section AI files
+
+Inside `src/sections/<key>/` you may add (all optional except as noted):
+
+- `prompts.py` — system prompts, including a re-statement of the
+  no-hallucination clause and any domain rules. Build user messages as
+  `build_*_user(...)` helpers.
+- `schema.py` — JSON Schema dicts used by structured-output calls.
+- `pipeline.py` — orchestration. One public function per logical step
+  (`extract_*`, `analyze_*`, `generate_*`, `refine_*`). Each step calls
+  `src.services.ai_provider.run(...)`.
+- `state.py` — module-level singleton `STATE = SectionState()` for
+  values that must survive theme / language / tab rebuilds.
+- `refs.py` — cross-tab rerender hooks (optional, but useful for tabbed
+  sections).
+- `tab_*.py` — one file per visible tab (Setup / Match / Documents / …)
+  to keep the view file small.
+- `how_to.py` — wires `src.components.how_to_dialog.open_how_to(...)`
+  to the section copy. Header `?` button opens it.
+
+## Hard rules — never break these
+
+- **No direct vendor imports.** Sections must not `import openai` or
+  `import anthropic`. The single entry point is
+  `src.services.ai_provider.run(system, user, schema=…, ...)`.
+  `ai_provider` already prepends a no-hallucination policy clause; do
+  not strip it.
+- **Per-section system prompts must repeat the domain rules.** They do
+  not have to repeat the global no-hallucination rule (the provider does
+  it for them) but every domain rule the user listed for that section
+  must live in `prompts.py` and be referenced by every doc-level prompt.
+- **API keys belong in the OS keystore.** Use
+  `src.services.secrets.{get,set,delete,has}_secret`. Never read keys
+  from environment variables, never commit `.env` files, never log a
+  key.
+- **Cost-aware pipelines.** Cache structured outputs in section state
+  (`STATE.candidate`, `STATE.job_spec`, `STATE.match`) and pass JSONs to
+  follow-up doc generators instead of re-sending raw input text.
+- **Demo mode is mandatory** for any section that calls a paid provider.
+  Every pipeline function must short-circuit when `STATE.demo_mode` is
+  `True` and return curated mock data — that lets users showcase the
+  feature without spending tokens.
+- **Runs persist on disk.** Use `src.services.store.new_run_dir(...)`
+  and write outputs through `src.services.exporter.export_*`. The
+  history index lives at `~/AI Hub/history.json`.
+
+## Section file shape (AI-aware)
+
+```python
+# src/sections/<key>/section.py
+import flet as ft
+
+from src.sections._base import Section
+from src.sections.<key>.context import build_context  # optional
+from src.sections.<key>.strings import STRINGS
+from src.sections.<key>.view import build_view
+
+SECTION = Section(
+    key="<key>",
+    icon=ft.Icons.<SOMETHING>_OUTLINED,
+    labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
+    build_view=build_view,
+    build_context=build_context,
+    order=<int>,
+    nav_group="primary",  # or "secondary" for tools / settings
+)
+```
+
+`pipeline.py` should look like:
+
+```python
+from src.services import ai_provider
+from src.sections.<key> import prompts, schema
+from src.sections.<key>.state import STATE
+
+def extract_thing(*, output_lang: str):
+    if STATE.demo_mode:
+        STATE.thing = ...  # mock
+        return
+    result = ai_provider.run(
+        system=prompts.THING_SYSTEM,
+        user=prompts.build_thing_user(output_lang=output_lang, ...),
+        schema=schema.THING_SCHEMA,
+        schema_name="thing",
+    )
+    STATE.thing = result.data
+```
+
+That keeps every section's AI footprint in five files (prompts, schema,
+state, pipeline, plus tabs) and a single shared dependency on
+`src.services.ai_provider`.
