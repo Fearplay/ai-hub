@@ -23,6 +23,8 @@ from src.services import settings_store
 from src.services.cost_tracker import COST
 from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
+    MODE_CHAT,
+    MODE_FORM,
     STATE,
     TAB_HISTORY,
     TAB_SETUP,
@@ -123,6 +125,61 @@ def _activity_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
     )
 
 
+def _remove_attachment(name_to_remove: str) -> None:
+    STATE.chat_attachments.pop(name_to_remove, None)
+    if REFS.rerender_context:
+        REFS.rerender_context()
+
+
+def _attached_docs_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
+    if not STATE.chat_attachments:
+        body: ft.Control = ft.Text(
+            txt["chat_mode_no_attachments"],
+            color=theme.text_muted,
+            size=12,
+        )
+    else:
+        rows: list[ft.Control] = []
+        for name in list(STATE.chat_attachments.keys()):
+            rows.append(
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=16),
+                            ft.Text(
+                                name,
+                                color=theme.text,
+                                size=12,
+                                expand=True,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_color=theme.text_muted,
+                                icon_size=14,
+                                tooltip=txt["resume_clear_btn"],
+                                on_click=lambda e, n=name: _remove_attachment(n),
+                            ),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                    bgcolor=theme.surface_2,
+                    border_radius=8,
+                )
+            )
+        body = ft.Column(controls=rows, spacing=6, tight=True)
+
+    return section_card(
+        theme,
+        ft.Icons.ATTACH_FILE,
+        txt["chat_mode_attached_docs_title"],
+        body,
+    )
+
+
 def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
     def _row(icon: str, label: str, on_click) -> ft.Container:
         return ft.Container(
@@ -189,14 +246,27 @@ def build_context(theme: Theme, lang: str) -> ft.Container:
     panel_holder = ft.Container()
 
     def _render() -> None:
-        panel_holder.content = context_panel_shell(
-            theme,
-            _cost_card(theme, lang, txt),
-            _activity_card(theme, lang, txt),
-            _quick_actions_card(theme, lang, txt),
-        )
+        cards: list[ft.Control] = [_cost_card(theme, lang, txt)]
+        if STATE.mode == MODE_CHAT:
+            cards.append(_attached_docs_card(theme, lang, txt))
+        cards.append(_activity_card(theme, lang, txt))
+        cards.append(_quick_actions_card(theme, lang, txt))
+        panel_holder.content = context_panel_shell(theme, *cards)
+        # ``control.update()`` only flushes the changed control to the
+        # frontend; from a background thread (the fetch / extract /
+        # analyze workers all live on a daemon thread) it can race with
+        # the main UI loop and silently drop the message. Falling back
+        # to ``page.update()`` when we have a page reference forces the
+        # whole tree to flush, which makes the Activity pill actually
+        # animate while a fetch is in flight.
         try:
             panel_holder.update()
+        except Exception:
+            pass
+        try:
+            page = panel_holder.page
+            if page is not None:
+                page.update()
         except Exception:
             pass
 
