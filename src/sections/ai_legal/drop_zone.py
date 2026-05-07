@@ -1,15 +1,15 @@
-"""Drop zone for the AI Legal section.
+"""Click-to-browse drop zone for the AI Legal section.
 
-Real OS drag-and-drop is provided by the community ``flet-dropzone``
-extension which wraps the Flutter ``desktop_drop`` package. The Python
-side ships with the app (``flet-dropzone`` is in ``requirements.txt``)
-but the native bridge only fires ``on_dropped`` once the user has run
-``flet build windows`` (or ``macos`` / ``linux``) at least once - see
-the README. To keep the app friendly even *before* that build, we wrap
-the same visual zone in a click handler that opens ``ft.FilePicker``,
-so users who haven't built yet can still attach a PDF the conventional
-way. Behaviour is identical from ``STATE.uploaded_file``'s point of
-view.
+We intentionally do **not** use ``flet-dropzone`` here. That package needs
+the Flutter ``desktop_drop`` native plugin which is bundled by
+``flet build windows`` but **not** by ``flet pack`` (PyInstaller). Our
+distribution flow is ``flet pack``, so the native bridge would never be
+present at runtime - rendering the dropzone control would surface as the
+red "Unknown control: flet_dropzone" banner. We side-step the whole
+problem by giving the visual zone a click handler that opens
+``ft.FilePicker`` instead - the user attaches a PDF the conventional
+way and ``STATE.uploaded_file`` ends up with the same shape it would
+have had via OS drag-drop.
 """
 
 from __future__ import annotations
@@ -21,14 +21,6 @@ import flet as ft
 
 from src.sections.ai_legal.strings import s
 from src.theme import Theme
-
-
-try:
-    import flet_dropzone as ftd  # type: ignore[import-not-found]
-    _DROPZONE_AVAILABLE = True
-except Exception:  # pragma: no cover - extension import is best-effort
-    ftd = None  # type: ignore[assignment]
-    _DROPZONE_AVAILABLE = False
 
 
 def _format_size(num_bytes: int) -> str:
@@ -73,14 +65,6 @@ def _idle_border(theme: Theme) -> ft.Border:
     return ft.border.all(2, ft.Colors.with_opacity(0.30, theme.primary))
 
 
-def _active_bg(theme: Theme) -> str:
-    return ft.Colors.with_opacity(0.22, theme.primary)
-
-
-def _active_border(theme: Theme) -> ft.Border:
-    return ft.border.all(2, ft.Colors.with_opacity(0.65, theme.primary))
-
-
 def drop_zone(
     theme: Theme,
     lang: str,
@@ -94,17 +78,6 @@ def drop_zone(
 
     inner_ref = ft.Ref[ft.Container]()
     error_ref = ft.Ref[ft.Text]()
-
-    def _set_active(active: bool) -> None:
-        c = inner_ref.current
-        if c is None:
-            return
-        c.bgcolor = _active_bg(theme) if active else _idle_bg(theme)
-        c.border = _active_border(theme) if active else _idle_border(theme)
-        try:
-            c.update()
-        except AssertionError:
-            pass
 
     def _show_error(message: Optional[str]) -> None:
         e = error_ref.current
@@ -148,15 +121,6 @@ def drop_zone(
             return
         _resolve_and_emit(_picker_to_file_dict(files[0]))
 
-    def _on_dropped(event) -> None:
-        _set_active(False)
-        files = getattr(event, "files", None) or []
-        if not files:
-            return
-        first = files[0]
-        path = first if isinstance(first, str) else getattr(first, "path", "")
-        _resolve_and_emit(_path_to_file_dict(path))
-
     icon = ft.Icon(ft.Icons.CLOUD_UPLOAD_OUTLINED, color=theme.primary, size=28)
     title = ft.Text(
         txt["drop_zone_title"],
@@ -174,7 +138,7 @@ def drop_zone(
         visible=False,
     )
 
-    inner = ft.Container(
+    return ft.Container(
         ref=inner_ref,
         content=ft.Column(
             controls=[icon, title, hint, error],
@@ -191,13 +155,3 @@ def drop_zone(
         ink=True,
         on_click=_open_picker,
     )
-
-    if _DROPZONE_AVAILABLE and ftd is not None:
-        return ftd.Dropzone(
-            content=inner,
-            allowed_file_types=["pdf"],
-            on_dropped=_on_dropped,
-            on_entered=lambda e: _set_active(True),
-            on_exited=lambda e: _set_active(False),
-        )
-    return inner

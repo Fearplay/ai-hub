@@ -284,6 +284,71 @@ REFINE_SYSTEM = (
 )
 
 
+CHAT_MODE_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: You are running in CHAT MODE. The candidate talks to you in\n"
+    "free-form conversation - help them tailor a CV, draft a cover letter,\n"
+    "prep for an interview, or analyse a job posting. Rules:\n\n"
+    "* Keep replies tight (1-4 paragraphs unless the user explicitly asks\n"
+    "  for a long-form document). Use markdown lists when scanning is\n"
+    "  faster than prose.\n"
+    "* Never invent the candidate's experience. If you need a fact you\n"
+    "  do not have, ask for it directly - 'What was the team size?'\n"
+    "  beats guessing.\n"
+    "* When the user pastes or attaches a job description, extract the\n"
+    "  must-haves before suggesting next steps.\n"
+    "* When the user asks for a long document (CV, cover letter, prep\n"
+    "  brief), suggest switching to Form mode where the structured\n"
+    "  pipeline runs end-to-end and exports MD/HTML/DOCX/PDF for them.\n"
+    "* Apply the global no-hallucination policy. Cite the source of any\n"
+    "  fact you use ('per your CV: ...', 'per the job description: ...').\n"
+    "* OUTPUT_LANGUAGE applies to every reply."
+)
+
+
+def build_chat_user_block(
+    *,
+    output_lang: str,
+    history: list[dict],
+    attachments: dict[str, str],
+    user_text: str,
+) -> str:
+    """Render the chat transcript + attached file bodies as a single user
+    turn for :func:`src.services.ai_provider.run`.
+
+    The provider abstraction takes one ``user`` string today, so we
+    serialise the transcript inline. When the abstraction grows multi-
+    turn support we can swap this for a real list of messages without
+    touching the call sites.
+    """
+    parts: list[str] = [language_directive(output_lang)]
+    if attachments:
+        parts.append("")
+        parts.append("=== ATTACHED DOCUMENTS ===")
+        for name, body in attachments.items():
+            parts.append(f"--- {name} ---")
+            parts.append(_trim(body, 8000))
+    if history:
+        parts.append("")
+        parts.append("=== CONVERSATION SO FAR ===")
+        for turn in history:
+            role = (turn.get("role") or "").strip().lower()
+            text = (turn.get("text") or "").strip()
+            if not text:
+                continue
+            label = "Candidate" if role == "user" else "Assistant"
+            parts.append(f"{label}: {text}")
+    parts.append("")
+    parts.append("=== NEW MESSAGE FROM CANDIDATE ===")
+    parts.append(user_text.strip() or "(empty message)")
+    parts.append("")
+    parts.append(
+        "Reply as the HR career assistant. Keep it short, grounded in the "
+        "evidence above, and ask for missing facts instead of inventing them."
+    )
+    return "\n".join(parts)
+
+
 def language_directive(output_lang: str) -> str:
     name = "English" if output_lang == "en" else "Czech"
     return f"OUTPUT_LANGUAGE = {output_lang} ({name}). Every human-readable string must be in {name}."

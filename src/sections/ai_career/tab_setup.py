@@ -643,6 +643,16 @@ def _footer_bar(
 
     _render_run_button()
 
+    # Three-row footer to stay readable on narrow window widths (the
+    # center column is only ~400-500 px wide once you subtract the
+    # 280 px sidebar and 336 px right context panel from a 1080 px
+    # window):
+    #
+    #   Row 1 - Demo button on the left, Run analysis button on the right
+    #   Row 2 - status / error text, can wrap freely without ever pushing
+    #           the Run button off-screen (which is what happened when
+    #           everything sat on one row at this width)
+    #   Row 3 - "Ask follow-up questions" toggle + description
     followups_label_block = ft.Column(
         controls=[
             ft.Text(
@@ -650,31 +660,47 @@ def _footer_bar(
                 color=theme.text,
                 size=11,
                 weight=ft.FontWeight.W_600,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
             ),
             ft.Text(
                 txt["footer_followup_desc"],
                 color=theme.text_muted,
                 size=10,
                 max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
             ),
         ],
         spacing=2,
         tight=True,
+        expand=True,
+    )
+
+    button_row = ft.Row(
+        controls=[
+            demo_btn,
+            ft.Container(expand=True),
+            run_button_holder,
+        ],
+        spacing=10,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    status_row = ft.Row(
+        controls=[run_status],
+        spacing=0,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    followups_row = ft.Row(
+        controls=[followups_switch, followups_label_block],
+        spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
     bar = ft.Container(
-        content=ft.Row(
-            controls=[
-                demo_btn,
-                ft.Container(width=12),
-                followups_switch,
-                followups_label_block,
-                ft.Container(expand=True),
-                run_status,
-                run_button_holder,
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        content=ft.Column(
+            controls=[button_row, status_row, followups_row],
+            spacing=8,
+            tight=True,
         ),
         padding=ft.padding.symmetric(horizontal=24, vertical=12),
         border=ft.border.only(top=ft.BorderSide(1, theme.border)),
@@ -691,9 +717,33 @@ def build_setup_tab(
 ) -> ft.Column:
     txt = s(lang)
 
+    refresh_footer_holder: dict = {"fn": None}
+
     def _on_state_change() -> None:
+        # Two responsibilities here:
+        #  1. Re-evaluate ``STATE.can_run()`` so the Run analysis button
+        #     enables itself the moment the user fills in the resume +
+        #     job text. Calling ``footer_holder.update()`` alone does
+        #     NOT rebuild the run button - we need the closure handed
+        #     back from ``_footer_bar`` for that.
+        #  2. Force the page to flush so updates triggered from the
+        #     fetch worker (background thread) actually propagate to
+        #     the frontend; ``control.update()`` from a non-UI thread
+        #     can otherwise be silently dropped.
+        fn = refresh_footer_holder["fn"]
+        if fn is not None:
+            try:
+                fn(None)
+            except Exception:
+                pass
         try:
             footer_holder.update()
+        except Exception:
+            pass
+        try:
+            page = footer_holder.page
+            if page is not None:
+                page.update()
         except Exception:
             pass
 
@@ -708,6 +758,7 @@ def build_setup_tab(
         expand=True,
     )
     footer, _refresh_footer = _footer_bar(theme, lang, txt, _on_state_change)
+    refresh_footer_holder["fn"] = _refresh_footer
     footer_holder = ft.Container(content=footer)
 
     return ft.Column(

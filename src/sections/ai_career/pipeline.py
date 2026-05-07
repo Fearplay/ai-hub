@@ -32,6 +32,7 @@ from src.sections.ai_career.state import (
     DOC_MODERN_CV,
     DOC_SKILL_GAP,
     DOC_TAILORED_CV,
+    ChatMessage,
     STATE,
     UploadedFile,
 )
@@ -62,13 +63,24 @@ def _set_error(message: str) -> PipelineResult:
 
 
 def fetch_job_text(url: str) -> tuple[str, str]:
-    """Returns (text, error_message). Empty error means success."""
+    """Returns (text, error_message). Empty error means success.
+
+    Activity is reset to ``"ready"`` whether the scrape succeeded or
+    failed, so the right-hand context panel does not remain stuck on
+    "Fetching..." once the request returns.
+    """
     if not url.strip():
         return "", "URL is empty."
     _set_activity("scraping")
-    result = job_scraper.scrape_job_posting(url)
+    try:
+        result = job_scraper.scrape_job_posting(url)
+    except Exception as exc:
+        _set_activity("ready")
+        return "", str(exc)
     if not result.ok:
+        _set_activity("ready")
         return result.text, result.error or "Unknown scraping error."
+    _set_activity("ready")
     return result.text, ""
 
 
@@ -76,7 +88,11 @@ def fetch_github_profile(value: str):
     if not value.strip():
         return None
     _set_activity("scraping")
-    return github_client.fetch_profile(value)
+    try:
+        profile = github_client.fetch_profile(value)
+    finally:
+        _set_activity("ready")
+    return profile
 
 
 # Step 1: candidate extraction ------------------------------------------------
@@ -343,6 +359,148 @@ def refine_document(
     safe(REFS.rerender_documents)
     safe(REFS.rerender_context)
     return PipelineResult(ok=True)
+
+
+# Chat-mode -------------------------------------------------------------------
+
+
+def send_chat_message(
+    *,
+    output_lang: str,
+    user_text: str,
+) -> tuple[str, str]:
+    """Synchronous chat turn for the Chat-mode UI.
+
+    Returns ``(assistant_text, error)``. On success ``error`` is empty;
+    on failure ``assistant_text`` is empty and the caller renders the
+    error in-place. The helper itself does **not** mutate
+    ``STATE.chat_messages`` - the caller controls how the user/assistant
+    bubbles are appended (so the UI thread can show the user bubble
+    immediately and only append the assistant bubble after the network
+    call returns).
+    """
+    user_text = (user_text or "").strip()
+    if not user_text:
+        return "", "Empty message."
+
+    if STATE.demo_mode:
+        # Echo a short canned reply so the demo flow is fully offline.
+        # We intentionally do NOT touch the cost tracker here - demo
+        # mode promises 0 spend.
+        canned = _demo_chat_reply(user_text, output_lang)
+        return canned, ""
+
+    history = [
+        {"role": m.role, "text": m.text}
+        for m in STATE.chat_messages
+    ]
+    user = prompts.build_chat_user_block(
+        output_lang=output_lang,
+        history=history,
+        attachments=dict(STATE.chat_attachments),
+        user_text=user_text,
+    )
+    try:
+        result = ai_provider.run(
+            system=prompts.CHAT_MODE_SYSTEM,
+            user=user,
+            schema=None,
+            max_output_tokens=900,
+            temperature=0.4,
+        )
+    except ai_provider.ProviderError as exc:
+        return "", str(exc)
+    text = (result.text or "").strip()
+    if not text:
+        return "", "Provider returned an empty response."
+    return text, ""
+
+
+def _demo_chat_reply(user_text: str, lang: str) -> str:
+    """Tiny canned replies so the Chat mode is usable in Demo mode."""
+    is_cs = lang == "cs"
+    lower = user_text.lower()
+
+    if any(token in lower for token in ("cv", "životopis", "zivotopis", "resume")):
+        if is_cs:
+            return (
+                "Jasně, pomůžu ti s životopisem. V Demo režimu jen předvádím "
+                "tok aplikace, takže odpovídám předvyplněnými větami. Pro "
+                "skutečné CV na míru přepni na **Formulářový režim** - "
+                "vlož inzerát, životopis a klikni na Spustit analýzu."
+            )
+        return (
+            "Sure, I can help with your CV. We're in Demo mode so this is "
+            "a canned reply showing the chat flow. For a real tailored "
+            "CV, switch to **Form mode** - drop the job posting, your "
+            "resume, and click Run analysis."
+        )
+    if any(token in lower for token in ("cover", "motivační", "motivacni", "letter")):
+        if is_cs:
+            return (
+                "Pro motivační dopis bych potřeboval inzerát a krátce tvoje "
+                "klíčové výsledky. V Demo režimu jen ukazuju, jak vypadá "
+                "konverzace. Pro skutečný dopis přepni na Formulářový "
+                "režim a vyplň STEP 1 a STEP 2."
+            )
+        return (
+            "For a cover letter I'd need the job posting and a one-line "
+            "summary of your top wins. We're in Demo mode so this is a "
+            "scripted reply - for a real letter switch to Form mode "
+            "and fill in STEP 1 and STEP 2."
+        )
+    if any(token in lower for token in ("interview", "pohovor")):
+        if is_cs:
+            return (
+                "Na pohovor obvykle pomůže projít si 5-7 typických otázek, "
+                "připravit STAR příběh ke každé a 3-5 otázek pro vás na konci. "
+                "V Demo režimu odpovídám předvyplněnými větami - pro reálnou "
+                "přípravu spusť analýzu ve Formulářovém režimu."
+            )
+        return (
+            "For an interview, walk through 5-7 likely questions, draft a "
+            "STAR story for each, and prepare 3-5 questions for them at the "
+            "end. We're in Demo mode so this is a canned reply - for the "
+            "real prep run the analysis in Form mode."
+        )
+    if is_cs:
+        return (
+            "Jsem tady, abych ti pomohl s životopisem, motivačním dopisem, "
+            "přípravou na pohovor a analýzou inzerátu. Co tě zajímá? "
+            "(Demo režim - odpovídám předvyplněnými větami; pro reálnou "
+            "AI vypni Demo režim v Nastavení a přidej API klíč.)"
+        )
+    return (
+        "I'm here to help with CVs, cover letters, interview prep and "
+        "job-posting analysis. What do you want to work on? "
+        "(Demo mode - I'm replying with scripted text; turn off Demo "
+        "mode in Settings and add an API key for real AI replies.)"
+    )
+
+
+def append_chat_message(
+    role: str,
+    text: str,
+    *,
+    time_label: str = "",
+    attachment_name: str = "",
+) -> None:
+    """Append a message to the in-memory transcript.
+
+    Centralised so the Chat view, the Demo seed, and any future history
+    restore all use the same dataclass.
+    """
+    from datetime import datetime
+
+    label = time_label or datetime.now().strftime("%H:%M")
+    STATE.chat_messages.append(
+        ChatMessage(
+            role=role,
+            text=text,
+            time=label,
+            attachment_name=attachment_name,
+        )
+    )
 
 
 # Combined "Run analysis" entry point ----------------------------------------

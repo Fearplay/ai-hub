@@ -1,5 +1,4 @@
 flet>=0.25.0
-flet-dropzone>=0.3.1
 
 # AI providers (called only via src.services.ai_provider; sections never import these directly)
 openai>=1.50.0

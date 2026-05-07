@@ -64,25 +64,48 @@ class AIHubApp:
         if key not in SECTION_BY_KEY:
             return
 
-        self.active_section = key
-
         if (
             self._main_container is None
             or self._context_container is None
             or self._sidebar_set_active is None
         ):
+            self.active_section = key
             self.build()
             return
 
         section = SECTION_BY_KEY[key]
         section_theme = self._section_theme(section)
 
-        self._main_container.content = section.build_view(section_theme, self.lang)
-        self._context_container.content = self._build_context_for(section, section_theme)
+        # Build the new section's center + context views BEFORE mutating
+        # ``self.active_section`` and the live containers. If a section's
+        # ``build_view`` raises (e.g. a stale Flet state from the previous
+        # section), we want the click to be a no-op - not a half-applied
+        # navigation that hides the sidebar from accepting any further
+        # clicks on the same key (since ``set_section`` short-circuits
+        # when ``key == self.active_section``).
+        try:
+            new_main = section.build_view(section_theme, self.lang)
+            new_context = self._build_context_for(section, section_theme)
+        except Exception:
+            return
+
+        self.active_section = key
+        self._main_container.content = new_main
+        self._context_container.content = new_context
 
         self._sidebar_set_active(key)
-        self._main_container.update()
-        self._context_container.update()
+        try:
+            self._main_container.update()
+        except Exception:
+            pass
+        try:
+            self._context_container.update()
+        except Exception:
+            pass
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def toggle_theme(self) -> None:
         self.theme_mode = "light" if self.theme_mode == "dark" else "dark"
