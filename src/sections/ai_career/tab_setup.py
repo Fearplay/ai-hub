@@ -475,8 +475,11 @@ def _footer_bar(
     run_status = ft.Text("", color=theme.text_muted, size=11)
 
     run_button_holder = ft.Container()
-    # ``stage`` is one of "" | "running" | "followups" | "match" | "demo".
-    run_state: dict[str, str] = {"stage": ""}
+    # ``STATE.run_stage`` is the source of truth (one of
+    # "" | "demo" | "running" | "followups" | "match"). Living on STATE
+    # means the disabled button survives the section rebuilds we trigger
+    # after every pipeline step - a closure-local dict here used to reset
+    # to "" on rebuild and momentarily re-enable the button mid-run.
 
     def _set_status(message: str, *, error: bool = False) -> None:
         run_status.value = message
@@ -498,7 +501,7 @@ def _footer_bar(
         return txt["footer_run_btn"]
 
     def _render_run_button() -> None:
-        stage = run_state["stage"]
+        stage = STATE.run_stage
         running = bool(stage)
         enabled = STATE.can_run() and not running
         run_button_holder.content = _flat_button(
@@ -515,7 +518,7 @@ def _footer_bar(
             pass
 
     def _set_stage(stage: str) -> None:
-        run_state["stage"] = stage
+        STATE.run_stage = stage
         _render_run_button()
 
     def _on_demo() -> None:

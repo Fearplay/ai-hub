@@ -268,6 +268,15 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
         REFS.page = e.page
         open_career_how_to(e.page, theme, lang)
 
+    # Two header actions only make sense when there's something to act on.
+    # ``Save complete analysis`` needs at least one generated document
+    # (markdown bodies in STATE.documents OR the Modern CV JSON payload).
+    # ``Open documents folder`` needs an actual run folder on disk -
+    # otherwise the os.startfile call silently no-ops and the user thinks
+    # the button is broken.
+    has_docs = bool(STATE.documents or STATE.modern_cv_data)
+    folder_ready = bool(STATE.last_run_folder) and os.path.isdir(STATE.last_run_folder)
+
     menu_items: list[HeaderMenuItem] = [
         HeaderMenuItem(
             icon=ft.Icons.RESTART_ALT,
@@ -278,11 +287,13 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
             icon=ft.Icons.SAVE_OUTLINED,
             label=txt["menu_save_full"],
             on_click=_menu_save_full,
+            enabled=has_docs,
         ),
         HeaderMenuItem(
             icon=ft.Icons.FOLDER_OPEN,
             label=txt["menu_open_folder"],
             on_click=_menu_open_folder,
+            enabled=folder_ready,
         ),
         HeaderMenuItem(
             icon=ft.Icons.HISTORY,

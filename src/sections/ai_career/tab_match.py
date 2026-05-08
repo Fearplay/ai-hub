@@ -22,6 +22,7 @@ from typing import Callable
 import flet as ft
 
 from src.sections.ai_career import pipeline
+from src.sections.ai_career._dialog import close_dialog, open_dialog
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import STATE, TAB_DOCUMENTS, TAB_SETUP
 from src.sections.ai_career.strings import s
@@ -316,24 +317,16 @@ def build_match_tab(
                 tight=True,
             ),
         )
-        dialog_ref: dict[str, ft.AlertDialog] = {}
 
-        def _close_dialog(_e: ft.ControlEvent) -> None:
-            dialog = dialog_ref.get("dialog")
-            if dialog is None:
-                return
-            dialog.open = False
-            try:
-                page.update()
-            except Exception:
-                pass
+        def _on_cancel(_e: ft.ControlEvent) -> None:
+            close_dialog(page)
 
         def _confirm_and_open(_e: ft.ControlEvent) -> None:
             chosen = (radio.value or "").strip().lower()
             if chosen not in ("en", "cs"):
                 chosen = _resolved_output_lang()
             STATE.document_output_lang = chosen
-            _close_dialog(_e)
+            close_dialog(page)
             on_confirm(chosen)
 
         dialog = ft.AlertDialog(
@@ -348,18 +341,15 @@ def build_match_tab(
                 tight=True,
             ),
             actions=[
-                ft.TextButton(txt["docs_lang_dialog_cancel"], on_click=_close_dialog),
+                ft.TextButton(txt["docs_lang_dialog_cancel"], on_click=_on_cancel),
                 ft.ElevatedButton(txt["docs_lang_dialog_confirm"], on_click=_confirm_and_open),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
-        dialog_ref["dialog"] = dialog
-        page.dialog = dialog
-        dialog.open = True
-        try:
-            page.update()
-        except Exception:
-            pass
+        # ``open_dialog`` papers over the Flet 0.84 vs. older API split so
+        # the dialog actually appears - the previous ``page.dialog = ...;
+        # dialog.open = True`` flow silently no-ops on current Flet.
+        open_dialog(page, dialog)
 
     if not match:
         return _empty_state(theme, txt, on_back=lambda: on_navigate_tab(TAB_SETUP))

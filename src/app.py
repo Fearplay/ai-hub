@@ -25,6 +25,7 @@ from src.components.sidebar import SetActive, sidebar
 from src.i18n import DEFAULT_LANG, normalize_lang
 from src.sections import SECTION_BY_KEY, SECTIONS
 from src.sections._base import Section
+from src.services import settings_store
 from src.theme import Theme, get_theme
 
 
@@ -54,8 +55,10 @@ class AIHubApp:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         self.active_section: str = SECTIONS[0].key if SECTIONS else ""
-        self.theme_mode: str = "dark"
-        self.lang: str = DEFAULT_LANG
+        # Persisted preferences survive app restarts. ``settings_store``
+        # falls back to sane defaults ("dark" / "en") on first launch.
+        self.theme_mode: str = settings_store.get_theme_mode()
+        self.lang: str = normalize_lang(settings_store.get_lang() or DEFAULT_LANG)
 
         self._main_container: Optional[ft.Container] = None
         self._context_container: Optional[ft.Container] = None
@@ -70,7 +73,9 @@ class AIHubApp:
         self.page.title = "AI Hub"
         self.page.padding = 0
         self.page.spacing = 0
-        self.page.theme_mode = ft.ThemeMode.DARK
+        self.page.theme_mode = (
+            ft.ThemeMode.LIGHT if self.theme_mode == "light" else ft.ThemeMode.DARK
+        )
 
         try:
             self.page.window.width = 1280
@@ -177,11 +182,13 @@ class AIHubApp:
         self.page.theme_mode = (
             ft.ThemeMode.LIGHT if self.theme_mode == "light" else ft.ThemeMode.DARK
         )
+        settings_store.set_theme_mode(self.theme_mode)
         self.build()
 
     def toggle_lang(self) -> None:
         self.lang = "cs" if self.lang == "en" else "en"
         self.lang = normalize_lang(self.lang)
+        settings_store.set_lang(self.lang)
         self.build()
 
     def _section_theme(self, section: Optional[Section]) -> Theme:

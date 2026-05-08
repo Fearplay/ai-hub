@@ -140,6 +140,12 @@ class CareerState:
     last_run_folder: str = ""
     target_role: str = ""
 
+    # Footer "Run analysis" stage. Lives on STATE so the disabled state
+    # survives the full section rebuild that fires after each pipeline
+    # step (scrape, extract, follow-ups, match). One of:
+    # "" (idle) | "demo" | "running" | "followups" | "match".
+    run_stage: str = ""
+
     demo_mode: bool = False
     runs_history: list[dict] = field(default_factory=list)
 
@@ -157,6 +163,7 @@ class CareerState:
         self.activity = "ready"
         self.last_error = ""
         self.last_run_folder = ""
+        self.run_stage = ""
 
     def reset_chat(self) -> None:
         """Wipe the Chat-mode transcript and attachments."""

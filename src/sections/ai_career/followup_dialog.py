@@ -25,37 +25,9 @@ from typing import Callable, Sequence
 
 import flet as ft
 
+from src.sections.ai_career._dialog import close_dialog as _close_dialog
+from src.sections.ai_career._dialog import open_dialog as _open_dialog
 from src.theme import Theme
-
-
-def _open_dialog(page: ft.Page, dialog: ft.AlertDialog) -> None:
-    """Flet 0.84 uses page.show_dialog(dlg); older releases used page.open(dlg)."""
-    try:
-        page.show_dialog(dialog)
-        return
-    except AttributeError:
-        pass
-    try:
-        page.open(dialog)  # type: ignore[attr-defined]
-    except Exception:
-        page.dialog = dialog  # type: ignore[attr-defined]
-        try:
-            page.update()
-        except Exception:
-            pass
-
-
-def _close_dialog(page: ft.Page) -> None:
-    """Flet 0.84 uses page.pop_dialog(); older releases used page.close(dlg)."""
-    try:
-        page.pop_dialog()
-        return
-    except AttributeError:
-        pass
-    try:
-        page.close(None)  # type: ignore[attr-defined]
-    except Exception:
-        pass
 
 
 class _QuestionRowState:
