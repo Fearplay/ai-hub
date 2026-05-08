@@ -604,10 +604,15 @@ def refine_document(
     current = STATE.documents.get(kind, "")
     if not current:
         return _set_error("Generate the document before refining it.")
+    cleaned_problems = [p for p in problems if p.strip()]
 
     if STATE.demo_mode:
-        appended = "\n\n_(Demo refinement: would address the listed problems.)_"
-        STATE.documents[kind] = current + appended
+        refreshed = _demo_document(kind, output_lang)
+        if cleaned_problems:
+            heading = "Applied refinement notes" if output_lang == "en" else "Zapracované poznámky"
+            bullets = "\n".join(f"- {p}" for p in cleaned_problems)
+            refreshed = f"{refreshed}\n\n## {heading}\n{bullets}\n"
+        STATE.documents[kind] = refreshed
         REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
@@ -616,7 +621,7 @@ def refine_document(
         output_lang=output_lang,
         document_kind=kind,
         document_text=current,
-        problems=[p for p in problems if p.strip()],
+        problems=cleaned_problems,
     )
     try:
         result = ai_provider.run(

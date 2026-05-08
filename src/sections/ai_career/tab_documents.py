@@ -84,6 +84,13 @@ _EXPORT_PLAN: dict[str, tuple[str, ...]] = {
 _MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
+def _resolved_output_lang(ui_lang: str) -> str:
+    selected = (STATE.document_output_lang or "").strip().lower()
+    if selected in ("en", "cs"):
+        return selected
+    return "en" if ui_lang == "en" else "cs"
+
+
 def _visible_doc_kinds() -> list[str]:
     has_github = STATE.candidate is not None and STATE.candidate.get("github_present")
     return [k for k in DOC_KINDS if k != DOC_EVIDENCE or has_github]
@@ -307,7 +314,13 @@ def _build_active_doc_panel(
     on_request_rerender: Callable[[], None],
     show_status: Callable[[str, bool], None],
 ) -> ft.Control:
-    body_holder = ft.Container(content=_document_body(theme, txt, kind), expand=True)
+    body_holder = ft.Container(content=_document_body(theme, txt, kind))
+    body_scroll = ft.ListView(
+        controls=[body_holder],
+        expand=True,
+        spacing=0,
+        padding=0,
+    )
 
     def _refresh_body() -> None:
         body_holder.content = _document_body(theme, txt, kind)
@@ -367,10 +380,12 @@ def _build_active_doc_panel(
         refine_running["value"] = True
         show_status(txt["doc_running"], False)
         _render_buttons()
+        doc_lang = _resolved_output_lang(lang)
+        STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.generate_document(kind, output_lang=lang)
+                result = pipeline.generate_document(kind, output_lang=doc_lang)
                 if result.ok:
                     show_status("", False)
                     nonlocal has_text
@@ -395,10 +410,12 @@ def _build_active_doc_panel(
         refine_running["value"] = True
         show_status(txt["refine_running"], False)
         _render_buttons()
+        doc_lang = _resolved_output_lang(lang)
+        STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.refine_document(kind, output_lang=lang, problems=problems)
+                result = pipeline.refine_document(kind, output_lang=doc_lang, problems=problems)
                 if result.ok:
                     show_status("", False)
                     _refresh_body()
@@ -414,7 +431,7 @@ def _build_active_doc_panel(
 
     return ft.Column(
         controls=[
-            ft.Container(content=body_holder, expand=True),
+            ft.Container(content=body_scroll, expand=True),
             ft.Container(
                 content=ft.Column(
                     controls=[

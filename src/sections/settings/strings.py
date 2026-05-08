@@ -43,8 +43,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "general_card_title": "General",
         "general_demo_default_label": "Start AI Career runs in Demo mode",
         "general_demo_default_desc": "When on, the analysis uses local mock data instead of calling the AI - useful for screenshots and offline work.",
-        "general_followups_label": "Ask clarifying questions before each run",
-        "general_followups_desc": "When on, the AI inspects your resume against the job description and asks short, role-specific questions about anything that isn't clearly answered (e.g. 'Have you worked with Python?'). The number of questions matches the number of unclear items - the AI never asks more than it needs and asks nothing when your resume already covers the role. Off by default.",
 
         "vault_unavailable_title": "OS keystore is not reachable",
         "vault_unavailable_desc": "On Linux you may need to install gnome-keyring or kwallet. Until a backend is reachable, API keys can't be saved.",
@@ -98,8 +96,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "general_card_title": "Obecné",
         "general_demo_default_label": "Spustit AI Career analýzu v Demo režimu",
         "general_demo_default_desc": "Když je zapnuté, analýza používá lokální mock data místo volání AI - hodí se na screenshoty a offline práci.",
-        "general_followups_label": "Před každým spuštěním se ptát na nejasné věci",
-        "general_followups_desc": "Když je zapnuté, AI před spuštěním porovná tvůj životopis s inzerátem a položí krátké otázky vázané na konkrétní roli ke všemu, co z CV není jasné (např. „Pracoval jsi s Pythonem?“). Počet otázek odpovídá počtu nejasností - AI se neptá víc, než potřebuje, a pokud životopis pozici plně pokrývá, nezeptá se vůbec. Defaultně vypnuto.",
 
         "vault_unavailable_title": "Úložiště OS není dostupné",
         "vault_unavailable_desc": "Na Linuxu může chybět gnome-keyring nebo kwallet. Dokud nebude backend dostupný, API klíče nelze uložit.",

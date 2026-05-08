@@ -286,6 +286,81 @@ def build_match_tab(
     txt = s(lang)
     match = STATE.match
 
+    def _resolved_output_lang() -> str:
+        selected = (STATE.document_output_lang or "").strip().lower()
+        if selected in ("en", "cs"):
+            return selected
+        return "en" if lang == "en" else "cs"
+
+    def _open_documents_with_language(
+        page: ft.Page | None,
+        *,
+        on_confirm: Callable[[str], None],
+    ) -> None:
+        # If we have no page handle (edge-case callback path), keep the
+        # default language and continue immediately.
+        if page is None:
+            fallback_lang = _resolved_output_lang()
+            STATE.document_output_lang = fallback_lang
+            on_confirm(fallback_lang)
+            return
+
+        radio = ft.RadioGroup(
+            value=_resolved_output_lang(),
+            content=ft.Column(
+                controls=[
+                    ft.Radio(value="cs", label=txt["docs_lang_option_cs"]),
+                    ft.Radio(value="en", label=txt["docs_lang_option_en"]),
+                ],
+                spacing=6,
+                tight=True,
+            ),
+        )
+        dialog_ref: dict[str, ft.AlertDialog] = {}
+
+        def _close_dialog(_e: ft.ControlEvent) -> None:
+            dialog = dialog_ref.get("dialog")
+            if dialog is None:
+                return
+            dialog.open = False
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        def _confirm_and_open(_e: ft.ControlEvent) -> None:
+            chosen = (radio.value or "").strip().lower()
+            if chosen not in ("en", "cs"):
+                chosen = _resolved_output_lang()
+            STATE.document_output_lang = chosen
+            _close_dialog(_e)
+            on_confirm(chosen)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(txt["docs_lang_dialog_title"]),
+            content=ft.Column(
+                controls=[
+                    ft.Text(txt["docs_lang_dialog_desc"], size=12),
+                    radio,
+                ],
+                spacing=10,
+                tight=True,
+            ),
+            actions=[
+                ft.TextButton(txt["docs_lang_dialog_cancel"], on_click=_close_dialog),
+                ft.ElevatedButton(txt["docs_lang_dialog_confirm"], on_click=_confirm_and_open),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        dialog_ref["dialog"] = dialog
+        page.dialog = dialog
+        dialog.open = True
+        try:
+            page.update()
+        except Exception:
+            pass
+
     if not match:
         return _empty_state(theme, txt, on_back=lambda: on_navigate_tab(TAB_SETUP))
 
@@ -342,26 +417,31 @@ def build_match_tab(
     def _start_generate_all(_e: ft.ControlEvent | None = None) -> None:
         if _is_running():
             return
-        STATE.activity = "generating"
-        STATE.last_error = ""
-        safe(REFS.rerender_context)
-        _show_status(txt["match_generating_documents"])
-        _render_button()
-        REFS.dispatch(_request_full_refresh)
+        page = getattr(_e, "page", None) if _e is not None else None
 
-        def _worker() -> None:
-            try:
-                result = pipeline.generate_all_documents(output_lang=lang)
-                if not result.ok:
-                    _show_status(result.error, error=True)
-                    return
-                STATE.active_tab = TAB_DOCUMENTS
-            finally:
-                STATE.activity = "ready"
-                safe(REFS.rerender_context)
-                REFS.dispatch(_request_full_refresh)
+        def _start_with_lang(doc_lang: str) -> None:
+            STATE.activity = "generating"
+            STATE.last_error = ""
+            safe(REFS.rerender_context)
+            _show_status(txt["match_generating_documents"])
+            _render_button()
+            REFS.dispatch(_request_full_refresh)
 
-        threading.Thread(target=_worker, daemon=True).start()
+            def _worker() -> None:
+                try:
+                    result = pipeline.generate_all_documents(output_lang=doc_lang)
+                    if not result.ok:
+                        _show_status(result.error, error=True)
+                        return
+                    STATE.active_tab = TAB_DOCUMENTS
+                finally:
+                    STATE.activity = "ready"
+                    safe(REFS.rerender_context)
+                    REFS.dispatch(_request_full_refresh)
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        _open_documents_with_language(page, on_confirm=_start_with_lang)
 
     overall = int(match.get("overall_score") or 0)
     verdict = match.get("verdict") or ""

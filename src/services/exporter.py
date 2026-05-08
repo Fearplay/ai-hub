@@ -18,6 +18,7 @@ PDF uses :mod:`reportlab` (pure Python - no GTK / Office / Pandoc).
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,64 @@ from typing import Iterable, Optional
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _BULLET_RE = re.compile(r"^([*\-+])\s+(.*)$")
 _ORDERED_RE = re.compile(r"^(\d+)\.\s+(.*)$")
+_PDF_FONT_CACHE: tuple[str, str] | None = None
+
+
+def _resolve_pdf_fonts() -> tuple[str, str]:
+    """Pick a Unicode-safe font pair for ReportLab PDFs.
+
+    Built-in Helvetica lacks many Central-European glyphs, which produces
+    black squares for Czech text. We prefer common system TTF fonts and
+    gracefully fall back to Helvetica when none are available.
+    """
+    global _PDF_FONT_CACHE
+    if _PDF_FONT_CACHE is not None:
+        return _PDF_FONT_CACHE
+
+    fallback = ("Helvetica", "Helvetica-Bold")
+    try:
+        from reportlab.pdfbase import pdfmetrics  # type: ignore[import-not-found]
+        from reportlab.pdfbase.ttfonts import TTFont  # type: ignore[import-not-found]
+    except ImportError:
+        _PDF_FONT_CACHE = fallback
+        return fallback
+
+    candidates: list[tuple[Path, Path]] = []
+    if os.name == "nt":
+        fonts_dir = Path(os.environ.get("WINDIR", "C:\\Windows")) / "Fonts"
+        candidates.extend(
+            [
+                (fonts_dir / "arial.ttf", fonts_dir / "arialbd.ttf"),
+                (fonts_dir / "calibri.ttf", fonts_dir / "calibrib.ttf"),
+                (fonts_dir / "segoeui.ttf", fonts_dir / "segoeuib.ttf"),
+            ]
+        )
+    elif os.name == "posix":
+        candidates.extend(
+            [
+                (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")),
+                (Path("/Library/Fonts/Arial.ttf"), Path("/Library/Fonts/Arial Bold.ttf")),
+            ]
+        )
+
+    for normal_path, bold_path in candidates:
+        if not normal_path.exists():
+            continue
+        try:
+            if "AIHubUnicodeBody" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("AIHubUnicodeBody", str(normal_path)))
+            if bold_path.exists():
+                if "AIHubUnicodeBold" not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont("AIHubUnicodeBold", str(bold_path)))
+                _PDF_FONT_CACHE = ("AIHubUnicodeBody", "AIHubUnicodeBold")
+            else:
+                _PDF_FONT_CACHE = ("AIHubUnicodeBody", "AIHubUnicodeBody")
+            return _PDF_FONT_CACHE
+        except Exception:
+            continue
+
+    _PDF_FONT_CACHE = fallback
+    return fallback
 
 
 @dataclass
@@ -226,6 +285,7 @@ def export_pdf(
     except ImportError as exc:
         raise RuntimeError("reportlab not installed - run pip install -r requirements.txt") from exc
 
+    body_font, heading_font = _resolve_pdf_fonts()
     styles = getSampleStyleSheet()
     if style == "modern":
         accent = HexColor("#6366F1")
@@ -233,7 +293,7 @@ def export_pdf(
         body = ParagraphStyle(
             "body",
             parent=styles["BodyText"],
-            fontName="Helvetica",
+            fontName=body_font,
             fontSize=10.5,
             leading=15,
             spaceAfter=5,
@@ -242,7 +302,7 @@ def export_pdf(
         h1 = ParagraphStyle(
             "h1",
             parent=styles["Heading1"],
-            fontName="Helvetica-Bold",
+            fontName=heading_font,
             fontSize=22,
             leading=26,
             spaceAfter=4,
@@ -251,7 +311,7 @@ def export_pdf(
         h2 = ParagraphStyle(
             "h2",
             parent=styles["Heading2"],
-            fontName="Helvetica-Bold",
+            fontName=heading_font,
             fontSize=14,
             leading=18,
             spaceBefore=14,
@@ -264,7 +324,7 @@ def export_pdf(
         h3 = ParagraphStyle(
             "h3",
             parent=styles["Heading3"],
-            fontName="Helvetica-Bold",
+            fontName=heading_font,
             fontSize=12,
             leading=15,
             spaceAfter=3,
@@ -274,14 +334,14 @@ def export_pdf(
         body = ParagraphStyle(
             "body",
             parent=styles["BodyText"],
-            fontName="Helvetica",
+            fontName=body_font,
             fontSize=10,
             leading=14,
             spaceAfter=4,
         )
-        h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=18, leading=22, spaceAfter=8)
-        h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=14, leading=18, spaceAfter=6)
-        h3 = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11, leading=14, spaceAfter=4)
+        h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontName=heading_font, fontSize=18, leading=22, spaceAfter=8)
+        h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontName=heading_font, fontSize=14, leading=18, spaceAfter=6)
+        h3 = ParagraphStyle("h3", parent=styles["Heading3"], fontName=heading_font, fontSize=11, leading=14, spaceAfter=4)
 
     doc = SimpleDocTemplate(
         str(target),

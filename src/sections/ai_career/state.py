@@ -92,6 +92,9 @@ class CareerState:
     mode: str = MODE_FORM
     active_tab: int = TAB_SETUP
     active_document: str = DOC_TAILORED_CV
+    # Preferred language for generated/refined documents ("en" | "cs").
+    # Empty means "follow current UI language".
+    document_output_lang: str = ""
 
     # Chat-mode transcript. ``chat_attachments`` keys are file names
     # (matching ``ChatMessage.attachment_name``) and values are the
@@ -146,6 +149,7 @@ class CareerState:
         self.job_spec = None
         self.match = None
         self.modern_cv_data = None
+        self.document_output_lang = ""
         self.followup_questions = []
         self.followup_qa = []
         self.documents.clear()

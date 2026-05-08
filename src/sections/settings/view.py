@@ -7,7 +7,7 @@ Three stacked cards:
 * **API keys** - three rows (OpenAI, Anthropic, GitHub). Each row holds an
   obscured text field, a Save button (writes to the OS keystore via
   :mod:`src.services.secrets`), a Delete button, and a status pill.
-* **General** - demo-mode default and follow-up question toggles.
+* **General** - demo-mode default toggle.
 
 Status feedback is rendered inline next to each row so the user does not
 miss it when the snackbar dismisses.
@@ -428,12 +428,6 @@ def _general_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
         on_change=lambda e: settings_store.set_demo_default(bool(e.control.value)),
         scale=0.9,
     )
-    followups_switch = ft.Switch(
-        value=settings_store.get_ask_followups(),
-        active_color=theme.primary,
-        on_change=lambda e: settings_store.set_ask_followups(bool(e.control.value)),
-        scale=0.9,
-    )
 
     def _toggle_row(label: str, desc: str, switch: ft.Switch) -> ft.Container:
         return ft.Container(
@@ -459,8 +453,6 @@ def _general_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
     body = ft.Column(
         controls=[
             _toggle_row(txt["general_demo_default_label"], txt["general_demo_default_desc"], demo_switch),
-            ft.Container(height=1, bgcolor=theme.border),
-            _toggle_row(txt["general_followups_label"], txt["general_followups_desc"], followups_switch),
         ],
         spacing=4,
         tight=True,

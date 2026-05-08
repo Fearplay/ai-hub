@@ -233,6 +233,8 @@ TAILORED_CV_SYSTEM = (
     "## Certifications\n"
     "## Languages (CEFR)\n"
     "## Projects (max 5)\n\n"
+    "Contact line formatting: plain text only. Do NOT use symbols/icons like\n"
+    "@, ✉, ☎, 📍 before location/email/phone.\n\n"
     "Output only the Markdown - no preamble, no closing notes, no comments."
 )
 
@@ -248,7 +250,8 @@ MODERN_CV_SYSTEM = (
     "  '*Senior Frontend Engineer · 4+ years · React + TypeScript platform\n"
     "  work*'. Pull this from the candidate's summary.\n"
     "* Contact line uses subtle separators: 'email · phone · location · GitHub'.\n"
-    "  LinkedIn and GitHub appear inline only when present.\n"
+    "  LinkedIn and GitHub appear inline only when present. Use plain text\n"
+    "  labels only - no icon symbols such as @, ✉, ☎, 📍.\n"
     "* Use horizontal rules ('---') between major sections so the document\n"
     "  scans visually. Section headings use Title Case ('## About me',\n"
     "  '## Recent work', '## Skills', '## Education', '## Languages').\n"
