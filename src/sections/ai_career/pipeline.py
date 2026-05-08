@@ -21,12 +21,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from src.services import ai_provider, github_client, job_scraper
+from pathlib import Path
+
+from src.services import ai_provider, exporter, github_client, job_scraper, store
+from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
 from src.sections.ai_career import prompts, schema
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
+    DOC_EVIDENCE,
     DOC_INTERVIEW_PREP,
     DOC_MATCH_REPORT,
     DOC_MODERN_CV,
@@ -45,6 +49,21 @@ from src.sections.ai_career.state import (
 class PipelineResult:
     ok: bool
     error: str = ""
+
+
+def _request_full_refresh() -> None:
+    """Re-run the section's ``build_view`` end-to-end.
+
+    Lazy-imported so :mod:`src.app` does not load during section
+    auto-discovery. Used by worker threads via :meth:`REFS.dispatch` to
+    ensure the new tree is shipped to the client on the same loop tick
+    instead of waiting for the next window event.
+    """
+    try:
+        from src.app import request_section_refresh
+    except Exception:
+        return
+    request_section_refresh()
 
 
 def _set_activity(value: str) -> None:
@@ -216,11 +235,20 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
         question = (q.get("question") or "").strip()
         if not topic or not question:
             continue
+        raw_options = q.get("options") or []
+        options = [
+            str(opt).strip()
+            for opt in raw_options
+            if isinstance(opt, (str, int, float)) and str(opt).strip()
+        ]
         cleaned.append(
             {
                 "topic": topic,
                 "question": question,
                 "rationale": (q.get("rationale") or "").strip(),
+                "options": options,
+                "multi_select": bool(q.get("multi_select", False)),
+                "allow_free_text": bool(q.get("allow_free_text", True)),
             }
         )
     STATE.followup_questions = cleaned
@@ -274,12 +302,152 @@ _DOC_SYSTEM_BY_KIND: dict[str, str] = {
 }
 
 
+def generate_all_documents(*, output_lang: str) -> PipelineResult:
+    """Generate every visible document in one batch.
+
+    Used by the "Generate documents" button on the Match tab so the user
+    arrives at the Documents tab with every section already populated
+    instead of having to click Generate per-tab.
+
+    The Evidence document is built deterministically from the match
+    JSON's ``evidence_preview`` and the GitHub repo summary - there is
+    no LLM prompt for it, which is why it lives outside the per-kind
+    LLM loop. When GitHub data is missing the Evidence tab stays
+    empty (the UI shows a "lock" placeholder instead of fabricating
+    signals).
+    """
+    kinds = [
+        DOC_TAILORED_CV,
+        DOC_MODERN_CV,
+        DOC_COVER_LETTER,
+        DOC_MATCH_REPORT,
+        DOC_INTERVIEW_PREP,
+        DOC_SKILL_GAP,
+    ]
+
+    for kind in kinds:
+        res = generate_document(kind, output_lang=output_lang)
+        if not res.ok:
+            return res
+
+    if (
+        STATE.candidate
+        and STATE.candidate.get("github_present")
+        and not STATE.github_skip
+    ):
+        evidence_md = build_evidence_document(output_lang=output_lang)
+        if evidence_md:
+            STATE.documents[DOC_EVIDENCE] = evidence_md
+
+    STATE.activity = "ready"
+    safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
+    return PipelineResult(ok=True)
+
+
+def build_evidence_document(*, output_lang: str) -> str:
+    """Synthesise the Evidence document from existing structured data.
+
+    Pulls the ``evidence_preview`` snippets that the match-analysis call
+    already returned, plus a short summary of the candidate's top GitHub
+    repos. No new LLM call - we already paid for these signals upstream
+    and the doc is just a readable rollup so the candidate can attach
+    it when they want to back up claims in their CV.
+    """
+    is_cs = output_lang == "cs"
+    match = STATE.match or {}
+    candidate = STATE.candidate or {}
+    profile = STATE.github_profile
+
+    raw_lines = match.get("evidence_preview") or []
+    bullets = [str(line).strip() for line in raw_lines if str(line).strip()]
+
+    role = ""
+    company = ""
+    job = STATE.job_spec or {}
+    if job:
+        role = str(job.get("title") or "")
+        company = str(job.get("company") or "")
+
+    parts: list[str] = []
+    if is_cs:
+        parts.append("# Doložené body shody")
+        if role and company:
+            parts.append(f"_Pro pozici **{role}** ve společnosti **{company}**._")
+        elif role:
+            parts.append(f"_Pro pozici **{role}**._")
+        if bullets:
+            parts.append("\n## Důkazy z rozhovoru")
+            parts.extend(f"- {b}" for b in bullets)
+    else:
+        parts.append("# Evidence pack")
+        if role and company:
+            parts.append(f"_For the **{role}** role at **{company}**._")
+        elif role:
+            parts.append(f"_For the **{role}** role._")
+        if bullets:
+            parts.append("\n## Match evidence")
+            parts.extend(f"- {b}" for b in bullets)
+
+    if profile is not None and getattr(profile, "ok", False):
+        repos = getattr(profile, "repos", []) or []
+        if repos:
+            heading = (
+                "## Veřejné GitHub repozitáře"
+                if is_cs
+                else "## Public GitHub repositories"
+            )
+            parts.append("\n" + heading)
+            for repo in repos[:6]:
+                name = getattr(repo, "name", "") or ""
+                url = getattr(repo, "url", "") or ""
+                desc = (getattr(repo, "description", "") or "").strip()
+                stars = int(getattr(repo, "stars", 0) or 0)
+                langs = ", ".join((getattr(repo, "languages", []) or [])[:3])
+                line = f"- [{name}]({url})" if url else f"- {name}"
+                meta = []
+                if langs:
+                    meta.append(langs)
+                if stars:
+                    meta.append(("⭐ " if not is_cs else "Hvězdy: ") + str(stars))
+                if meta:
+                    line += f" — {' · '.join(meta)}"
+                if desc:
+                    line += f"\n  {desc}"
+                parts.append(line)
+
+    skills = candidate.get("skills") if candidate else None
+    if isinstance(skills, list) and skills:
+        heading = "## Klíčové dovednosti z CV" if is_cs else "## Key skills from the CV"
+        parts.append("\n" + heading)
+        joined = ", ".join(str(sk).strip() for sk in skills if str(sk).strip())
+        if joined:
+            parts.append(joined)
+
+    if len(parts) <= 1:
+        # Nothing useful to render - return empty so the UI keeps the
+        # "no evidence" placeholder instead of an awkward stub.
+        return ""
+
+    return "\n".join(parts).strip() + "\n"
+
+
 def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
+    if kind == DOC_EVIDENCE:
+        text = build_evidence_document(output_lang=output_lang)
+        if not text:
+            return _set_error("No evidence available - load GitHub data first.")
+        STATE.documents[DOC_EVIDENCE] = text
+        STATE.activity = "ready"
+        safe(REFS.rerender_context)
+        REFS.dispatch(_request_full_refresh)
+        return PipelineResult(ok=True)
+
     if kind not in _DOC_SYSTEM_BY_KIND:
         return _set_error(f"Unknown document kind: {kind}")
     if STATE.demo_mode:
         STATE.documents[kind] = _demo_document(kind, output_lang)
-        safe(REFS.rerender_documents)
+        REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
     if not (STATE.candidate and STATE.job_spec and STATE.match):
@@ -308,8 +476,8 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
         return _set_error("Provider returned an empty document.")
     STATE.documents[kind] = text
     STATE.activity = "ready"
-    safe(REFS.rerender_documents)
     safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
     return PipelineResult(ok=True)
 
 
@@ -331,7 +499,7 @@ def refine_document(
     if STATE.demo_mode:
         appended = "\n\n_(Demo refinement: would address the listed problems.)_"
         STATE.documents[kind] = current + appended
-        safe(REFS.rerender_documents)
+        REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
     _set_activity("generating")
@@ -356,8 +524,8 @@ def refine_document(
         return _set_error("Provider returned an empty refined document.")
     STATE.documents[kind] = text
     STATE.activity = "ready"
-    safe(REFS.rerender_documents)
     safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
     return PipelineResult(ok=True)
 
 
@@ -503,6 +671,140 @@ def append_chat_message(
     )
 
 
+# Save complete analysis ------------------------------------------------------
+
+
+_DOC_FILE_BASENAMES: dict[str, str] = {
+    DOC_TAILORED_CV: "Tailored_CV",
+    DOC_MODERN_CV: "Modern_CV",
+    DOC_COVER_LETTER: "Cover_Letter",
+    DOC_MATCH_REPORT: "Match_Report",
+    DOC_INTERVIEW_PREP: "Interview_Prep",
+    DOC_SKILL_GAP: "Skill_Gap_Plan",
+    DOC_EVIDENCE: "Evidence_Report",
+}
+
+_EXPORT_PLAN: dict[str, tuple[str, ...]] = {
+    DOC_TAILORED_CV: ("html", "pdf"),
+    DOC_MODERN_CV: ("html", "pdf"),
+    DOC_COVER_LETTER: ("pdf",),
+    DOC_MATCH_REPORT: ("html", "md"),
+    DOC_INTERVIEW_PREP: ("html", "md"),
+    DOC_SKILL_GAP: ("html", "md"),
+    DOC_EVIDENCE: ("html", "md"),
+}
+
+_MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
+
+
+@dataclass
+class SaveResult:
+    ok: bool
+    folder: str = ""
+    error: str = ""
+
+
+def save_full_analysis() -> SaveResult:
+    """Persist every generated document + a summary.json + history entry.
+
+    Used by both the Documents footer ("Save complete analysis") button
+    and the section header menu's "Save full analysis" item. The on-disk
+    layout matches what the History tab expects so "Open in app" still
+    rehydrates the run later.
+    """
+    if not STATE.documents:
+        return SaveResult(ok=False, error="no_documents")
+
+    role = ""
+    if STATE.job_spec:
+        role = str(STATE.job_spec.get("title") or "")
+    if STATE.last_run_folder and Path(STATE.last_run_folder).is_dir():
+        folder_path = Path(STATE.last_run_folder)
+    else:
+        folder_path = Path(store.new_run_dir(role or "ai-career-run"))
+        STATE.last_run_folder = str(folder_path)
+
+    for kind, body_text in STATE.documents.items():
+        if not body_text:
+            continue
+        formats = _EXPORT_PLAN.get(kind, ("md", "pdf"))
+        basename = _DOC_FILE_BASENAMES.get(kind, kind)
+        title = basename.replace("_", " ")
+        style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
+        for fmt in formats:
+            try:
+                if fmt == "md":
+                    exporter.export_markdown(body_text, folder_path / f"{basename}.md")
+                elif fmt == "html":
+                    exporter.export_html(
+                        body_text,
+                        folder_path / f"{basename}.html",
+                        title=title,
+                        style=style,
+                    )
+                elif fmt == "docx":
+                    exporter.export_docx(
+                        body_text, folder_path / f"{basename}.docx", title=title
+                    )
+                elif fmt == "pdf":
+                    exporter.export_pdf(
+                        body_text,
+                        folder_path / f"{basename}.pdf",
+                        title=title,
+                        style=style,
+                    )
+            except RuntimeError:
+                # Optional dep (e.g. python-docx) is missing on this
+                # machine. Skip this format and keep going.
+                continue
+
+    candidate = STATE.candidate or {}
+    job_spec = STATE.job_spec or {}
+    match = STATE.match or {}
+    try:
+        store.write_json_file(
+            folder_path,
+            "summary.json",
+            {
+                "candidate": candidate,
+                "job_spec": job_spec,
+                "match": match,
+                "cost": {
+                    "calls": COST.calls,
+                    "tokens": COST.tokens_total,
+                    "usd": COST.cost_usd,
+                },
+            },
+        )
+    except Exception:
+        pass
+
+    try:
+        from datetime import datetime
+
+        company = ""
+        if STATE.job_spec:
+            company = str(STATE.job_spec.get("company") or "")
+        score = int((STATE.match or {}).get("overall_score") or 0)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        summary = store.RunSummary(
+            timestamp=timestamp,
+            role=role,
+            company=company,
+            overall_score=score,
+            folder=str(folder_path),
+            provider=("demo" if STATE.demo_mode else ""),
+            model=("demo" if STATE.demo_mode else ""),
+            cost_usd=0.0 if STATE.demo_mode else float(COST.cost_usd),
+            docs=list(STATE.documents.keys()),
+        )
+        store.append_run(summary)
+    except Exception:
+        pass
+
+    return SaveResult(ok=True, folder=str(folder_path))
+
+
 # Combined "Run analysis" entry point ----------------------------------------
 
 
@@ -571,8 +873,8 @@ def load_demo(*, output_lang: str) -> None:
     STATE.match = career_data.demo_match(output_lang)
     STATE.documents = {kind: _demo_document(kind, output_lang) for kind in _DOC_SYSTEM_BY_KIND}
     STATE.activity = "ready"
-    safe(REFS.rerender_main)
     safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
 
 
 def _demo_document(kind: str, lang: str) -> str:

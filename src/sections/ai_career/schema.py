@@ -203,7 +203,14 @@ FOLLOWUP_QUESTIONS_SCHEMA: dict = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["topic", "question", "rationale"],
+                "required": [
+                    "topic",
+                    "question",
+                    "rationale",
+                    "options",
+                    "multi_select",
+                    "allow_free_text",
+                ],
                 "properties": {
                     "topic": {
                         "type": "string",
@@ -219,6 +226,37 @@ FOLLOWUP_QUESTIONS_SCHEMA: dict = {
                     "rationale": {
                         "type": "string",
                         "description": "One short sentence: why we are asking, tied to the JD.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "items": {"type": "string"},
+                        "description": (
+                            "2-6 short, plausible answer options the candidate "
+                            "can pick from. Examples for 'Have you used n8n?': "
+                            "['Yes, several workflows', 'Just tried it', 'No']. "
+                            "Make options mutually exclusive when multi_select=false; "
+                            "when multi_select=true the user can pick several. "
+                            "Always written in OUTPUT_LANGUAGE."
+                        ),
+                    },
+                    "multi_select": {
+                        "type": "boolean",
+                        "description": (
+                            "True when several options can apply at once "
+                            "(e.g. 'Which Azure services have you used?'). "
+                            "False for binary / single-choice questions "
+                            "(e.g. 'Have you led a team?')."
+                        ),
+                    },
+                    "allow_free_text": {
+                        "type": "boolean",
+                        "description": (
+                            "True when the candidate may add an 'Other' answer "
+                            "with their own short text. Default to true unless "
+                            "the options clearly enumerate every possible answer."
+                        ),
                     },
                 },
             },

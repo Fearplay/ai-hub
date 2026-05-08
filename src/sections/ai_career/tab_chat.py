@@ -33,6 +33,15 @@ from src.sections.ai_career.strings import s
 from src.theme import Theme
 
 
+def _request_full_refresh() -> None:
+    """Trigger a full section rebuild from anywhere in this module."""
+    try:
+        from src.app import request_section_refresh
+    except Exception:
+        return
+    request_section_refresh()
+
+
 _RESUME_EXTENSIONS = ("pdf", "docx", "txt", "md", "html", "htm")
 
 
@@ -330,8 +339,8 @@ def _input_bar(
                 )
             else:
                 pipeline.append_chat_message("assistant", assistant_text)
-            safe(REFS.rerender_tab_body)
             safe(REFS.rerender_context)
+            REFS.dispatch(_request_full_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -414,8 +423,8 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
                 )
             else:
                 pipeline.append_chat_message("assistant", assistant_text)
-            safe(REFS.rerender_tab_body)
             safe(REFS.rerender_context)
+            REFS.dispatch(_request_full_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 

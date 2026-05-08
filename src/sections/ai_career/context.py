@@ -21,7 +21,7 @@ from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
 from src.services import settings_store
 from src.services.cost_tracker import COST
-from src.sections.ai_career.refs import REFS
+from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     MODE_CHAT,
     MODE_FORM,
@@ -31,6 +31,15 @@ from src.sections.ai_career.state import (
 )
 from src.sections.ai_career.strings import s
 from src.theme import Theme
+
+
+def _request_full_refresh() -> None:
+    """Trigger a full section rebuild from anywhere in this module."""
+    try:
+        from src.app import request_section_refresh
+    except Exception:
+        return
+    request_section_refresh()
 
 
 _ACTIVITY_KEYS = {
@@ -203,19 +212,25 @@ def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
         STATE.demo_mode = False
         STATE.documents.clear()
         STATE.refine_problems.clear()
+        STATE.followup_questions = []
+        STATE.followup_qa = []
+        STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
-        if REFS.rerender_main:
-            REFS.rerender_main()
+        _request_full_refresh()
 
     def _open_history(_e: ft.ControlEvent) -> None:
+        # Quick actions need to override the chat-vs-form mode too,
+        # otherwise clicking "Show history" while in Chat mode is a no-op
+        # because History only renders inside the Form-mode tab body.
+        STATE.mode = MODE_FORM
         STATE.active_tab = TAB_HISTORY
-        if REFS.rerender_main:
-            REFS.rerender_main()
+        _request_full_refresh()
 
     def _open_how_to(e: ft.ControlEvent) -> None:
         from src.sections.ai_career.how_to import open_career_how_to
 
         if e.page is not None:
+            REFS.page = e.page
             open_career_how_to(e.page, theme, lang)
 
     body = ft.Column(
@@ -266,6 +281,7 @@ def build_context(theme: Theme, lang: str) -> ft.Container:
         try:
             page = panel_holder.page
             if page is not None:
+                REFS.page = page
                 page.update()
         except Exception:
             pass

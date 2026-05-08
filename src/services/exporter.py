@@ -105,7 +105,48 @@ def export_markdown(text: str, target: Path) -> Path:
     return target
 
 
-def export_html(text: str, target: Path, *, title: str = "Document") -> Path:
+_ATS_CSS = (
+    "  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; "
+    "max-width: 760px; margin: 32px auto; padding: 0 24px; line-height: 1.5; }\n"
+    "  h1 { font-size: 24px; margin: 18px 0 8px; }\n"
+    "  h2 { font-size: 18px; margin: 16px 0 6px; }\n"
+    "  h3 { font-size: 15px; margin: 12px 0 4px; }\n"
+    "  p, li { font-size: 13px; }\n"
+    "  ul, ol { margin: 4px 0 12px 22px; }\n"
+)
+
+# "Modern" style is for the HR-eye CV / cover letter exports. Same single-
+# column layout (so the document still parses cleanly when a recruiter
+# pastes it back into a tool) but with a coloured H1, accent rules, and
+# a more confident type stack.
+_MODERN_CSS = (
+    "  :root { --accent: #6366F1; --ink: #0F172A; --muted: #475569; }\n"
+    "  body { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, "
+    "sans-serif; color: var(--ink); max-width: 780px; margin: 40px auto; "
+    "padding: 0 36px; line-height: 1.55; }\n"
+    "  h1 { font-size: 30px; margin: 6px 0 4px; color: var(--accent); "
+    "letter-spacing: -0.5px; }\n"
+    "  h1 + p, h1 + em { color: var(--muted); font-size: 14px; "
+    "margin-top: 0; }\n"
+    "  h2 { font-size: 18px; margin: 28px 0 8px; padding-bottom: 4px; "
+    "border-bottom: 2px solid var(--accent); display: inline-block; }\n"
+    "  h3 { font-size: 15px; margin: 16px 0 4px; color: var(--ink); }\n"
+    "  hr { border: 0; border-top: 1px solid #E2E8F0; margin: 22px 0; }\n"
+    "  p, li { font-size: 13.5px; color: var(--ink); }\n"
+    "  em { color: var(--muted); }\n"
+    "  ul, ol { margin: 6px 0 14px 22px; }\n"
+    "  ul li { margin-bottom: 4px; }\n"
+    "  strong { color: var(--ink); }\n"
+)
+
+
+def export_html(
+    text: str,
+    target: Path,
+    *,
+    title: str = "Document",
+    style: str = "ats",
+) -> Path:
     try:
         import markdown2  # type: ignore[import-not-found]
 
@@ -113,20 +154,15 @@ def export_html(text: str, target: Path, *, title: str = "Document") -> Path:
     except ImportError:
         body = _blocks_to_html(parse_markdown(text or ""))
 
+    css = _MODERN_CSS if style == "modern" else _ATS_CSS
     html = (
         "<!doctype html>\n"
         "<html lang=\"en\">\n<head>\n"
         "<meta charset=\"utf-8\" />\n"
         f"<title>{_escape_html(title)}</title>\n"
         "<style>\n"
-        "  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; "
-        "max-width: 760px; margin: 32px auto; padding: 0 24px; line-height: 1.5; }\n"
-        "  h1 { font-size: 24px; margin: 18px 0 8px; }\n"
-        "  h2 { font-size: 18px; margin: 16px 0 6px; }\n"
-        "  h3 { font-size: 15px; margin: 12px 0 4px; }\n"
-        "  p, li { font-size: 13px; }\n"
-        "  ul, ol { margin: 4px 0 12px 22px; }\n"
-        "</style>\n"
+        + css
+        + "</style>\n"
         "</head>\n<body>\n"
         + body
         + "\n</body>\n</html>\n"
@@ -168,8 +204,15 @@ def export_docx(text: str, target: Path, *, title: str = "Document") -> Path:
     return target
 
 
-def export_pdf(text: str, target: Path, *, title: str = "Document") -> Path:
+def export_pdf(
+    text: str,
+    target: Path,
+    *,
+    title: str = "Document",
+    style: str = "ats",
+) -> Path:
     try:
+        from reportlab.lib.colors import HexColor  # type: ignore[import-not-found]
         from reportlab.lib.pagesizes import A4  # type: ignore[import-not-found]
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[import-not-found]
         from reportlab.lib.units import cm  # type: ignore[import-not-found]
@@ -184,17 +227,61 @@ def export_pdf(text: str, target: Path, *, title: str = "Document") -> Path:
         raise RuntimeError("reportlab not installed - run pip install -r requirements.txt") from exc
 
     styles = getSampleStyleSheet()
-    body = ParagraphStyle(
-        "body",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=10,
-        leading=14,
-        spaceAfter=4,
-    )
-    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=18, leading=22, spaceAfter=8)
-    h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=14, leading=18, spaceAfter=6)
-    h3 = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11, leading=14, spaceAfter=4)
+    if style == "modern":
+        accent = HexColor("#6366F1")
+        ink = HexColor("#0F172A")
+        body = ParagraphStyle(
+            "body",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=10.5,
+            leading=15,
+            spaceAfter=5,
+            textColor=ink,
+        )
+        h1 = ParagraphStyle(
+            "h1",
+            parent=styles["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=22,
+            leading=26,
+            spaceAfter=4,
+            textColor=accent,
+        )
+        h2 = ParagraphStyle(
+            "h2",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=18,
+            spaceBefore=14,
+            spaceAfter=6,
+            textColor=ink,
+            borderColor=accent,
+            borderPadding=(0, 0, 4, 0),
+            borderWidth=0,
+        )
+        h3 = ParagraphStyle(
+            "h3",
+            parent=styles["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=12,
+            leading=15,
+            spaceAfter=3,
+            textColor=ink,
+        )
+    else:
+        body = ParagraphStyle(
+            "body",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            spaceAfter=4,
+        )
+        h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=18, leading=22, spaceAfter=8)
+        h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=14, leading=18, spaceAfter=6)
+        h3 = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11, leading=14, spaceAfter=4)
 
     doc = SimpleDocTemplate(
         str(target),

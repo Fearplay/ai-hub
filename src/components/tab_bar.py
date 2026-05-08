@@ -23,6 +23,9 @@ def _tab(
     active: bool,
     on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
 ) -> ft.Container:
+    # Larger horizontal padding gives the click area real width even
+    # for short labels like "Setup" / "Match" - the previous 2 px on
+    # each side meant the user had to land squarely on the text.
     return ft.Container(
         content=ft.Column(
             controls=[
@@ -33,7 +36,7 @@ def _tab(
                         size=14,
                         weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_500,
                     ),
-                    padding=ft.padding.only(bottom=10),
+                    padding=ft.padding.only(bottom=8),
                 ),
                 ft.Container(
                     height=2,
@@ -44,7 +47,7 @@ def _tab(
             spacing=0,
             tight=True,
         ),
-        padding=ft.padding.only(top=4, left=2, right=2),
+        padding=ft.padding.only(top=8, bottom=2, left=12, right=12),
         ink=on_click is not None,
         on_click=on_click,
     )
@@ -70,8 +73,18 @@ def tab_bar(
         content=ft.Row(
             controls=children,
             spacing=24,
-            scroll=ft.ScrollMode.HIDDEN,
+            # AUTO renders a horizontal scrollbar when the row overflows.
+            # HIDDEN was clipping the right-most tabs (e.g. "Evidence
+            # (GitHub only)") on narrow widths and the user could not
+            # drag to reveal them. AUTO keeps the wheel + drag gestures
+            # working, so the Documents sub-tab strip stays fully usable
+            # at 1024 px widths.
+            scroll=ft.ScrollMode.AUTO,
         ),
-        padding=ft.padding.only(left=24, right=24, top=4),
+        # ``bottom=4`` keeps the AUTO scroll bar (when present) from
+        # overlapping the active-tab underline; without it the scrollbar
+        # rendered right on top of the 2 px underline, making click
+        # feedback look fuzzy on narrow widths.
+        padding=ft.padding.only(left=24, right=24, top=4, bottom=4),
         border=ft.border.only(bottom=ft.BorderSide(1, theme.border)),
     )

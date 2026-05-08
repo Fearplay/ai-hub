@@ -22,7 +22,6 @@ import flet as ft
 
 from src.components.tab_bar import tab_bar
 from src.services import exporter, store
-from src.services.cost_tracker import COST
 from src.sections.ai_career import pipeline
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
@@ -60,6 +59,27 @@ _DOC_FILE_BASENAMES = {
     DOC_SKILL_GAP: "Skill_Gap_Plan",
     DOC_EVIDENCE: "Evidence_Report",
 }
+
+# Per-kind export plan used by "Save complete analysis".
+#
+# The CVs ship as both HTML (open-in-browser preview) and PDF (the file
+# the candidate sends to the recruiter). The Cover Letter is PDF-only by
+# design - prose document; HTML markup tends to look worse than the PDF.
+# The remaining narrative documents (match report, interview prep, etc.)
+# get HTML + Markdown so the candidate can read them in a browser and
+# also edit / quote from them in their notes.
+_EXPORT_PLAN: dict[str, tuple[str, ...]] = {
+    DOC_TAILORED_CV: ("html", "pdf"),
+    DOC_MODERN_CV: ("html", "pdf"),
+    DOC_COVER_LETTER: ("pdf",),
+    DOC_MATCH_REPORT: ("html", "md"),
+    DOC_INTERVIEW_PREP: ("html", "md"),
+    DOC_SKILL_GAP: ("html", "md"),
+    DOC_EVIDENCE: ("html", "md"),
+}
+
+# Document kinds that should render with the "modern" CSS / PDF style.
+_MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
 def _visible_doc_kinds() -> list[str]:
@@ -422,6 +442,9 @@ def build_documents_tab(
             pass
 
     def _refresh_body() -> None:
+        # In-place swap of the doc panel - cheaper than a full section
+        # rebuild when the user is just flipping between sub-tabs and
+        # everything else (header, stage tab bar, footer) is unchanged.
         body_holder.content = _build_active_doc_panel(
             theme,
             lang,
@@ -434,8 +457,6 @@ def build_documents_tab(
             body_holder.update()
         except Exception:
             pass
-
-    REFS.rerender_documents = _refresh_body
 
     def _on_doc_tab(idx: int) -> None:
         STATE.active_document = visible_kinds[idx]
@@ -469,77 +490,37 @@ def build_documents_tab(
 
                 folder_path = Path(folder)
                 if kind_action == "all":
-                    for k, t_text in STATE.documents.items():
-                        if not t_text:
-                            continue
-                        basename = _DOC_FILE_BASENAMES.get(k, k)
-                        try:
-                            exporter.export_all(t_text, folder_path, basename, title=basename.replace("_", " "))
-                        except RuntimeError:
-                            pass
-                    candidate = STATE.candidate or {}
-                    job_spec = STATE.job_spec or {}
-                    match = STATE.match or {}
-                    store.write_json_file(
-                        folder_path,
-                        "summary.json",
-                        {
-                            "candidate": candidate,
-                            "job_spec": job_spec,
-                            "match": match,
-                            "cost": {
-                                "calls": COST.calls,
-                                "tokens": COST.tokens_total,
-                                "usd": COST.cost_usd,
-                            },
-                        },
-                    )
-                    _persist_history()
-                    _show_status(txt["export_ok_template"].format(path=str(folder_path)), False)
-                else:
-                    basename = _DOC_FILE_BASENAMES.get(kind, kind)
-                    title = basename.replace("_", " ")
-                    if kind_action == "md":
-                        path = exporter.export_markdown(text, folder_path / f"{basename}.md")
-                    elif kind_action == "html":
-                        path = exporter.export_html(text, folder_path / f"{basename}.html", title=title)
-                    elif kind_action == "docx":
-                        path = exporter.export_docx(text, folder_path / f"{basename}.docx", title=title)
-                    elif kind_action == "pdf":
-                        path = exporter.export_pdf(text, folder_path / f"{basename}.pdf", title=title)
+                    save = pipeline.save_full_analysis()
+                    if save.ok:
+                        _show_status(
+                            txt["export_ok_template"].format(path=save.folder),
+                            False,
+                        )
                     else:
-                        return
-                    _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                        _show_status(txt["doc_empty_title"], True)
+                    return
+                basename = _DOC_FILE_BASENAMES.get(kind, kind)
+                title = basename.replace("_", " ")
+                style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
+                if kind_action == "md":
+                    path = exporter.export_markdown(text, folder_path / f"{basename}.md")
+                elif kind_action == "html":
+                    path = exporter.export_html(
+                        text, folder_path / f"{basename}.html", title=title, style=style
+                    )
+                elif kind_action == "docx":
+                    path = exporter.export_docx(text, folder_path / f"{basename}.docx", title=title)
+                elif kind_action == "pdf":
+                    path = exporter.export_pdf(
+                        text, folder_path / f"{basename}.pdf", title=title, style=style
+                    )
+                else:
+                    return
+                _show_status(txt["export_ok_template"].format(path=str(path)), False)
             except Exception as exc:
                 _show_status(txt["export_failed_template"].format(error=str(exc)), True)
 
         threading.Thread(target=_worker, daemon=True).start()
-
-    def _persist_history() -> None:
-        try:
-            role = ""
-            company = ""
-            if STATE.job_spec:
-                role = str(STATE.job_spec.get("title") or "")
-                company = str(STATE.job_spec.get("company") or "")
-            score = int((STATE.match or {}).get("overall_score") or 0)
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            summary = store.RunSummary(
-                timestamp=timestamp,
-                role=role,
-                company=company,
-                overall_score=score,
-                folder=STATE.last_run_folder,
-                provider=("demo" if STATE.demo_mode else ""),
-                model=("demo" if STATE.demo_mode else ""),
-                cost_usd=0.0 if STATE.demo_mode else float(COST.cost_usd),
-                docs=list(STATE.documents.keys()),
-            )
-            store.append_run(summary)
-        except Exception:
-            pass
 
     footer = ft.Container(
         content=ft.Column(
