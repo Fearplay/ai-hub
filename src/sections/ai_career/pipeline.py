@@ -26,7 +26,7 @@ from pathlib import Path
 from src.services import ai_provider, exporter, github_client, job_scraper, store
 from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
-from src.sections.ai_career import prompts, schema
+from src.sections.ai_career import modern_cv_render, prompts, schema
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
@@ -294,7 +294,9 @@ def analyze_match(*, output_lang: str) -> PipelineResult:
 
 _DOC_SYSTEM_BY_KIND: dict[str, str] = {
     DOC_TAILORED_CV: prompts.TAILORED_CV_SYSTEM,
-    DOC_MODERN_CV: prompts.MODERN_CV_SYSTEM,
+    # MODERN_CV is intentionally NOT in this map - it goes through
+    # ``generate_modern_cv_data`` (structured JSON, custom renderer),
+    # not the markdown-document path.
     DOC_COVER_LETTER: prompts.COVER_LETTER_SYSTEM,
     DOC_MATCH_REPORT: prompts.MATCH_REPORT_SYSTEM,
     DOC_INTERVIEW_PREP: prompts.INTERVIEW_PREP_SYSTEM,
@@ -316,9 +318,10 @@ def generate_all_documents(*, output_lang: str) -> PipelineResult:
     empty (the UI shows a "lock" placeholder instead of fabricating
     signals).
     """
+    # Markdown documents only here. Modern CV uses a structured JSON
+    # payload + custom renderer so we run it through its own helper.
     kinds = [
         DOC_TAILORED_CV,
-        DOC_MODERN_CV,
         DOC_COVER_LETTER,
         DOC_MATCH_REPORT,
         DOC_INTERVIEW_PREP,
@@ -330,6 +333,10 @@ def generate_all_documents(*, output_lang: str) -> PipelineResult:
         if not res.ok:
             return res
 
+    res = generate_modern_cv_data(output_lang=output_lang)
+    if not res.ok:
+        return res
+
     if (
         STATE.candidate
         and STATE.candidate.get("github_present")
@@ -339,6 +346,97 @@ def generate_all_documents(*, output_lang: str) -> PipelineResult:
         if evidence_md:
             STATE.documents[DOC_EVIDENCE] = evidence_md
 
+    STATE.activity = "ready"
+    safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
+    return PipelineResult(ok=True)
+
+
+def generate_modern_cv_data(*, output_lang: str) -> PipelineResult:
+    """Run the Modern CV JSON generator and store the result on STATE.
+
+    Demo mode short-circuits with a hand-curated payload built from
+    :mod:`src.sections.ai_career.data` so the offline showcase renders
+    the same fancy two-column layout without a network call.
+    """
+    if STATE.demo_mode:
+        STATE.modern_cv_data = career_data.demo_modern_cv(output_lang)
+        REFS.dispatch(_request_full_refresh)
+        return PipelineResult(ok=True)
+
+    if not (STATE.candidate and STATE.job_spec and STATE.match):
+        return _set_error("Run analysis before generating the Modern CV.")
+
+    _set_activity("generating")
+    user = prompts.build_modern_cv_user(
+        output_lang=output_lang,
+        candidate=STATE.candidate,
+        job_spec=STATE.job_spec,
+        match=STATE.match,
+    )
+    try:
+        result = ai_provider.run(
+            system=prompts.MODERN_CV_DATA_SYSTEM,
+            user=user,
+            schema=schema.MODERN_CV_SCHEMA,
+            schema_name="modern_cv",
+            max_output_tokens=3500,
+        )
+    except ai_provider.ProviderError as exc:
+        return _set_error(str(exc))
+    if not isinstance(result.data, dict):
+        return _set_error("Provider did not return a Modern CV JSON.")
+    STATE.modern_cv_data = result.data
+    STATE.activity = "ready"
+    safe(REFS.rerender_context)
+    REFS.dispatch(_request_full_refresh)
+    return PipelineResult(ok=True)
+
+
+def refine_modern_cv(*, output_lang: str, problems: list[str]) -> PipelineResult:
+    """Re-run the Modern CV JSON generator with the candidate's problems."""
+    cleaned = [p for p in problems if p and p.strip()]
+    if not cleaned:
+        return _set_error("Add at least one problem before refining.")
+
+    if STATE.demo_mode:
+        # Demo mode: shallow tag the existing payload so the user sees a
+        # change without sending tokens.
+        if STATE.modern_cv_data is None:
+            STATE.modern_cv_data = career_data.demo_modern_cv(output_lang)
+        existing = STATE.modern_cv_data
+        existing.setdefault("leadership_highlights", []).insert(
+            0,
+            "**Demo refinement:** would address the listed problems.",
+        )
+        REFS.dispatch(_request_full_refresh)
+        return PipelineResult(ok=True)
+
+    if not (STATE.candidate and STATE.job_spec and STATE.match):
+        return _set_error("Run analysis before refining the Modern CV.")
+
+    _set_activity("generating")
+    user = prompts.build_modern_cv_user(
+        output_lang=output_lang,
+        candidate=STATE.candidate,
+        job_spec=STATE.job_spec,
+        match=STATE.match,
+        current_payload=STATE.modern_cv_data,
+        problems=cleaned,
+    )
+    try:
+        result = ai_provider.run(
+            system=prompts.MODERN_CV_DATA_REFINE_SYSTEM,
+            user=user,
+            schema=schema.MODERN_CV_SCHEMA,
+            schema_name="modern_cv",
+            max_output_tokens=3500,
+        )
+    except ai_provider.ProviderError as exc:
+        return _set_error(str(exc))
+    if not isinstance(result.data, dict):
+        return _set_error("Provider did not return a refined Modern CV JSON.")
+    STATE.modern_cv_data = result.data
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)
@@ -443,6 +541,11 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
         REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
+    if kind == DOC_MODERN_CV:
+        # Modern CV is structured JSON + custom renderer (teal sidebar
+        # layout); the markdown-document path doesn't apply here.
+        return generate_modern_cv_data(output_lang=output_lang)
+
     if kind not in _DOC_SYSTEM_BY_KIND:
         return _set_error(f"Unknown document kind: {kind}")
     if STATE.demo_mode:
@@ -490,6 +593,12 @@ def refine_document(
     output_lang: str,
     problems: list[str],
 ) -> PipelineResult:
+    if kind == DOC_MODERN_CV:
+        # Modern CV: regenerate the JSON payload from scratch with the
+        # candidate's notes applied, then re-render. There is no
+        # markdown body to patch in place.
+        return refine_modern_cv(output_lang=output_lang, problems=problems)
+
     if kind not in _DOC_SYSTEM_BY_KIND:
         return _set_error(f"Unknown document kind: {kind}")
     current = STATE.documents.get(kind, "")
@@ -686,7 +795,9 @@ _DOC_FILE_BASENAMES: dict[str, str] = {
 
 _EXPORT_PLAN: dict[str, tuple[str, ...]] = {
     DOC_TAILORED_CV: ("html", "pdf"),
-    DOC_MODERN_CV: ("html", "pdf"),
+    # Modern CV runs through ``modern_cv_render`` directly (HTML + PDF +
+    # JSON sidecar) so it is intentionally absent from the markdown
+    # export plan loop above.
     DOC_COVER_LETTER: ("pdf",),
     DOC_MATCH_REPORT: ("html", "md"),
     DOC_INTERVIEW_PREP: ("html", "md"),
@@ -712,7 +823,7 @@ def save_full_analysis() -> SaveResult:
     layout matches what the History tab expects so "Open in app" still
     rehydrates the run later.
     """
-    if not STATE.documents:
+    if not STATE.documents and not STATE.modern_cv_data:
         return SaveResult(ok=False, error="no_documents")
 
     role = ""
@@ -758,6 +869,32 @@ def save_full_analysis() -> SaveResult:
                 # machine. Skip this format and keep going.
                 continue
 
+    # Modern CV - structured payload + custom two-column renderer.
+    if STATE.modern_cv_data:
+        basename = _DOC_FILE_BASENAMES.get(DOC_MODERN_CV, "Modern_CV")
+        try:
+            (folder_path / f"{basename}.html").write_text(
+                modern_cv_render.render_html(STATE.modern_cv_data),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        try:
+            modern_cv_render.render_pdf(
+                STATE.modern_cv_data, folder_path / f"{basename}.pdf"
+            )
+        except Exception:
+            pass
+        try:
+            import json as _json
+
+            (folder_path / f"{basename}.json").write_text(
+                _json.dumps(STATE.modern_cv_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
     candidate = STATE.candidate or {}
     job_spec = STATE.job_spec or {}
     match = STATE.match or {}
@@ -787,6 +924,12 @@ def save_full_analysis() -> SaveResult:
             company = str(STATE.job_spec.get("company") or "")
         score = int((STATE.match or {}).get("overall_score") or 0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        # Modern CV ships outside the markdown ``STATE.documents`` dict
+        # but still belongs in the History entry so the user can see it
+        # in the saved-run breakdown.
+        docs_list = list(STATE.documents.keys())
+        if STATE.modern_cv_data and DOC_MODERN_CV not in docs_list:
+            docs_list.append(DOC_MODERN_CV)
         summary = store.RunSummary(
             timestamp=timestamp,
             role=role,
@@ -796,7 +939,7 @@ def save_full_analysis() -> SaveResult:
             provider=("demo" if STATE.demo_mode else ""),
             model=("demo" if STATE.demo_mode else ""),
             cost_usd=0.0 if STATE.demo_mode else float(COST.cost_usd),
-            docs=list(STATE.documents.keys()),
+            docs=docs_list,
         )
         store.append_run(summary)
     except Exception:
@@ -871,7 +1014,10 @@ def load_demo(*, output_lang: str) -> None:
     STATE.candidate = career_data.demo_candidate(output_lang)
     STATE.job_spec = career_data.demo_job_spec(output_lang)
     STATE.match = career_data.demo_match(output_lang)
+    # Markdown-document kinds only - Modern CV gets the structured
+    # payload below so the fancy two-column renderer has data to draw.
     STATE.documents = {kind: _demo_document(kind, output_lang) for kind in _DOC_SYSTEM_BY_KIND}
+    STATE.modern_cv_data = career_data.demo_modern_cv(output_lang)
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)

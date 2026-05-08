@@ -275,6 +275,53 @@ MODERN_CV_SYSTEM = (
 )
 
 
+MODERN_CV_DATA_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: Produce a MODERN CV PAYLOAD as the JSON described by the\n"
+    "schema. The result will drive a fancy two-column visual layout (teal\n"
+    "sidebar with contact / online / skills / languages on the left;\n"
+    "summary / leadership banner / experience cards / projects / education\n"
+    "/ certifications on the right) - it is NOT plain markdown.\n\n"
+    "STRICT RULES:\n"
+    "* Same factual content as the tailored CV. Rules 3 / 4 still hold -\n"
+    "  every WorkExperience, EducationEntry, CertificationEntry from the\n"
+    "  candidate appears. Reorder by relevance, never delete.\n"
+    "* Mirror EXACT terminology from the JD when describing skills /\n"
+    "  experience so the recruiter sees a clean alignment.\n"
+    "* Wrap **the most impactful 5-10 phrases** in the profile_summary in\n"
+    "  Markdown bold (**...**). Same trick inside leadership_highlights,\n"
+    "  experience bullets, project descriptions and certifications text -\n"
+    "  but ONLY around real wins / numbers / proper nouns. NEVER bold\n"
+    "  filler words.\n"
+    "* skill_groups: 6-9 groups, ordered by relevance to the target role.\n"
+    "  Each group has 3-7 short tags (1-3 words). Strip duplicates across\n"
+    "  groups (a tool belongs to its most-relevant group only).\n"
+    "* highlight_pills per experience entry: 0-5 short pills (1-3 words)\n"
+    "  summarising the role's signature themes (e.g. 'Mentoring',\n"
+    "  'CI/CD ownership', 'Framework design'). Empty array if nothing\n"
+    "  fits.\n"
+    "* leadership_highlights: 4-6 lines for senior / lead candidates;\n"
+    "  empty array for true juniors.\n"
+    "* online_links: only emit URLs that actually appeared in the\n"
+    "  candidate source. Strip any link the source did not contain.\n"
+    "* OUTPUT_LANGUAGE applies to every human string (group labels,\n"
+    "  pills, summaries, bullets). Tool / proper noun names stay as-is.\n"
+    "* DO NOT invent metrics, employers, projects, certifications, or\n"
+    "  team sizes. Use what's in the candidate JSON.\n"
+    "* Output ONLY the JSON described by the schema."
+)
+
+
+MODERN_CV_DATA_REFINE_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: REGENERATE the modern CV PAYLOAD JSON with the candidate's\n"
+    "list of problems / instructions applied. Same schema as the initial\n"
+    "generation. Apply EVERY problem on the list - if a problem asks for\n"
+    "a metric you do not have, leave a placeholder like '[insert metric]'\n"
+    "in that field instead of inventing a number. Output ONLY the JSON."
+)
+
+
 COVER_LETTER_SYSTEM = (
     HR_EXPERT_RULES
     + "\n\nTASK: Write a polished cover letter in Markdown that exports\n"
@@ -585,6 +632,58 @@ def build_refine_user(
             document_text,
         ]
     )
+
+
+def build_modern_cv_user(
+    *,
+    output_lang: str,
+    candidate: dict,
+    job_spec: dict,
+    match: dict,
+    current_payload: dict | None = None,
+    problems: list[str] | None = None,
+) -> str:
+    """User prompt for the Modern CV JSON generator.
+
+    On first run ``current_payload`` and ``problems`` are both empty, so
+    the LLM builds the payload from the structured candidate / job_spec
+    / match JSONs. On refine the previous payload + the problem list
+    are added so the LLM can regenerate addressing every concern while
+    keeping the surrounding facts intact.
+    """
+    parts: list[str] = [
+        language_directive(output_lang),
+        "",
+        "=== CANDIDATE JSON ===",
+        json.dumps(candidate, ensure_ascii=False),
+        "",
+        "=== JOB SPEC JSON ===",
+        json.dumps(job_spec, ensure_ascii=False),
+        "",
+        "=== MATCH ANALYSIS JSON ===",
+        json.dumps(match, ensure_ascii=False),
+    ]
+    if current_payload is not None:
+        parts += [
+            "",
+            "=== PREVIOUS MODERN CV PAYLOAD ===",
+            json.dumps(current_payload, ensure_ascii=False),
+        ]
+    if problems:
+        numbered = "\n".join(
+            f"{i + 1}. {p}" for i, p in enumerate(problems) if p.strip()
+        )
+        if numbered:
+            parts += [
+                "",
+                "=== PROBLEMS / INSTRUCTIONS FROM CANDIDATE ===",
+                numbered,
+                "",
+                "Regenerate the Modern CV payload addressing EVERY problem above. "
+                "Keep facts intact; never invent metrics or employers.",
+            ]
+    parts += ["", "Return only the Modern CV payload JSON."]
+    return "\n".join(parts)
 
 
 def serialize_github_summary(profile: Any) -> str:

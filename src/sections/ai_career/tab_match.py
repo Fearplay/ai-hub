@@ -289,7 +289,6 @@ def build_match_tab(
     if not match:
         return _empty_state(theme, txt, on_back=lambda: on_navigate_tab(TAB_SETUP))
 
-    generating: dict[str, bool] = {"value": False}
     status_text = ft.Text("", color=theme.text_muted, size=11)
     button_holder = ft.Container()
 
@@ -301,8 +300,15 @@ def build_match_tab(
         except Exception:
             pass
 
+    def _is_running() -> bool:
+        # Source-of-truth lives on STATE so the disabled state survives the
+        # full section rebuild that happens immediately after click. A
+        # closure-local flag was being reset to False by the rebuild and
+        # the button became clickable again mid-generation.
+        return STATE.activity == "generating"
+
     def _render_button() -> None:
-        running = generating["value"]
+        running = _is_running()
         label = (
             txt["match_generating_documents"] if running else txt["match_open_documents_btn"]
         )
@@ -334,9 +340,8 @@ def build_match_tab(
             pass
 
     def _start_generate_all(_e: ft.ControlEvent | None = None) -> None:
-        if generating["value"]:
+        if _is_running():
             return
-        generating["value"] = True
         STATE.activity = "generating"
         STATE.last_error = ""
         safe(REFS.rerender_context)
@@ -352,7 +357,6 @@ def build_match_tab(
                     return
                 STATE.active_tab = TAB_DOCUMENTS
             finally:
-                generating["value"] = False
                 STATE.activity = "ready"
                 safe(REFS.rerender_context)
                 REFS.dispatch(_request_full_refresh)

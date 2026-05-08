@@ -645,7 +645,13 @@ def _footer_bar(
                     if STATE.followup_questions:
                         STATE.activity = "waiting_user"
                         safe(REFS.rerender_context)
-                        _open_followup_dialog(page)
+                        # Dialog must open on the page's asyncio loop. From a
+                        # worker thread ``page.show_dialog(...)`` only schedules
+                        # the patch and the loop doesn't run a tick until a
+                        # window event arrives - that's why the dialog used to
+                        # appear only after the user minimized / refocused the
+                        # window.
+                        REFS.dispatch(lambda: _open_followup_dialog(page))
                         return
 
                 _phase2_match()

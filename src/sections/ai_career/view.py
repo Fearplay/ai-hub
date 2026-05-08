@@ -209,12 +209,10 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
         open_career_how_to(e.page, theme, lang)
 
     def _menu_new_run(_e: ft.ControlEvent) -> None:
-        STATE.reset_run()
-        STATE.demo_mode = False
-        STATE.documents.clear()
-        STATE.refine_problems.clear()
-        STATE.followup_questions = []
-        STATE.followup_qa = []
+        # Hard wipe per the user's "New analysis" expectation: every
+        # input (job posting, resume, GitHub, chat transcript) goes
+        # away so the next run starts on a blank canvas.
+        STATE.reset_all()
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
         _refresh()

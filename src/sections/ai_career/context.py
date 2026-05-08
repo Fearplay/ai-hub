@@ -208,12 +208,10 @@ def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
         )
 
     def _new_run(_e: ft.ControlEvent) -> None:
-        STATE.reset_run()
-        STATE.demo_mode = False
-        STATE.documents.clear()
-        STATE.refine_problems.clear()
-        STATE.followup_questions = []
-        STATE.followup_qa = []
+        # Hard wipe - same contract as the header menu's "New analysis"
+        # entry. Every input the user might have entered is cleared so
+        # the next run starts fresh.
+        STATE.reset_all()
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
         _request_full_refresh()

@@ -265,6 +265,246 @@ FOLLOWUP_QUESTIONS_SCHEMA: dict = {
 }
 
 
+MODERN_CV_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "full_name",
+        "role_headline",
+        "role_subtitle",
+        "contact",
+        "online_links",
+        "skill_groups",
+        "languages",
+        "profile_summary",
+        "leadership_highlights",
+        "experience",
+        "projects",
+        "education",
+        "certifications",
+    ],
+    "properties": {
+        "full_name": {"type": "string"},
+        "role_headline": {
+            "type": "string",
+            "description": (
+                "Big single-line role headline shown in the sidebar under "
+                "the name. Example: 'Senior Software QA Engineer'."
+            ),
+        },
+        "role_subtitle": {
+            "type": "string",
+            "description": (
+                "Optional one-line role qualifier (acting lead, squad size, "
+                "scope). Empty string if nothing relevant."
+            ),
+        },
+        "contact": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["location", "email", "phone"],
+            "properties": {
+                "location": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+            },
+        },
+        "online_links": {
+            "type": "array",
+            "description": (
+                "Sidebar 'Online' links. Only emit entries whose URL was "
+                "actually present in the source - never invent. Each row "
+                "is icon-letter + display label + url."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["icon", "label", "url"],
+                "properties": {
+                    "icon": {
+                        "type": "string",
+                        "description": (
+                            "Short visible marker rendered before the link "
+                            "in the sidebar. Examples: 'in' (LinkedIn), "
+                            "'gh' (GitHub), '>' (portfolio), 'app' (app), "
+                            "'+' (other)."
+                        ),
+                    },
+                    "label": {"type": "string"},
+                    "url": {"type": "string"},
+                },
+            },
+        },
+        "skill_groups": {
+            "type": "array",
+            "description": (
+                "Skill chips grouped by domain. Group labels are short "
+                "(2-4 words). Tags are 1-3 words each. Order groups by "
+                "relevance to the target role, most relevant first."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["label", "tags"],
+                "properties": {
+                    "label": {"type": "string"},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "languages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "level"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "level": {
+                        "type": "string",
+                        "description": (
+                            "Free-form short label for visual rendering. "
+                            "Prefer CEFR (A1-C2) or 'native'/'passive' "
+                            "when explicit in the source."
+                        ),
+                    },
+                },
+            },
+        },
+        "profile_summary": {
+            "type": "string",
+            "description": (
+                "Rich paragraph (~80-160 words) that opens the main column. "
+                "Use **bold** Markdown around the 5-10 highest-impact "
+                "phrases (role title, employers, scope numbers, key "
+                "outcomes). Plain text otherwise; no headings, no bullets."
+            ),
+        },
+        "leadership_highlights": {
+            "type": "array",
+            "description": (
+                "4-6 short, scannable wins shown in a banner under the "
+                "summary. Each line uses **bold** Markdown around the "
+                "quantitative or signature phrase. Empty array when the "
+                "candidate has no leadership signal yet."
+            ),
+            "items": {"type": "string"},
+        },
+        "experience": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "role",
+                    "period",
+                    "company",
+                    "context",
+                    "highlight_pills",
+                    "bullets",
+                ],
+                "properties": {
+                    "role": {"type": "string"},
+                    "period": {"type": "string"},
+                    "company": {"type": "string"},
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Italic subtitle next to the company name. "
+                            "Examples: '(Norton · Avast · AVG · CCleaner)' "
+                            "or '· Prague · Data Trust Services team'. "
+                            "Empty string if there's nothing to add."
+                        ),
+                    },
+                    "highlight_pills": {
+                        "type": "array",
+                        "description": (
+                            "0-5 short tag pills shown above the bullets "
+                            "summarising the role's signature themes. "
+                            "Each pill is 1-3 words."
+                        ),
+                        "items": {"type": "string"},
+                    },
+                    "bullets": {
+                        "type": "array",
+                        "description": (
+                            "2-6 outcome-focused bullets. Use **bold** "
+                            "Markdown around the achievement phrase or "
+                            "quantitative result inside each bullet."
+                        ),
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "projects": {
+            "type": "array",
+            "maxItems": 6,
+            "description": (
+                "Side-projects / personal projects shown as project "
+                "cards. Only include entries that are actually backed by "
+                "the candidate's source data."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "description", "url"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "1-3 sentences. Use **bold** Markdown around "
+                            "the most important phrase (product name, "
+                            "outcome, scope)."
+                        ),
+                    },
+                    "url": {"type": "string"},
+                },
+            },
+        },
+        "education": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "sub", "period"],
+                "properties": {
+                    "title": {"type": "string"},
+                    "sub": {
+                        "type": "string",
+                        "description": "Italic subtitle: institution + faculty.",
+                    },
+                    "period": {"type": "string"},
+                },
+            },
+        },
+        "certifications": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["year", "text"],
+                "properties": {
+                    "year": {"type": "string"},
+                    "text": {
+                        "type": "string",
+                        "description": (
+                            "Issuer + course / certification name. Use "
+                            "**bold** Markdown around the actual program "
+                            "name when it stands out."
+                        ),
+                    },
+                },
+            },
+        },
+    },
+}
+
+
 MATCH_ANALYSIS_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
