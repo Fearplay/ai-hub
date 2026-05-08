@@ -7,18 +7,34 @@ underneath, and an evidence preview list at the bottom.
 
 If the user has not run an analysis yet, a friendly empty state nudges
 them back to Setup.
+
+The "Generate documents" footer button kicks off
+:func:`pipeline.generate_all_documents` on a daemon thread, then auto-
+redirects to the Documents tab once every kind is populated. This is
+why the user does not have to click Generate per document.
 """
 
 from __future__ import annotations
 
+import threading
 from typing import Callable
 
 import flet as ft
 
-from src.sections.ai_career.refs import safe
+from src.sections.ai_career import pipeline
+from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import STATE, TAB_DOCUMENTS, TAB_SETUP
 from src.sections.ai_career.strings import s
 from src.theme import Theme
+
+
+def _request_full_refresh() -> None:
+    """Trigger a full section rebuild from anywhere in this module."""
+    try:
+        from src.app import request_section_refresh
+    except Exception:
+        return
+    request_section_refresh()
 
 
 _OK_COLOR = "#22C55E"
@@ -82,6 +98,31 @@ def _category_bar(theme: Theme, *, name: str, score: int, evidence: list[str]) -
     score = max(0, min(100, int(score)))
     color = _OK_COLOR if score >= 75 else (_RISK_COLOR if score < 55 else theme.primary)
     tooltip = "\n".join(f"• {e}" for e in evidence) if evidence else None
+
+    # Use flex weights so the fill width tracks the score regardless of the
+    # parent's actual pixel width. The previous version multiplied the
+    # score by a hard-coded 1.0 px max which rendered every bar as a
+    # sub-pixel sliver.
+    filled_flex = max(1, score)
+    empty_flex = max(1, 100 - score)
+    bar = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Container(
+                    expand=filled_flex,
+                    height=6,
+                    bgcolor=color,
+                    border_radius=3,
+                ),
+                ft.Container(expand=empty_flex, height=6),
+            ],
+            spacing=0,
+        ),
+        height=6,
+        bgcolor=ft.Colors.with_opacity(0.18, color),
+        border_radius=3,
+    )
+
     return ft.Container(
         content=ft.Column(
             controls=[
@@ -92,18 +133,7 @@ def _category_bar(theme: Theme, *, name: str, score: int, evidence: list[str]) -
                     ],
                     spacing=8,
                 ),
-                ft.Container(
-                    content=ft.Container(
-                        width=score / 100.0 * 1.0,
-                        height=6,
-                        bgcolor=color,
-                        border_radius=3,
-                    ),
-                    height=6,
-                    bgcolor=ft.Colors.with_opacity(0.18, color),
-                    border_radius=3,
-                    expand=True,
-                ),
+                bar,
             ],
             spacing=6,
             tight=True,
@@ -259,6 +289,80 @@ def build_match_tab(
     if not match:
         return _empty_state(theme, txt, on_back=lambda: on_navigate_tab(TAB_SETUP))
 
+    status_text = ft.Text("", color=theme.text_muted, size=11)
+    button_holder = ft.Container()
+
+    def _show_status(message: str, *, error: bool = False) -> None:
+        status_text.value = message
+        status_text.color = "#EF4444" if error else theme.text_muted
+        try:
+            status_text.update()
+        except Exception:
+            pass
+
+    def _is_running() -> bool:
+        # Source-of-truth lives on STATE so the disabled state survives the
+        # full section rebuild that happens immediately after click. A
+        # closure-local flag was being reset to False by the rebuild and
+        # the button became clickable again mid-generation.
+        return STATE.activity == "generating"
+
+    def _render_button() -> None:
+        running = _is_running()
+        label = (
+            txt["match_generating_documents"] if running else txt["match_open_documents_btn"]
+        )
+        button_holder.content = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.WHITE, size=14),
+                    ft.Text(
+                        label,
+                        color=ft.Colors.WHITE,
+                        size=13,
+                        weight=ft.FontWeight.W_600,
+                    ),
+                ],
+                spacing=8,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.padding.symmetric(horizontal=18, vertical=10),
+            bgcolor=theme.primary,
+            border_radius=10,
+            ink=not running,
+            opacity=0.6 if running else 1.0,
+            on_click=(None if running else _start_generate_all),
+        )
+        try:
+            button_holder.update()
+        except Exception:
+            pass
+
+    def _start_generate_all(_e: ft.ControlEvent | None = None) -> None:
+        if _is_running():
+            return
+        STATE.activity = "generating"
+        STATE.last_error = ""
+        safe(REFS.rerender_context)
+        _show_status(txt["match_generating_documents"])
+        _render_button()
+        REFS.dispatch(_request_full_refresh)
+
+        def _worker() -> None:
+            try:
+                result = pipeline.generate_all_documents(output_lang=lang)
+                if not result.ok:
+                    _show_status(result.error, error=True)
+                    return
+                STATE.active_tab = TAB_DOCUMENTS
+            finally:
+                STATE.activity = "ready"
+                safe(REFS.rerender_context)
+                REFS.dispatch(_request_full_refresh)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     overall = int(match.get("overall_score") or 0)
     verdict = match.get("verdict") or ""
     categories = match.get("categories") or []
@@ -393,34 +497,24 @@ def build_match_tab(
         tight=True,
     )
 
+    _render_button()
+
     footer = ft.Container(
-        content=ft.Row(
+        content=ft.Column(
             controls=[
-                ft.Container(expand=True),
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.WHITE, size=14),
-                            ft.Text(
-                                txt["match_open_documents_btn"],
-                                color=ft.Colors.WHITE,
-                                size=13,
-                                weight=ft.FontWeight.W_600,
-                            ),
-                        ],
-                        spacing=8,
-                        tight=True,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.symmetric(horizontal=18, vertical=10),
-                    bgcolor=theme.primary,
-                    border_radius=10,
-                    ink=True,
-                    on_click=lambda e: on_navigate_tab(TAB_DOCUMENTS),
+                ft.Row(
+                    controls=[status_text],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Row(
+                    controls=[ft.Container(expand=True), button_holder],
+                    spacing=10,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=6,
+            tight=True,
         ),
         padding=ft.padding.symmetric(horizontal=24, vertical=12),
         border=ft.border.only(top=ft.BorderSide(1, theme.border)),

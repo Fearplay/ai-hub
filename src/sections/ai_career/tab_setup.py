@@ -36,6 +36,19 @@ from src.sections.ai_career.upload import upload_zone
 from src.theme import Theme
 
 
+def _request_full_refresh() -> None:
+    """Trigger a full section rebuild from anywhere in this module.
+
+    Lazy-imported so this module stays usable during section
+    auto-discovery (before :mod:`src.app` is loaded).
+    """
+    try:
+        from src.app import request_section_refresh
+    except Exception:
+        return
+    request_section_refresh()
+
+
 _RESUME_EXTENSIONS = ("pdf", "docx", "txt", "md", "html", "htm")
 _LINKEDIN_EXTENSIONS = ("pdf", "txt", "html", "htm")
 
@@ -185,7 +198,6 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
         on_change=lambda e: _set_text(e.control.value or ""),
     )
 
-    fetch_status = ft.Text("", color=theme.text_muted, size=12)
     fetch_btn = _flat_button(
         theme,
         txt["job_url_btn"],
@@ -207,12 +219,14 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
         url = (url_field.value or "").strip()
         if not url:
             return
-        fetch_status.value = txt["job_url_running"]
-        fetch_status.color = theme.text_muted
-        try:
-            fetch_status.update()
-        except Exception:
-            pass
+        if page is not None:
+            REFS.page = page
+        # Drive the right-hand Activity card immediately so the user
+        # sees something happening before the worker thread spins up.
+        STATE.activity = "scraping"
+        STATE.last_error = ""
+        safe(REFS.rerender_context)
+        REFS.dispatch(_request_full_refresh)
 
         def _worker() -> None:
             text, error = pipeline.fetch_job_text(url)
@@ -221,19 +235,13 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 STATE.job_url = url
                 STATE.job_text_source = "scrape"
                 text_area.value = text
-                fetch_status.value = ""
+                STATE.activity = "ready"
+                STATE.last_error = ""
             else:
-                fetch_status.value = error or txt["job_url_failed"]
-                fetch_status.color = "#EF4444"
-            try:
-                text_area.update()
-            except Exception:
-                pass
-            try:
-                fetch_status.update()
-            except Exception:
-                pass
-            on_state_change()
+                STATE.activity = "error"
+                STATE.last_error = error or txt["job_url_failed"]
+            safe(REFS.rerender_context)
+            REFS.dispatch(_request_full_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -244,7 +252,6 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            fetch_status,
             text_area,
         ],
         spacing=8,
@@ -516,11 +523,11 @@ def _footer_bar(
         pipeline.load_demo(output_lang=lang)
         STATE.active_tab = TAB_MATCH
         on_state_change()
-        safe(REFS.rerender_main)
+        REFS.dispatch(_request_full_refresh)
 
     def _go_to_match() -> None:
         STATE.active_tab = TAB_MATCH
-        safe(REFS.rerender_main)
+        REFS.dispatch(_request_full_refresh)
 
     def _phase2_match() -> None:
         """Step 3: match analysis (same thread or fresh thread, doesn't matter)."""
@@ -540,11 +547,13 @@ def _footer_bar(
             # Without a page we can't show the dialog; just continue silently.
             _phase2_match()
             return
+        REFS.page = page
 
         def _on_submit(answers: list[dict]) -> None:
             STATE.followup_qa = answers
             STATE.activity = "analyzing"
             safe(REFS.rerender_context)
+            REFS.dispatch(_request_full_refresh)
             threading.Thread(target=_phase2_match, daemon=True).start()
 
         def _on_cancel() -> None:
@@ -552,6 +561,7 @@ def _footer_bar(
             STATE.activity = "ready"
             safe(REFS.rerender_context)
             _set_stage("")
+            REFS.dispatch(_request_full_refresh)
 
         open_followup_dialog(
             page,
@@ -562,12 +572,16 @@ def _footer_bar(
             continue_label=txt["followup_continue"],
             answer_hint=txt["followup_answer_hint"],
             skip_all_label=txt["followup_skip_all"],
+            other_label=txt["followup_other_label"],
+            other_hint=txt["followup_other_hint"],
             questions=STATE.followup_questions,
             on_submit=_on_submit,
             on_cancel=_on_cancel,
         )
 
     def _on_run(page: Optional[ft.Page]) -> None:
+        if page is not None:
+            REFS.page = page
         if not STATE.can_run():
             _set_status(txt["run_disabled_hint"], error=True)
             return
@@ -631,7 +645,13 @@ def _footer_bar(
                     if STATE.followup_questions:
                         STATE.activity = "waiting_user"
                         safe(REFS.rerender_context)
-                        _open_followup_dialog(page)
+                        # Dialog must open on the page's asyncio loop. From a
+                        # worker thread ``page.show_dialog(...)`` only schedules
+                        # the patch and the loop doesn't run a tick until a
+                        # window event arrives - that's why the dialog used to
+                        # appear only after the user minimized / refocused the
+                        # window.
+                        REFS.dispatch(lambda: _open_followup_dialog(page))
                         return
 
                 _phase2_match()

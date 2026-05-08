@@ -148,8 +148,31 @@ FOLLOWUP_QUESTIONS_SYSTEM = (
     "Candidate already covers the JD, up to 12 when there are many gaps. "
     "There is no minimum or maximum quota beyond that.\n"
     "* Topics must be short labels (1-3 words). No duplicate topics in the "
-    "same response.\n"
-    "* OUTPUT_LANGUAGE applies to topic / question / rationale."
+    "same response.\n\n"
+    "ANSWER OPTIONS (every question must include them):\n"
+    "* Always provide 2-6 short answer options the candidate can click on. "
+    "Examples in OUTPUT_LANGUAGE:\n"
+    "    - 'Have you worked with n8n?' ->\n"
+    "       options: ['Yes, several workflows', 'Just tried it', 'No'], "
+    "       multi_select=false, allow_free_text=true\n"
+    "    - 'Which Azure services have you used?' ->\n"
+    "       options: ['App Service', 'Functions', 'Storage', 'AKS', 'Other'], "
+    "       multi_select=true, allow_free_text=true\n"
+    "    - 'Have you led a team?' ->\n"
+    "       options: ['Yes, of 1-3 people', 'Yes, of 4+ people', 'No, only mentored'], "
+    "       multi_select=false, allow_free_text=true\n"
+    "* Set multi_select=true ONLY when several options can apply at once "
+    "(tooling lists, services, languages). Otherwise multi_select=false.\n"
+    "* Set allow_free_text=true unless the options clearly enumerate every "
+    "possible answer (yes / no / unsure already covers everything).\n"
+    "* Keep each option short - ideally 1-4 words, never a full sentence.\n"
+    "* Options must be mutually exclusive when multi_select=false.\n\n"
+    "LANGUAGE (HARD REQUIREMENT):\n"
+    "* OUTPUT_LANGUAGE applies to topic, question, rationale AND every "
+    "option. If OUTPUT_LANGUAGE = cs (Czech), every string above must be "
+    "in Czech. NEVER mix English options into a Czech question.\n"
+    "* Examples in Czech: options like ['Ano, několik workflow', 'Jen "
+    "vyzkoušel', 'Ne'] - not ['Yes', 'No']."
 )
 
 
@@ -182,8 +205,19 @@ MATCH_ANALYSIS_SYSTEM = (
 
 TAILORED_CV_SYSTEM = (
     HR_EXPERT_RULES
-    + "\n\nTASK: Produce a TAILORED CV in Markdown. Apply rules 3, 4, 5, 8, 9,\n"
-    "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20. Use this skeleton:\n\n"
+    + "\n\nTASK: Produce a TAILORED CV in Markdown optimised for ATS parsing.\n"
+    "Apply rules 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20.\n\n"
+    "ATS-FIRST RULES (HARD REQUIREMENTS):\n"
+    "* Plain ASCII headings only (## Professional summary, ## Work experience).\n"
+    "  No emojis, no decorative glyphs, no horizontal rules, no separators\n"
+    "  other than line breaks.\n"
+    "* Mirror EXACT job-description terminology for skills and tools so the\n"
+    "  ATS keyword scanner counts them. Do not paraphrase 'CI/CD pipelines'\n"
+    "  into 'continuous integration' if the JD says CI/CD.\n"
+    "* Single column. No tables, no columns, no sidebars, no images.\n"
+    "* Inline contact line: email | phone | location. LinkedIn / GitHub get\n"
+    "  their own line under the contact line, only if present.\n"
+    "* Use this skeleton verbatim - section names matter:\n\n"
     "# {Full Name}\n"
     "{email | phone | location}\n"
     "{linkedin (only if present)} {github (only if present)}\n\n"
@@ -205,18 +239,102 @@ TAILORED_CV_SYSTEM = (
 
 MODERN_CV_SYSTEM = (
     HR_EXPERT_RULES
-    + "\n\nTASK: Produce a MODERN CV in Markdown. Same content as the tailored\n"
-    "CV but with a more compact, less keyword-stuffed style suitable for\n"
-    "human readers. Still single column, still ATS-clean. Output only the\n"
-    "Markdown."
+    + "\n\nTASK: Produce a MODERN CV in Markdown that catches a recruiter's\n"
+    "eye on first read. The tailored CV above is for the ATS bot; this one\n"
+    "is for the human screener. Same FACTS, different VOICE.\n\n"
+    "VISUAL RULES:\n"
+    "* Open with a one-line headline directly under the name (italic, role\n"
+    "  + years of experience + signature strength), e.g.\n"
+    "  '*Senior Frontend Engineer · 4+ years · React + TypeScript platform\n"
+    "  work*'. Pull this from the candidate's summary.\n"
+    "* Contact line uses subtle separators: 'email · phone · location · GitHub'.\n"
+    "  LinkedIn and GitHub appear inline only when present.\n"
+    "* Use horizontal rules ('---') between major sections so the document\n"
+    "  scans visually. Section headings use Title Case ('## About me',\n"
+    "  '## Recent work', '## Skills', '## Education', '## Languages').\n"
+    "* Each work entry uses a bold header line:\n"
+    "  '**{Role}** - {Company} · {period} · {location}'.\n"
+    "  Underneath, prefer 2-3 punchy bullets focused on outcomes ('Cut TTI\n"
+    "  by 38%', 'Mentored two juniors through their first quarter') over\n"
+    "  generic responsibilities.\n"
+    "* The skills section is a single readable line of pipe-separated\n"
+    "  technologies, grouped by domain ('Frontend: React · TypeScript ·\n"
+    "  Next.js | Tooling: Cypress · GitHub Actions').\n"
+    "* You MAY use small unicode markers in headings ONLY when they read\n"
+    "  cleanly in plain text (·, —, /). NO emojis, NO icons, NO images -\n"
+    "  Markdown still has to render in any reader.\n"
+    "* Single column. ATS-safe even though the audience is human - the\n"
+    "  recruiter often pastes both CVs into the same tool.\n\n"
+    "CONTENT RULES:\n"
+    "* Same factual content as the tailored CV (rules 3 / 4 still hold:\n"
+    "  every experience, education, certification entry stays).\n"
+    "* Tighter prose - cut filler, foreground numbers and verbs.\n"
+    "* No duplicated keywords for keyword's sake; the ATS version handles\n"
+    "  that.\n"
+    "* Output only the Markdown - no preamble, no closing notes."
+)
+
+
+MODERN_CV_DATA_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: Produce a MODERN CV PAYLOAD as the JSON described by the\n"
+    "schema. The result will drive a fancy two-column visual layout (teal\n"
+    "sidebar with contact / online / skills / languages on the left;\n"
+    "summary / leadership banner / experience cards / projects / education\n"
+    "/ certifications on the right) - it is NOT plain markdown.\n\n"
+    "STRICT RULES:\n"
+    "* Same factual content as the tailored CV. Rules 3 / 4 still hold -\n"
+    "  every WorkExperience, EducationEntry, CertificationEntry from the\n"
+    "  candidate appears. Reorder by relevance, never delete.\n"
+    "* Mirror EXACT terminology from the JD when describing skills /\n"
+    "  experience so the recruiter sees a clean alignment.\n"
+    "* Wrap **the most impactful 5-10 phrases** in the profile_summary in\n"
+    "  Markdown bold (**...**). Same trick inside leadership_highlights,\n"
+    "  experience bullets, project descriptions and certifications text -\n"
+    "  but ONLY around real wins / numbers / proper nouns. NEVER bold\n"
+    "  filler words.\n"
+    "* skill_groups: 6-9 groups, ordered by relevance to the target role.\n"
+    "  Each group has 3-7 short tags (1-3 words). Strip duplicates across\n"
+    "  groups (a tool belongs to its most-relevant group only).\n"
+    "* highlight_pills per experience entry: 0-5 short pills (1-3 words)\n"
+    "  summarising the role's signature themes (e.g. 'Mentoring',\n"
+    "  'CI/CD ownership', 'Framework design'). Empty array if nothing\n"
+    "  fits.\n"
+    "* leadership_highlights: 4-6 lines for senior / lead candidates;\n"
+    "  empty array for true juniors.\n"
+    "* online_links: only emit URLs that actually appeared in the\n"
+    "  candidate source. Strip any link the source did not contain.\n"
+    "* OUTPUT_LANGUAGE applies to every human string (group labels,\n"
+    "  pills, summaries, bullets). Tool / proper noun names stay as-is.\n"
+    "* DO NOT invent metrics, employers, projects, certifications, or\n"
+    "  team sizes. Use what's in the candidate JSON.\n"
+    "* Output ONLY the JSON described by the schema."
+)
+
+
+MODERN_CV_DATA_REFINE_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: REGENERATE the modern CV PAYLOAD JSON with the candidate's\n"
+    "list of problems / instructions applied. Same schema as the initial\n"
+    "generation. Apply EVERY problem on the list - if a problem asks for\n"
+    "a metric you do not have, leave a placeholder like '[insert metric]'\n"
+    "in that field instead of inventing a number. Output ONLY the JSON."
 )
 
 
 COVER_LETTER_SYSTEM = (
     HR_EXPERT_RULES
-    + "\n\nTASK: Write a cover letter in Markdown. Rules:\n\n"
+    + "\n\nTASK: Write a polished cover letter in Markdown that exports\n"
+    "cleanly to PDF. Rules:\n\n"
     "* Length 250-400 words on one page.\n"
-    "* 4 paragraphs:\n"
+    "* Top of the document, on separate lines:\n"
+    "  - Candidate full name (use a single bold line, no '#' heading).\n"
+    "  - Contact line: 'email · phone · location'.\n"
+    "  - Blank line.\n"
+    "  - Today's date is unknown to the model - omit the date entirely.\n"
+    "  - Salutation line: 'Dear {Company} team,' (or the hiring manager's\n"
+    "    name when the candidate provided it).\n"
+    "* 4 paragraphs (plain prose, NO markdown headings inside the body):\n"
     "  1. The Hook - specific connection to the company and the role,\n"
     "     never 'I am writing to express my interest...'.\n"
     "  2. The Evidence - 1-2 PAR (Problem-Action-Result) achievements\n"
@@ -225,11 +343,15 @@ COVER_LETTER_SYSTEM = (
     "  3. The Connection - a specific company detail (mission, recent\n"
     "     achievement, strategic direction) and why it resonates.\n"
     "  4. The Close - confident call to action with contact info.\n"
+    "* Sign-off: blank line, then 'Thank you for your time,' on its own\n"
+    "  line, blank line, then the candidate's full name on its own line.\n"
+    "* No bullet lists, no headings, no horizontal rules, no markdown\n"
+    "  beyond the bold name line and standard paragraphs - the goal is a\n"
+    "  letter that looks polished as a PDF, not a report.\n"
     "* Personalise: company name, job title, one company-specific detail,\n"
     "  achievements relevant to the role.\n"
-    "* No copy-paste filler, no generic openers, no resume duplication.\n"
-    "* Sign with the candidate's full name.\n\n"
-    "Output only the Markdown - greeting, paragraphs, sign-off."
+    "* No copy-paste filler, no generic openers, no resume duplication.\n\n"
+    "Output only the Markdown body of the letter."
 )
 
 
@@ -510,6 +632,58 @@ def build_refine_user(
             document_text,
         ]
     )
+
+
+def build_modern_cv_user(
+    *,
+    output_lang: str,
+    candidate: dict,
+    job_spec: dict,
+    match: dict,
+    current_payload: dict | None = None,
+    problems: list[str] | None = None,
+) -> str:
+    """User prompt for the Modern CV JSON generator.
+
+    On first run ``current_payload`` and ``problems`` are both empty, so
+    the LLM builds the payload from the structured candidate / job_spec
+    / match JSONs. On refine the previous payload + the problem list
+    are added so the LLM can regenerate addressing every concern while
+    keeping the surrounding facts intact.
+    """
+    parts: list[str] = [
+        language_directive(output_lang),
+        "",
+        "=== CANDIDATE JSON ===",
+        json.dumps(candidate, ensure_ascii=False),
+        "",
+        "=== JOB SPEC JSON ===",
+        json.dumps(job_spec, ensure_ascii=False),
+        "",
+        "=== MATCH ANALYSIS JSON ===",
+        json.dumps(match, ensure_ascii=False),
+    ]
+    if current_payload is not None:
+        parts += [
+            "",
+            "=== PREVIOUS MODERN CV PAYLOAD ===",
+            json.dumps(current_payload, ensure_ascii=False),
+        ]
+    if problems:
+        numbered = "\n".join(
+            f"{i + 1}. {p}" for i, p in enumerate(problems) if p.strip()
+        )
+        if numbered:
+            parts += [
+                "",
+                "=== PROBLEMS / INSTRUCTIONS FROM CANDIDATE ===",
+                numbered,
+                "",
+                "Regenerate the Modern CV payload addressing EVERY problem above. "
+                "Keep facts intact; never invent metrics or employers.",
+            ]
+    parts += ["", "Return only the Modern CV payload JSON."]
+    return "\n".join(parts)
 
 
 def serialize_github_summary(profile: Any) -> str:

@@ -116,6 +116,10 @@ class CareerState:
     candidate: Optional[dict] = None
     job_spec: Optional[dict] = None
     match: Optional[dict] = None
+    # Structured payload backing the fancy two-column Modern CV (teal
+    # sidebar, leadership banner, project cards). Lives outside
+    # ``documents`` because it is a JSON dict, not a markdown blob.
+    modern_cv_data: Optional[dict] = None
 
     # Optional clarifying-question step. Empty when the user did not opt in
     # (Settings -> "Ask follow-up questions before each run") or the AI saw
@@ -141,6 +145,7 @@ class CareerState:
         self.candidate = None
         self.job_spec = None
         self.match = None
+        self.modern_cv_data = None
         self.followup_questions = []
         self.followup_qa = []
         self.documents.clear()
@@ -155,6 +160,30 @@ class CareerState:
         self.chat_attachments = {}
         self.chat_running = False
         self.chat_last_error = ""
+
+    def reset_all(self) -> None:
+        """Hard wipe used by the "New analysis" menu / quick action.
+
+        Clears every input the user might have entered (job posting,
+        resume, LinkedIn, GitHub URL / token preference, target role) on
+        top of :meth:`reset_run` and :meth:`reset_chat`. Demo mode is
+        switched off so the next run defaults to the live pipeline. The
+        ``last_run_folder`` is intentionally cleared inside ``reset_run``
+        so "Save complete analysis" creates a fresh folder for the next
+        run.
+        """
+        self.reset_run()
+        self.reset_chat()
+        self.job_url = ""
+        self.job_text = ""
+        self.job_text_source = ""
+        self.resume = None
+        self.linkedin = None
+        self.github_url = ""
+        self.github_skip = False
+        self.github_profile = None
+        self.target_role = ""
+        self.demo_mode = False
 
     def has_results(self) -> bool:
         return self.match is not None

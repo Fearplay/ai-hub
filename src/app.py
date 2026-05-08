@@ -28,6 +28,28 @@ from src.sections._base import Section
 from src.theme import Theme, get_theme
 
 
+# Module-level handle to the running app so sections can request a full
+# rebuild without circular-importing the class. Sections call
+# ``request_section_refresh()`` (defined below) which forwards to the live
+# instance; this avoids passing ``self`` through every section's
+# build_view callback chain.
+_active_app: Optional["AIHubApp"] = None
+
+
+def request_section_refresh() -> None:
+    """Re-run ``section.build_view()`` for the currently active section.
+
+    Safe to call from anywhere (UI thread or worker thread) - the
+    underlying mutations happen synchronously, but the resulting
+    ``page.update()`` is enough to flush the new tree on Windows desktop.
+    Workers that want a guaranteed flush from a non-UI thread should pipe
+    this through ``REFS.dispatch(request_section_refresh)`` so the call
+    lands on the page's asyncio loop.
+    """
+    if _active_app is not None:
+        _active_app._refresh_active_section()
+
+
 class AIHubApp:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
@@ -38,6 +60,9 @@ class AIHubApp:
         self._main_container: Optional[ft.Container] = None
         self._context_container: Optional[ft.Container] = None
         self._sidebar_set_active: Optional[SetActive] = None
+
+        global _active_app
+        _active_app = self
 
         self._configure_page()
 
@@ -94,6 +119,46 @@ class AIHubApp:
         self._context_container.content = new_context
 
         self._sidebar_set_active(key)
+        try:
+            self._main_container.update()
+        except Exception:
+            pass
+        try:
+            self._context_container.update()
+        except Exception:
+            pass
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _refresh_active_section(self) -> None:
+        """Rebuild the currently active section's center + right column.
+
+        Used by sections (via :func:`request_section_refresh`) when their
+        internal state changes in a way that needs the entire view
+        re-laid out - tab change, mode toggle, "New analysis" reset,
+        worker thread completion, etc. We reuse the same machinery as
+        :meth:`set_section` because the per-section ``content_holder``
+        mutation pattern is unreliable for deep subtrees in Flet 0.84
+        (see plan: ai-cv-refresh-fix).
+        """
+        if (
+            self._main_container is None
+            or self._context_container is None
+        ):
+            return
+        section = SECTION_BY_KEY.get(self.active_section)
+        if section is None:
+            return
+        section_theme = self._section_theme(section)
+        try:
+            new_main = section.build_view(section_theme, self.lang)
+            new_context = self._build_context_for(section, section_theme)
+        except Exception:
+            return
+        self._main_container.content = new_main
+        self._context_container.content = new_context
         try:
             self._main_container.update()
         except Exception:

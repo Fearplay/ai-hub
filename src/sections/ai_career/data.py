@@ -438,3 +438,154 @@ DEMO_DOCUMENTS = {
     "interview_prep": "_demo_interview_prep",
     "skill_gap": "_demo_skill_gap",
 }
+
+
+def demo_modern_cv(lang: str) -> dict:
+    """Hand-curated Modern CV payload that drives the fancy two-column view."""
+    if lang == "cs":
+        return {
+            "full_name": "Jan Novák",
+            "role_headline": "Senior Frontend Engineer",
+            "role_subtitle": "React + TypeScript · platformový tým",
+            "contact": {
+                "location": "Praha, Česko",
+                "email": "jan.novak@email.cz",
+                "phone": "+420 777 123 456",
+            },
+            "online_links": [
+                {"icon": "gh", "label": "github.com/jannovak", "url": "https://github.com/jannovak"},
+            ],
+            "skill_groups": [
+                {"label": "Frontend core", "tags": ["React", "TypeScript", "Next.js", "Redux Toolkit"]},
+                {"label": "Quality", "tags": ["Cypress", "Jest"]},
+                {"label": "Tooling & CI", "tags": ["GitHub Actions"]},
+                {"label": "Design system", "tags": ["Component design", "Tokens"]},
+                {"label": "Spolupráce", "tags": ["Mentoring", "Code review", "Spolupráce s designery"]},
+            ],
+            "languages": [
+                {"name": "Čeština", "level": "C2"},
+                {"name": "Angličtina", "level": "C1"},
+            ],
+            "profile_summary": (
+                "**Frontend developer se 4 lety praxe** v Reactu a TypeScriptu. "
+                "Cílí na pozici **Senior Frontend Engineer** v platformovém týmu. "
+                "Vedl **migraci AngularJS storefrontu na Next.js** v Acme Retail "
+                "se snížením **Time to Interactive o 38 %**. Spoluvlastní část design "
+                "systému - dodal **24 znovupoužitelných React komponent** používaných "
+                "**6 produktovými týmy**. Mentoroval **dva juniorní vývojáře** v jejich "
+                "prvním kvartálu."
+            ),
+            "leadership_highlights": [
+                "**Vedl migraci** legacy AngularJS storefrontu na **Next.js** (TTI -38 %)",
+                "**Spoluvlastník** 24 komponent design systému pro **6 produktových týmů**",
+                "**Mentoring** dvou juniorních vývojářů během prvního kvartálu",
+                "Nastavil **CI pipeline (GitHub Actions + Cypress)** pro 5 inženýrů",
+            ],
+            "experience": [
+                {
+                    "role": "Frontend Developer",
+                    "period": "08/2022 - dosud",
+                    "company": "Acme Retail",
+                    "context": "· Praha",
+                    "highlight_pills": ["Next.js migrace", "Design systém", "Mentoring"],
+                    "bullets": [
+                        "**Vedl migraci legacy AngularJS storefrontu** na **Next.js**; **Time to Interactive klesl o 38 %**.",
+                        "**Spoluvlastnil design systém** - dodal **24 znovupoužitelných React komponent** používaných **6 produktovými týmy**.",
+                        "**Mentoroval dva juniorní vývojáře** v jejich prvním kvartálu - týdenní 1:1 a párové review.",
+                    ],
+                },
+                {
+                    "role": "Junior Frontend Developer",
+                    "period": "06/2020 - 07/2022",
+                    "company": "StartHub s.r.o.",
+                    "context": "· Praha · Fintech B2B",
+                    "highlight_pills": ["React + TypeScript", "CI/CD"],
+                    "bullets": [
+                        "Postavil **zákaznický dashboard** v **Reactu + TypeScriptu** pro fintech B2B produkt (**4 000 DAU**).",
+                        "Nastavil **CI pipeline (GitHub Actions, Cypress)**, kterou používá **5 frontend inženýrů**.",
+                    ],
+                },
+            ],
+            "projects": [],
+            "education": [
+                {
+                    "title": "Bakalář, Informatika",
+                    "sub": "České vysoké učení technické v Praze",
+                    "period": "2017 - 2020",
+                },
+            ],
+            "certifications": [],
+        }
+    return {
+        "full_name": "Jan Novák",
+        "role_headline": "Senior Frontend Engineer",
+        "role_subtitle": "React + TypeScript · platform work",
+        "contact": {
+            "location": "Prague, Czech Republic",
+            "email": "jan.novak@email.cz",
+            "phone": "+420 777 123 456",
+        },
+        "online_links": [
+            {"icon": "gh", "label": "github.com/jannovak", "url": "https://github.com/jannovak"},
+        ],
+        "skill_groups": [
+            {"label": "Frontend core", "tags": ["React", "TypeScript", "Next.js", "Redux Toolkit"]},
+            {"label": "Quality", "tags": ["Cypress", "Jest"]},
+            {"label": "Tooling & CI", "tags": ["GitHub Actions"]},
+            {"label": "Design system", "tags": ["Component design", "Tokens"]},
+            {"label": "Collaboration", "tags": ["Mentoring", "Code review", "Designer pairing"]},
+        ],
+        "languages": [
+            {"name": "Czech", "level": "C2"},
+            {"name": "English", "level": "C1"},
+        ],
+        "profile_summary": (
+            "**Frontend developer with 4 years of experience** in React and "
+            "TypeScript, targeting a **Senior Frontend Engineer** role on a "
+            "platform team. Led the **AngularJS-to-Next.js migration** at Acme "
+            "Retail with a **38% Time to Interactive cut**. Co-owns the design "
+            "system slice - shipped **24 reusable React components** used across "
+            "**6 product squads**. Mentored **two junior developers** through "
+            "their first quarter."
+        ),
+        "leadership_highlights": [
+            "**Led the AngularJS to Next.js migration** (Time to Interactive -38%)",
+            "**Co-owner** of 24 design-system components used by **6 product squads**",
+            "**Mentored** two junior developers through their first quarter",
+            "Set up the **CI pipeline (GitHub Actions + Cypress)** for 5 engineers",
+        ],
+        "experience": [
+            {
+                "role": "Frontend Developer",
+                "period": "08/2022 - present",
+                "company": "Acme Retail",
+                "context": "· Prague",
+                "highlight_pills": ["Next.js migration", "Design system", "Mentoring"],
+                "bullets": [
+                    "**Led the migration of the legacy AngularJS storefront** to **Next.js**, cutting **Time to Interactive by 38%**.",
+                    "**Co-owned the design system slice** - shipped **24 reusable React components** used by **6 product squads**.",
+                    "**Mentored two junior developers** through their first quarter (weekly 1:1, code-review pairing).",
+                ],
+            },
+            {
+                "role": "Junior Frontend Developer",
+                "period": "06/2020 - 07/2022",
+                "company": "StartHub s.r.o.",
+                "context": "· Prague · Fintech B2B",
+                "highlight_pills": ["React + TypeScript", "CI/CD"],
+                "bullets": [
+                    "Built the **customer dashboard** in **React + TypeScript** for a fintech B2B product (**4,000 DAU**).",
+                    "Set up the **CI pipeline (GitHub Actions, Cypress)** used by **5 frontend engineers**.",
+                ],
+            },
+        ],
+        "projects": [],
+        "education": [
+            {
+                "title": "Bachelor of Computer Science",
+                "sub": "Czech Technical University in Prague",
+                "period": "2017 - 2020",
+            },
+        ],
+        "certifications": [],
+    }

@@ -18,12 +18,13 @@ import sys
 import threading
 from typing import Callable, Optional
 
+import json
+
 import flet as ft
 
 from src.components.tab_bar import tab_bar
 from src.services import exporter, store
-from src.services.cost_tracker import COST
-from src.sections.ai_career import pipeline
+from src.sections.ai_career import modern_cv_render, pipeline
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
@@ -60,6 +61,27 @@ _DOC_FILE_BASENAMES = {
     DOC_SKILL_GAP: "Skill_Gap_Plan",
     DOC_EVIDENCE: "Evidence_Report",
 }
+
+# Per-kind export plan used by "Save complete analysis".
+#
+# The CVs ship as both HTML (open-in-browser preview) and PDF (the file
+# the candidate sends to the recruiter). The Cover Letter is PDF-only by
+# design - prose document; HTML markup tends to look worse than the PDF.
+# The remaining narrative documents (match report, interview prep, etc.)
+# get HTML + Markdown so the candidate can read them in a browser and
+# also edit / quote from them in their notes.
+_EXPORT_PLAN: dict[str, tuple[str, ...]] = {
+    DOC_TAILORED_CV: ("html", "pdf"),
+    DOC_MODERN_CV: ("html", "pdf"),
+    DOC_COVER_LETTER: ("pdf",),
+    DOC_MATCH_REPORT: ("html", "md"),
+    DOC_INTERVIEW_PREP: ("html", "md"),
+    DOC_SKILL_GAP: ("html", "md"),
+    DOC_EVIDENCE: ("html", "md"),
+}
+
+# Document kinds that should render with the "modern" CSS / PDF style.
+_MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
 def _visible_doc_kinds() -> list[str]:
@@ -131,6 +153,28 @@ def _document_body(theme: Theme, txt: dict, kind: str) -> ft.Control:
             padding=40,
             alignment=ft.Alignment.CENTER,
         )
+
+    if kind == DOC_MODERN_CV:
+        # Modern CV is the structured JSON payload + the dedicated
+        # two-column renderer. Falls back to the empty placeholder when
+        # the user hasn't generated it yet.
+        if STATE.modern_cv_data:
+            return modern_cv_render.render_view(theme, STATE.modern_cv_data)
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Icon(ft.Icons.HOURGLASS_EMPTY_ROUNDED, color=theme.text_muted, size=36),
+                    ft.Text(txt["doc_empty_title"], color=theme.text, size=15, weight=ft.FontWeight.W_700),
+                    ft.Text(txt["doc_empty_desc"], color=theme.text_muted, size=12, text_align=ft.TextAlign.CENTER),
+                ],
+                spacing=10,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            padding=30,
+            alignment=ft.Alignment.CENTER,
+        )
+
     body_text = STATE.documents.get(kind) or ""
     if not body_text:
         return ft.Container(
@@ -272,7 +316,12 @@ def _build_active_doc_panel(
         except Exception:
             pass
 
-    has_text = bool(STATE.documents.get(kind))
+    if kind == DOC_MODERN_CV:
+        # Modern CV is keyed off ``STATE.modern_cv_data`` (structured
+        # JSON), not ``STATE.documents`` which holds markdown bodies.
+        has_text = bool(STATE.modern_cv_data)
+    else:
+        has_text = bool(STATE.documents.get(kind))
     is_evidence_locked = (
         kind == DOC_EVIDENCE
         and not (STATE.candidate and STATE.candidate.get("github_present"))
@@ -325,7 +374,10 @@ def _build_active_doc_panel(
                 if result.ok:
                     show_status("", False)
                     nonlocal has_text
-                    has_text = bool(STATE.documents.get(kind))
+                    if kind == DOC_MODERN_CV:
+                        has_text = bool(STATE.modern_cv_data)
+                    else:
+                        has_text = bool(STATE.documents.get(kind))
                     _refresh_body()
                 else:
                     show_status(result.error, True)
@@ -422,6 +474,9 @@ def build_documents_tab(
             pass
 
     def _refresh_body() -> None:
+        # In-place swap of the doc panel - cheaper than a full section
+        # rebuild when the user is just flipping between sub-tabs and
+        # everything else (header, stage tab bar, footer) is unchanged.
         body_holder.content = _build_active_doc_panel(
             theme,
             lang,
@@ -435,25 +490,43 @@ def build_documents_tab(
         except Exception:
             pass
 
-    REFS.rerender_documents = _refresh_body
+    tab_bar_holder = ft.Container()
+
+    def _refresh_tab_bar() -> None:
+        # Rebuilding the whole tab_bar widget is the cheapest way to move
+        # the active-state highlight to the clicked tab; the underlying
+        # ``_tab`` controls bake the bold + underline into their initial
+        # render and don't reactively update when ``active_index`` changes.
+        tab_bar_holder.content = tab_bar(
+            theme,
+            tabs=tab_labels,
+            active_index=visible_kinds.index(STATE.active_document),
+            on_change=_on_doc_tab,
+        )
+        try:
+            tab_bar_holder.update()
+        except Exception:
+            pass
 
     def _on_doc_tab(idx: int) -> None:
         STATE.active_document = visible_kinds[idx]
+        _refresh_tab_bar()
         _refresh_body()
 
-    sub_tab_bar = tab_bar(
-        theme,
-        tabs=tab_labels,
-        active_index=visible_kinds.index(STATE.active_document),
-        on_change=_on_doc_tab,
-    )
-
+    _refresh_tab_bar()
     _refresh_body()
 
     def _export(kind_action: str) -> None:
         kind = STATE.active_document
-        text = STATE.documents.get(kind, "")
-        if not text and kind_action != "all":
+        # Modern CV is structured JSON, the others are markdown bodies.
+        if kind == DOC_MODERN_CV:
+            has_payload = bool(STATE.modern_cv_data)
+            text = ""
+        else:
+            text = STATE.documents.get(kind, "")
+            has_payload = bool(text)
+
+        if not has_payload and kind_action != "all":
             _show_status(txt["doc_empty_title"], True)
             return
         role = ""
@@ -469,77 +542,75 @@ def build_documents_tab(
 
                 folder_path = Path(folder)
                 if kind_action == "all":
-                    for k, t_text in STATE.documents.items():
-                        if not t_text:
-                            continue
-                        basename = _DOC_FILE_BASENAMES.get(k, k)
-                        try:
-                            exporter.export_all(t_text, folder_path, basename, title=basename.replace("_", " "))
-                        except RuntimeError:
-                            pass
-                    candidate = STATE.candidate or {}
-                    job_spec = STATE.job_spec or {}
-                    match = STATE.match or {}
-                    store.write_json_file(
-                        folder_path,
-                        "summary.json",
-                        {
-                            "candidate": candidate,
-                            "job_spec": job_spec,
-                            "match": match,
-                            "cost": {
-                                "calls": COST.calls,
-                                "tokens": COST.tokens_total,
-                                "usd": COST.cost_usd,
-                            },
-                        },
-                    )
-                    _persist_history()
-                    _show_status(txt["export_ok_template"].format(path=str(folder_path)), False)
-                else:
-                    basename = _DOC_FILE_BASENAMES.get(kind, kind)
-                    title = basename.replace("_", " ")
-                    if kind_action == "md":
-                        path = exporter.export_markdown(text, folder_path / f"{basename}.md")
-                    elif kind_action == "html":
-                        path = exporter.export_html(text, folder_path / f"{basename}.html", title=title)
-                    elif kind_action == "docx":
-                        path = exporter.export_docx(text, folder_path / f"{basename}.docx", title=title)
+                    save = pipeline.save_full_analysis()
+                    if save.ok:
+                        _show_status(
+                            txt["export_ok_template"].format(path=save.folder),
+                            False,
+                        )
+                    else:
+                        _show_status(txt["doc_empty_title"], True)
+                    return
+                basename = _DOC_FILE_BASENAMES.get(kind, kind)
+                title = basename.replace("_", " ")
+                style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
+
+                # Modern CV ships from the dedicated two-column renderer
+                # so the HTML / PDF look exactly like the in-app preview.
+                if kind == DOC_MODERN_CV:
+                    target_html = folder_path / f"{basename}.html"
+                    target_pdf = folder_path / f"{basename}.pdf"
+                    if kind_action == "html":
+                        target_html.parent.mkdir(parents=True, exist_ok=True)
+                        target_html.write_text(
+                            modern_cv_render.render_html(STATE.modern_cv_data),
+                            encoding="utf-8",
+                        )
+                        path = target_html
                     elif kind_action == "pdf":
-                        path = exporter.export_pdf(text, folder_path / f"{basename}.pdf", title=title)
+                        path = modern_cv_render.render_pdf(STATE.modern_cv_data, target_pdf)
+                    elif kind_action == "md":
+                        # Escape hatch: dump the structured payload as
+                        # JSON so the user can grab the raw fields.
+                        target_md = folder_path / f"{basename}.json"
+                        target_md.parent.mkdir(parents=True, exist_ok=True)
+                        target_md.write_text(
+                            json.dumps(STATE.modern_cv_data or {}, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        path = target_md
+                    elif kind_action == "docx":
+                        _show_status(
+                            txt["export_failed_template"].format(
+                                error="DOCX is not supported for the Modern CV - export HTML or PDF instead."
+                            ),
+                            True,
+                        )
+                        return
                     else:
                         return
                     _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                    return
+
+                if kind_action == "md":
+                    path = exporter.export_markdown(text, folder_path / f"{basename}.md")
+                elif kind_action == "html":
+                    path = exporter.export_html(
+                        text, folder_path / f"{basename}.html", title=title, style=style
+                    )
+                elif kind_action == "docx":
+                    path = exporter.export_docx(text, folder_path / f"{basename}.docx", title=title)
+                elif kind_action == "pdf":
+                    path = exporter.export_pdf(
+                        text, folder_path / f"{basename}.pdf", title=title, style=style
+                    )
+                else:
+                    return
+                _show_status(txt["export_ok_template"].format(path=str(path)), False)
             except Exception as exc:
                 _show_status(txt["export_failed_template"].format(error=str(exc)), True)
 
         threading.Thread(target=_worker, daemon=True).start()
-
-    def _persist_history() -> None:
-        try:
-            role = ""
-            company = ""
-            if STATE.job_spec:
-                role = str(STATE.job_spec.get("title") or "")
-                company = str(STATE.job_spec.get("company") or "")
-            score = int((STATE.match or {}).get("overall_score") or 0)
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            summary = store.RunSummary(
-                timestamp=timestamp,
-                role=role,
-                company=company,
-                overall_score=score,
-                folder=STATE.last_run_folder,
-                provider=("demo" if STATE.demo_mode else ""),
-                model=("demo" if STATE.demo_mode else ""),
-                cost_usd=0.0 if STATE.demo_mode else float(COST.cost_usd),
-                docs=list(STATE.documents.keys()),
-            )
-            store.append_run(summary)
-        except Exception:
-            pass
 
     footer = ft.Container(
         content=ft.Column(
@@ -574,7 +645,7 @@ def build_documents_tab(
 
     return ft.Column(
         controls=[
-            sub_tab_bar,
+            tab_bar_holder,
             ft.Container(content=body_holder, expand=True, padding=ft.padding.symmetric(horizontal=18, vertical=14)),
             footer,
         ],
