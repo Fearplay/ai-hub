@@ -16,4 +16,5 @@ SECTION = Section(
     build_view=build_view,
     order=40,
     nav_group="secondary",
+    wide_layout=True,
 )

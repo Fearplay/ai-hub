@@ -317,11 +317,19 @@ class AIHubApp:
     def _build_context_for(self, section: Optional[Section], theme: Theme) -> ft.Control:
         if section and section.build_context:
             return section.build_context(theme, self.lang)
+        if section and section.wide_layout:
+            # Wide-layout sections want the right slot collapsed entirely
+            # so the center body can use the full available width. A bare
+            # ``ft.Container()`` has zero size and no border so the layout
+            # row simply skips it.
+            return ft.Container()
         return empty_context_panel(theme)
 
     def _safe_context_for(self, section: Optional[Section], theme: Theme) -> ft.Control:
         if section and section.build_context:
             return section.safe_build_context(theme, self.lang)
+        if section and section.wide_layout:
+            return ft.Container()
         return empty_context_panel(theme)
 
     def _resolve_section(self) -> Optional[Section]:

@@ -10,6 +10,11 @@ all subfolders, so adding a new section never touches a shared file.
 * ``"primary"`` (default) — main feature list under the "+ New chat" button.
 * ``"secondary"`` — auxiliary list under the divider (History, Favorites,
   Settings). Same auto-discovery rules apply.
+
+``wide_layout`` lets a section opt out of the 336 px right context
+panel so it can use the full window width (sidebar minus). Used by
+sections without a ``build_context`` whose body benefits from the extra
+horizontal space (Settings, Debug logs, History, …).
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ class Section:
     badge: Optional[str] = None
     accent: Optional[str] = None
     nav_group: NavGroup = "primary"
+    wide_layout: bool = False
 
     def label(self, lang: str) -> str:
         return self.labels.get(lang) or self.labels.get("en") or self.key

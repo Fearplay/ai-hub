@@ -71,14 +71,32 @@ def _request_full_refresh() -> None:
 
 
 def _set_activity(value: str) -> None:
+    """Update the right-hand activity badge from any thread.
+
+    The pipeline is mostly called on background daemon threads (so the
+    UI stays responsive while the LLM call is in flight). Routing the
+    refresh through :meth:`REFS.request_context_refresh` guarantees the
+    new badge is shown immediately - on the UI loop tick - instead of
+    being queued behind whatever the user does next. Without this the
+    user saw a stale "Ready" label even though the worker was busy.
+    """
+    prev = STATE.activity
     STATE.activity = value
-    safe(REFS.rerender_context)
+    if prev != value:
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "activity_change",
+            prev=prev,
+            new=value,
+        )
+    REFS.request_context_refresh()
 
 
 def _set_error(message: str) -> PipelineResult:
     STATE.activity = "error"
     STATE.last_error = message
-    safe(REFS.rerender_context)
+    REFS.request_context_refresh()
     logger_service.log_event(
         "ERROR", "ai_career.pipeline", "set_error", message=message
     )
@@ -980,8 +998,11 @@ def _export_cover_letter(
     html_target = target.with_suffix(".html")
     try:
         html_target.write_text(cover_html, encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "export_cover_letter_html_write_failed", exc,
+            target=str(html_target),
+        )
 
     try:
         html_pdf.render_html_to_pdf(cover_html, target)
@@ -1068,10 +1089,16 @@ def save_full_analysis() -> SaveResult:
                     theme=active_theme,
                     output_lang=cover_lang,
                 )
-            except Exception:
+            except Exception as exc:
                 # Fall back to the legacy renderer if Playwright is not
                 # reachable. The user still gets a PDF; it just won't
                 # carry the chosen accent colour.
+                logger_service.log_exception(
+                    "ai_career.pipeline",
+                    "save_full_cover_letter_themed_failed",
+                    exc,
+                    folder=str(folder_path),
+                )
                 try:
                     exporter.export_pdf(
                         body_text,
@@ -1079,8 +1106,13 @@ def save_full_analysis() -> SaveResult:
                         title=title,
                         style=style,
                     )
-                except RuntimeError:
-                    pass
+                except RuntimeError as exc2:
+                    logger_service.log_exception(
+                        "ai_career.pipeline",
+                        "save_full_cover_letter_fallback_failed",
+                        exc2,
+                        folder=str(folder_path),
+                    )
             continue
 
         for fmt in formats:
@@ -1105,9 +1137,19 @@ def save_full_analysis() -> SaveResult:
                         title=title,
                         style=style,
                     )
-            except RuntimeError:
+            except RuntimeError as exc:
                 # Optional dep (e.g. python-docx) is missing on this
-                # machine. Skip this format and keep going.
+                # machine. Skip this format and keep going - log the
+                # specific format so the user can install the
+                # dependency if they want that output.
+                logger_service.log_event(
+                    "WARNING",
+                    "ai_career.pipeline",
+                    "save_full_format_unavailable",
+                    kind=kind,
+                    fmt=fmt,
+                    error=str(exc),
+                )
                 continue
 
     # Modern CV - structured payload + custom two-column renderer.
@@ -1120,16 +1162,22 @@ def save_full_analysis() -> SaveResult:
                 ),
                 encoding="utf-8",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.pipeline", "save_full_modern_cv_html_failed", exc,
+                folder=str(folder_path),
+            )
         try:
             modern_cv_render.render_pdf(
                 STATE.modern_cv_data,
                 folder_path / f"{basename}.pdf",
                 output_lang=output_lang,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.pipeline", "save_full_modern_cv_pdf_failed", exc,
+                folder=str(folder_path),
+            )
         try:
             import json as _json
 
@@ -1137,8 +1185,11 @@ def save_full_analysis() -> SaveResult:
                 _json.dumps(STATE.modern_cv_data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.pipeline", "save_full_modern_cv_json_failed", exc,
+                folder=str(folder_path),
+            )
 
     candidate = STATE.candidate or {}
     job_spec = STATE.job_spec or {}
@@ -1162,8 +1213,11 @@ def save_full_analysis() -> SaveResult:
                 },
             },
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "save_full_summary_json_failed", exc,
+            folder=str(folder_path),
+        )
 
     # Rich one-pager summary - assembled deterministically from the
     # already-cached match analysis + tailored CV + cover letter so the
@@ -1183,8 +1237,11 @@ def save_full_analysis() -> SaveResult:
             timestamp=_dt.now().strftime("%Y-%m-%d %H:%M"),
         )
         (folder_path / "summary.html").write_text(summary_html, encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "save_full_summary_html_failed", exc,
+            folder=str(folder_path),
+        )
 
     try:
         from datetime import datetime
@@ -1229,6 +1286,7 @@ def save_full_analysis() -> SaveResult:
 # Combined "Run analysis" entry point ----------------------------------------
 
 
+@logger_service.timed_call("ai_career.pipeline", "run_full_analysis")
 def run_full_analysis(
     *,
     output_lang: str,
@@ -1240,6 +1298,10 @@ def run_full_analysis(
     ``on_step`` is invoked after each successful step with one of
     ``"candidate"`` / ``"job_spec"`` / ``"match"``. Failure short-circuits
     the chain and returns the original error.
+
+    Wrapped in :func:`timed_call` so the debug log shows
+    ``run_full_analysis_start`` / ``..._done`` with ``elapsed_ms`` -
+    handy when the user complains that "Run analysis" felt slow.
     """
     STATE.last_error = ""
 
@@ -1262,7 +1324,14 @@ def run_full_analysis(
         on_step("match")
 
     STATE.activity = "ready"
-    safe(REFS.rerender_context)
+    REFS.request_context_refresh()
+    logger_service.log_state(
+        "ai_career.pipeline", "run_full_analysis_state",
+        activity=STATE.activity,
+        has_candidate=bool(STATE.candidate),
+        has_job_spec=bool(STATE.job_spec),
+        has_match=bool(STATE.match),
+    )
     return PipelineResult(ok=True)
 
 

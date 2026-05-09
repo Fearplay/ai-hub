@@ -1,14 +1,13 @@
-"""Chat-mode body for the AI Career section (Version B).
+"""Chat-mode body for the AI LinkedIn section.
 
-The Chat tab is the conversational counterpart to the structured Form
-mode. The user types in a free-form prompt, optionally attaches a CV or
-job posting, and the HR-expert assistant replies inline. Every turn is
-appended to :data:`STATE.chat_messages`; attachments parse to plain
-text and live in :data:`STATE.chat_attachments` so subsequent prompts
-can reference the same documents without re-reading the disk.
+The user types a free-form prompt, optionally attaches a CV / LinkedIn
+export, and the LinkedIn voice expert replies inline. Every turn is
+appended to :data:`STATE.chat_messages`; attachments parse to plain text
+into :data:`STATE.chat_attachments` so subsequent prompts can reference
+the same documents without re-reading the disk.
 
 Demo mode short-circuits the network call via
-:func:`src.sections.ai_career.pipeline.send_chat_message`, so the chat
+:func:`src.sections.ai_linkedin.pipeline.send_chat_message`, so the chat
 flow can be exercised without an API key.
 """
 
@@ -21,26 +20,25 @@ from typing import Callable, Optional
 
 import flet as ft
 
-from src.services import clipboard, logger as logger_service
+from src.services import logger as logger_service
 from src.services.file_parser import ParsedFile, parse_file
-from src.sections.ai_career import pipeline
-from src.sections.ai_career.refs import REFS, safe
-from src.sections.ai_career.state import (
-    MODE_FORM,
+from src.sections.ai_linkedin import pipeline
+from src.sections.ai_linkedin.refs import REFS, safe
+from src.sections.ai_linkedin.state import (
+    MODE_BUILDER,
     STATE,
     TAB_SETUP,
 )
-from src.sections.ai_career.strings import s
+from src.sections.ai_linkedin.strings import s
 from src.theme import Theme
 
 
 def _request_full_refresh() -> None:
-    """Trigger a full section rebuild from anywhere in this module."""
     try:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_chat", "request_full_refresh_import", exc
+            "ai_linkedin.tab_chat", "request_full_refresh_import", exc,
         )
         return
     request_section_refresh()
@@ -125,7 +123,7 @@ def _assistant_bubble(theme: Theme, *, text: str, time_label: str) -> ft.Row:
         border_radius=14,
     )
     avatar = ft.Container(
-        content=ft.Icon(ft.Icons.WORK_OUTLINE, color=ft.Colors.WHITE, size=18),
+        content=ft.Icon(ft.Icons.HUB_OUTLINED, color=ft.Colors.WHITE, size=18),
         width=36,
         height=36,
         bgcolor=theme.primary,
@@ -156,7 +154,12 @@ def _assistant_bubble(theme: Theme, *, text: str, time_label: str) -> ft.Row:
 def _intro_bubble(theme: Theme, txt: dict) -> ft.Row:
     return _assistant_bubble(
         theme,
-        text=txt["chat_mode_greeting"],
+        text=(
+            "Hi! I'm your LinkedIn voice expert. Ask me to improve your headline,"
+            " critique your About, draft a learning-update post or write a"
+            " recruiter outreach DM. Switch to **Builder** mode whenever you"
+            " want me to run a full profile pass."
+        ),
         time_label=datetime.now().strftime("%H:%M"),
     )
 
@@ -228,7 +231,7 @@ def _input_bar(
     on_after_send: Callable[[], None],
 ) -> ft.Container:
     text_field = ft.TextField(
-        hint_text=txt["chat_mode_send_hint"],
+        hint_text=txt["chat_placeholder"],
         hint_style=ft.TextStyle(color=theme.text_subtle, size=13),
         text_style=ft.TextStyle(color=theme.text, size=14),
         border=ft.InputBorder.NONE,
@@ -244,18 +247,10 @@ def _input_bar(
 
     pending_attachment: dict[str, Optional[ParsedFile]] = {"file": None}
 
-    # Flet 0.84 dropped ``FilePicker(on_result=...)`` and turned
-    # ``pick_files()`` into an async function that returns the picked
-    # files directly. We follow the same pattern used by
-    # ``ai_career/upload.py`` and ``ai_legal/drop_zone.py`` -
-    # ``await file_picker.pick_files(...)`` from an async click handler
-    # and register the picker as a service on first use.
     file_picker = ft.FilePicker()
     picker_registered: dict[str, bool] = {"done": False}
 
     status_text = ft.Text("", color=theme.text_muted, size=11)
-    # Holders we re-render whenever the staged attachment changes so the
-    # chip + drop-target affordance stay in sync with reality.
     attachment_chip_holder = ft.Container(visible=False)
     drop_hint_holder = ft.Container(visible=True)
     input_row_holder = ft.Container()
@@ -266,7 +261,6 @@ def _input_bar(
         logger_service.try_update(status_text)
 
     def _build_attachment_chip(attachment: ParsedFile) -> ft.Control:
-        """Removable pill above the input row showing the staged file."""
         return ft.Container(
             content=ft.Row(
                 controls=[
@@ -283,7 +277,6 @@ def _input_bar(
                         icon=ft.Icons.CLOSE,
                         icon_size=14,
                         icon_color=theme.text_muted,
-                        tooltip=txt["chat_mode_attachment_remove"],
                         on_click=_remove_attachment,
                         padding=0,
                     ),
@@ -300,22 +293,12 @@ def _input_bar(
 
     def _refresh_attachment_visuals() -> None:
         attachment = pending_attachment["file"]
-        # NOTE on real OS-level file drop:
-        # Flet 0.84 does not surface OS drag-and-drop events on the
-        # ``flet pack`` runtime we ship through ``build_exe.bat`` (the
-        # only renderer that supports it - flet-dropzone - requires
-        # ``flet build`` + Flutter SDK + Visual Studio C++ workload,
-        # which violates the "no prerequisites" promise from
-        # ``build-exe.mdc``). The dashed border + hint label below are a
-        # *visual* affordance: clicking anywhere in the input row opens
-        # the file picker, which is functionally equivalent to dropping
-        # a file. Revisit if/when we move off ``flet pack``.
         if attachment is None:
             attachment_chip_holder.content = None
             attachment_chip_holder.visible = False
             drop_hint_holder.visible = True
             input_row_holder.border = ft.border.all(
-                1.5, ft.Colors.with_opacity(0.55, theme.border)
+                1.5, ft.Colors.with_opacity(0.55, theme.border),
             )
             _set_status("")
         else:
@@ -323,7 +306,7 @@ def _input_bar(
             attachment_chip_holder.visible = True
             drop_hint_holder.visible = False
             input_row_holder.border = ft.border.all(1, theme.primary)
-            _set_status(txt["chat_mode_attached_template"].format(name=attachment.name))
+            _set_status(attachment.name)
         for c in (attachment_chip_holder, drop_hint_holder, input_row_holder):
             logger_service.try_update(c)
 
@@ -337,44 +320,27 @@ def _input_bar(
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         if ext not in _RESUME_EXTENSIONS:
             logger_service.log_event(
-                "WARNING",
-                "ai_career.tab_chat",
-                "stage_file_unsupported",
-                ext=ext,
-                path=path,
+                "WARNING", "ai_linkedin.tab_chat",
+                "stage_file_unsupported", ext=ext, path=path,
             )
-            _set_status(txt["resume_unsupported"], error=True)
+            _set_status(f"Unsupported file: .{ext}", error=True)
             return
         parsed = parse_file(path)
         if not parsed.ok:
             logger_service.log_event(
-                "WARNING",
-                "ai_career.tab_chat",
-                "stage_file_parse_failed",
-                path=path,
-                error=parsed.error,
+                "WARNING", "ai_linkedin.tab_chat",
+                "stage_file_parse_failed", path=path, error=parsed.error,
             )
-            _set_status(parsed.error or txt["resume_unsupported"], error=True)
+            _set_status(parsed.error or "Could not parse file", error=True)
             return
         logger_service.log_event(
-            "INFO",
-            "ai_career.tab_chat",
-            "stage_file_ok",
-            name=parsed.name,
-            ext=ext,
-            chars=len(parsed.text or ""),
+            "INFO", "ai_linkedin.tab_chat",
+            "stage_file_ok", name=parsed.name, ext=ext, chars=len(parsed.text or ""),
         )
         pending_attachment["file"] = parsed
         _refresh_attachment_visuals()
 
     def _ensure_picker_registered(page: ft.Page) -> None:
-        """Register the FilePicker as a page service so ``pick_files`` works.
-
-        In Flet 0.84 ``FilePicker`` is a :class:`Service` - it lives in
-        ``page._services`` rather than ``page.overlay``. The first
-        ``pick_files`` call must happen *after* registration; subsequent
-        calls reuse the same instance for free.
-        """
         if picker_registered["done"]:
             return
         registry = getattr(page, "_services", None)
@@ -383,14 +349,13 @@ def _input_bar(
                 registry.register_service(file_picker)
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "register_picker_failed", exc
+                    "ai_linkedin.tab_chat", "register_picker_failed", exc,
                 )
         picker_registered["done"] = True
         _try_wire_os_drop(page)
 
     def _try_wire_os_drop(page: ft.Page) -> None:
-        """Hook OS-level drops onto the chat input, mirroring file_drop_zone."""
-        if getattr(page, "_aihub_chat_drop_wired", False):
+        if getattr(page, "_aihub_linkedin_chat_drop_wired", False):
             return
         for attr in ("on_drop", "on_file_drop", "on_files_drop"):
             handler = getattr(page, attr, "missing")
@@ -406,40 +371,36 @@ def _input_bar(
                             break
                 setattr(page, attr, _on_drop)
                 logger_service.log_event(
-                    "INFO", "ai_career.tab_chat", "os_drop_wired", attr=attr,
+                    "INFO", "ai_linkedin.tab_chat", "os_drop_wired", attr=attr,
                 )
                 break
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "os_drop_wire_failed", exc, attr=attr,
+                    "ai_linkedin.tab_chat", "os_drop_wire_failed", exc, attr=attr,
                 )
         try:
-            setattr(page, "_aihub_chat_drop_wired", True)
+            setattr(page, "_aihub_linkedin_chat_drop_wired", True)
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.tab_chat", "os_drop_marker_failed", exc,
+                "ai_linkedin.tab_chat", "os_drop_marker_failed", exc,
             )
 
     async def _open_picker(e: ft.ControlEvent) -> None:
         page = e.page
         if page is None:
-            logger_service.log_event(
-                "WARNING", "ai_career.tab_chat", "open_picker_no_page"
-            )
             return
         _ensure_picker_registered(page)
-        logger_service.log_event("INFO", "ai_career.tab_chat", "open_picker")
         try:
             files = await file_picker.pick_files(
-                dialog_title=txt["chat_mode_input_attach"],
+                dialog_title=txt["chat_attachments_label"],
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=list(_RESUME_EXTENSIONS),
             )
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.tab_chat", "open_picker_failed", exc
+                "ai_linkedin.tab_chat", "open_picker_failed", exc,
             )
-            _set_status(str(exc) or txt["resume_unsupported"], error=True)
+            _set_status(str(exc), error=True)
             return
         if not files:
             return
@@ -448,46 +409,12 @@ def _input_bar(
         if path:
             _stage_file_from_path(path)
 
-    def _paste_from_clipboard(_e: ft.ControlEvent) -> None:
-        """Append clipboard text to the message field.
-
-        Some users hit a Flutter focus quirk where the embedded
-        ``TextField`` ignores Ctrl+V on the very first interaction with
-        the chat tab. This explicit button always works because it goes
-        straight through :mod:`src.services.clipboard`, a synchronous
-        pyperclip-backed helper that does not touch Flet's session
-        layer (the previous async ``ft.Clipboard().get()`` call could
-        die with ``RuntimeError("Session closed")`` after a navigation).
-        """
-        text = clipboard.paste()
-        if not text:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "paste_empty",
-                backend=clipboard.backend_name(),
-            )
-            _set_status(txt["chat_mode_paste_empty"])
-            return
-        existing = text_field.value or ""
-        text_field.value = (existing + ("\n" if existing else "") + text)
-        logger_service.try_update(text_field)
-        logger_service.log_event(
-            "INFO", "ai_career.tab_chat", "paste_ok",
-            chars=len(text), backend=clipboard.backend_name(),
-        )
-        _set_status(txt["chat_mode_paste_done"].format(chars=len(text)))
-
     def _send(_e: Optional[ft.ControlEvent] = None) -> None:
         if STATE.chat_running:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "send_ignored_running"
-            )
             return
         text_value = (text_field.value or "").strip()
         attachment = pending_attachment["file"]
         if not text_value and attachment is None:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "send_ignored_empty"
-            )
             return
 
         if attachment is not None:
@@ -497,18 +424,13 @@ def _input_bar(
             attachment_label = ""
 
         logger_service.log_event(
-            "INFO",
-            "ai_career.tab_chat",
-            "send_start",
-            chars=len(text_value),
-            attachment=attachment_label,
+            "INFO", "ai_linkedin.tab_chat",
+            "send_start", chars=len(text_value), attachment=attachment_label,
             demo_mode=STATE.demo_mode,
         )
 
         pipeline.append_chat_message(
-            "user",
-            text_value,
-            attachment_name=attachment_label,
+            "user", text_value, attachment_name=attachment_label,
         )
         text_field.value = ""
         pending_attachment["file"] = None
@@ -526,7 +448,7 @@ def _input_bar(
                 )
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "send_worker_failed", exc
+                    "ai_linkedin.tab_chat", "send_worker_failed", exc,
                 )
                 assistant_text = ""
                 error = str(exc) or "unexpected error"
@@ -534,21 +456,16 @@ def _input_bar(
             if error:
                 STATE.chat_last_error = error
                 logger_service.log_event(
-                    "ERROR",
-                    "ai_career.tab_chat",
-                    "send_done_error",
-                    error=error,
+                    "ERROR", "ai_linkedin.tab_chat",
+                    "send_done_error", error=error,
                 )
                 pipeline.append_chat_message(
-                    "assistant",
-                    txt["chat_mode_error_template"].format(error=error),
+                    "assistant", f"_Error_: {error}",
                 )
             else:
                 logger_service.log_event(
-                    "INFO",
-                    "ai_career.tab_chat",
-                    "send_done_ok",
-                    reply_chars=len(assistant_text or ""),
+                    "INFO", "ai_linkedin.tab_chat",
+                    "send_done_ok", reply_chars=len(assistant_text or ""),
                 )
                 pipeline.append_chat_message("assistant", assistant_text)
             REFS.request_context_refresh()
@@ -560,15 +477,8 @@ def _input_bar(
         icon=ft.Icons.ATTACH_FILE,
         icon_color=theme.text_muted,
         icon_size=20,
-        tooltip=txt["chat_mode_input_attach"],
+        tooltip=txt["chat_attachments_label"],
         on_click=_open_picker,
-    )
-    paste_btn = ft.IconButton(
-        icon=ft.Icons.CONTENT_PASTE,
-        icon_color=theme.text_muted,
-        icon_size=18,
-        tooltip=txt["chat_mode_paste_tooltip"],
-        on_click=_paste_from_clipboard,
     )
     send_btn = ft.IconButton(
         icon=ft.Icons.SEND,
@@ -576,37 +486,28 @@ def _input_bar(
         icon_size=18,
         bgcolor=theme.primary,
         on_click=_send,
-        tooltip=txt["footer_run_btn"],
+        tooltip=txt["sections_run_button"],
     )
 
     text_field.on_submit = lambda e: _send(e)
 
     input_row_holder.content = ft.Row(
-        controls=[attach_btn, paste_btn, text_field, send_btn],
+        controls=[attach_btn, text_field, send_btn],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
     input_row_holder.padding = ft.padding.symmetric(horizontal=10, vertical=4)
     input_row_holder.bgcolor = theme.surface
     input_row_holder.border_radius = 14
-    # Subtle accent border so the input visually invites a file drop.
-    # See the long comment in ``_refresh_attachment_visuals`` for why
-    # real OS drop is not wired.
     input_row_holder.border = ft.border.all(
-        1.5, ft.Colors.with_opacity(0.55, theme.border)
+        1.5, ft.Colors.with_opacity(0.55, theme.border),
     )
 
-    # Click-anywhere drop zone: Flet pack cannot intercept OS-level
-    # drag-and-drop, so we make this hint a real button-sized affordance
-    # the user can tap (or click) to launch the picker. That way the
-    # paperclip is no longer the only target: the entire hint row is
-    # one big "click me to attach" zone, which is what users actually
-    # try first.
     drop_hint_holder.content = ft.Row(
         controls=[
             ft.Icon(ft.Icons.UPLOAD_FILE_OUTLINED, color=theme.primary, size=14),
             ft.Text(
-                txt["chat_mode_drop_hint"],
+                txt["chat_attachments_label"],
                 color=theme.text_muted,
                 size=11,
                 italic=True,
@@ -619,18 +520,16 @@ def _input_bar(
     drop_hint_holder.padding = ft.padding.symmetric(horizontal=10, vertical=6)
     drop_hint_holder.border_radius = 10
     drop_hint_holder.border = ft.border.all(
-        1, ft.Colors.with_opacity(0.35, theme.primary)
+        1, ft.Colors.with_opacity(0.35, theme.primary),
     )
     drop_hint_holder.bgcolor = ft.Colors.with_opacity(0.06, theme.primary)
     drop_hint_holder.ink = True
-    drop_hint_holder.tooltip = txt["chat_mode_input_attach"]
+    drop_hint_holder.tooltip = txt["chat_attachments_label"]
     drop_hint_holder.on_click = _open_picker
 
     running_text = ft.Text(
-        txt["chat_mode_running"] if STATE.chat_running else "",
-        color=theme.text_muted,
-        size=11,
-        italic=True,
+        txt["chat_running"] if STATE.chat_running else "",
+        color=theme.text_muted, size=11, italic=True,
     )
 
     footer_row = ft.Row(
@@ -667,16 +566,21 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
         on_after_send()
 
         def _worker() -> None:
-            assistant_text, error = pipeline.send_chat_message(
-                output_lang=lang,
-                user_text=prompt_text,
-            )
+            try:
+                assistant_text, error = pipeline.send_chat_message(
+                    output_lang=lang, user_text=prompt_text,
+                )
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_linkedin.tab_chat", "quick_send_worker_failed", exc,
+                )
+                assistant_text = ""
+                error = str(exc) or "unexpected error"
             STATE.chat_running = False
             if error:
                 STATE.chat_last_error = error
                 pipeline.append_chat_message(
-                    "assistant",
-                    txt["chat_mode_error_template"].format(error=error),
+                    "assistant", f"_Error_: {error}",
                 )
             else:
                 pipeline.append_chat_message("assistant", assistant_text)
@@ -689,27 +593,27 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
         controls=[
             _quick_action_chip(
                 theme,
-                txt["chat_mode_quick_action_cv"],
-                ft.Icons.DESCRIPTION_OUTLINED,
-                lambda e: _send_canned(txt["chat_mode_quick_action_cv"]),
+                txt["chat_qa_improve_headline"],
+                ft.Icons.TITLE,
+                lambda e: _send_canned(txt["chat_qa_improve_headline"]),
             ),
             _quick_action_chip(
                 theme,
-                txt["chat_mode_quick_action_letter"],
+                txt["chat_qa_write_learning_post"],
+                ft.Icons.EDIT_OUTLINED,
+                lambda e: _send_canned(txt["chat_qa_write_learning_post"]),
+            ),
+            _quick_action_chip(
+                theme,
+                txt["chat_qa_critique_about"],
+                ft.Icons.SUBJECT,
+                lambda e: _send_canned(txt["chat_qa_critique_about"]),
+            ),
+            _quick_action_chip(
+                theme,
+                txt["chat_qa_recruiter_dm"],
                 ft.Icons.MAIL_OUTLINE,
-                lambda e: _send_canned(txt["chat_mode_quick_action_letter"]),
-            ),
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_interview"],
-                ft.Icons.QUESTION_ANSWER_OUTLINED,
-                lambda e: _send_canned(txt["chat_mode_quick_action_interview"]),
-            ),
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_gaps"],
-                ft.Icons.QUERY_STATS,
-                lambda e: _send_canned(txt["chat_mode_quick_action_gaps"]),
+                lambda e: _send_canned(txt["chat_qa_recruiter_dm"]),
             ),
         ],
         spacing=8,
@@ -724,16 +628,10 @@ def build_chat_tab(
     *,
     on_request_rerender: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
-    on_switch_to_form: Callable[[], None],
+    on_switch_to_builder: Callable[[], None],
 ) -> ft.Control:
     txt = s(lang)
 
-    # Keep a Ref so we can ``scroll_to`` after the section rebuild lands
-    # in the page tree. ``auto_scroll=True`` only kicks in when controls
-    # are appended after mount; on a full rebuild every bubble is
-    # already in ``controls`` so the freshly-built ListView sits at
-    # offset 0 - which is what was sliding the conversation back to the
-    # start every time the AI replied.
     list_ref: ft.Ref[ft.ListView] = ft.Ref[ft.ListView]()
     list_holder = ft.Container(content=_message_list(theme, txt, list_ref), expand=True)
     quick_actions_holder = ft.Container(
@@ -751,18 +649,15 @@ def build_chat_tab(
             lv.scroll_to(offset=-1, duration=0)
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.tab_chat", "scroll_to_bottom_failed", exc,
+                "ai_linkedin.tab_chat", "scroll_to_bottom_failed", exc,
             )
 
-    # Schedule the scroll once the rebuild is on-screen. ``REFS.dispatch``
-    # routes the call through the page's asyncio loop so the ListView
-    # has been mounted by the time we ask it to scroll.
     REFS.dispatch(_scroll_to_bottom_when_ready)
 
-    def _open_form_mode(_e: ft.ControlEvent) -> None:
-        STATE.mode = MODE_FORM
+    def _open_builder(_e: ft.ControlEvent) -> None:
+        STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_SETUP
-        on_switch_to_form()
+        on_switch_to_builder()
 
     def _clear_chat(_e: ft.ControlEvent) -> None:
         STATE.reset_chat()
@@ -777,7 +672,7 @@ def build_chat_tab(
                         controls=[
                             ft.Icon(ft.Icons.RESTART_ALT, color=theme.text_muted, size=14),
                             ft.Text(
-                                txt["chat_mode_clear_btn"],
+                                txt["menu_new_build"],
                                 color=theme.text,
                                 size=12,
                                 weight=ft.FontWeight.W_500,
@@ -799,7 +694,7 @@ def build_chat_tab(
                         controls=[
                             ft.Icon(ft.Icons.GRID_VIEW_OUTLINED, color=theme.primary, size=14),
                             ft.Text(
-                                txt["chat_mode_open_form_btn"],
+                                txt["mode_tab_builder"],
                                 color=theme.text,
                                 size=12,
                                 weight=ft.FontWeight.W_600,
@@ -814,7 +709,7 @@ def build_chat_tab(
                     border_radius=8,
                     border=ft.border.all(1, theme.border),
                     ink=True,
-                    on_click=_open_form_mode,
+                    on_click=_open_builder,
                 ),
             ],
             spacing=8,

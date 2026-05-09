@@ -7,7 +7,7 @@
 > **Postaveno s [Cursor](https://cursor.com)** - AI editor, ve kterém celý
 > tento projekt vznikl (architektura, sekce, AI pipelines, build skript).
 
-Desktopový AI Hub postavený v Pythonu s knihovnou [Flet](https://flet.dev). Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra** je plně napojená na OpenAI / Anthropic; ostatní sekce jsou postavené na stejné architektuře a postupně se napojují.
+Desktopový AI Hub postavený v Pythonu s knihovnou [Flet](https://flet.dev). Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra** a nová **AI LinkedIn Profile Builder** jsou plně napojené na OpenAI / Anthropic; ostatní sekce jsou postavené na stejné architektuře a postupně se napojují.
 
 ## Požadavky
 
@@ -39,11 +39,33 @@ py main.py            # Windows
 python main.py        # macOS / Linux
 ```
 
-Upload zóny v **AI Právní asistent** a **AI Životopis / Kariéra** jsou
-*click-to-browse* (otevřou nativní file picker). Skutečný OS drag-and-drop
-by potřeboval `flet-dropzone` + `flet build`, což přidává závislost na
-Flutter SDK a Visual Studio C++ - to záměrně nechceme, protože by se
-zlomil one-click build pro spoluvývoj (viz `build_exe.bat`).
+Upload zóny v **AI Právní asistent**, **AI Životopis / Kariéra**,
+**AI LinkedIn Profile Builder** i **AI Doc Assistant** sdílí jednu
+komponentu (`src/components/file_drop_zone.py`), která:
+
+* Vykreslí zónu s čárkovaným okrajem a výrazným call-to-action
+  „Klikni a vyber soubor" - kliknutí otevře nativní file picker
+  (spolehlivá a vždy fungující cesta).
+* Pod zónou vždy vykreslí tlačítko **Vložit cestu**. Na Windows si
+  v Průzkumníku dáš `Shift+Pravý klik` na soubor → *Kopírovat jako
+  cestu*, klikneš na tlačítko a soubor se ihned načte.
+* Best-effort napojí `page.on_drop` / `page.on_files_drop`, takže
+  OS drag-and-drop začne fungovat sám ve chvíli, kdy ho Flet jednou
+  v `flet pack` runtime začne posílat; dnes je oficiální cestou
+  klik + vložení cesty.
+
+Skutečný OS drag-and-drop přes `flet-dropzone` + `flet build` by
+přidával závislost na Flutter SDK a Visual Studio C++ - to záměrně
+nechceme, protože by se zlomil one-click build pro spoluvývoj (viz
+`build_exe.bat`).
+
+Práce se schránkou je centralizovaná v `src/services/clipboard.py` -
+synchronní obálka nad knihovnou
+[pyperclip](https://pypi.org/project/pyperclip/) (s fallbacky
+`win32clipboard` / `pbcopy` / `xclip` / `tkinter`), která obchází
+Fletovu asynchronní službu `Clipboard`. Ta totiž po některých
+přechodech v UI padala na `RuntimeError("Session closed")` a tichounce
+rozbíjela všechna tlačítka Copy / Paste.
 
 ## Build .exe (Windows)
 
@@ -122,8 +144,42 @@ uložení), aplikace si o tom vede stručný log soubor:
 - Otevři **Nastavení -> Debug logy -> Zobrazit logy** v aplikaci. Dá se
   obnovit, zkopírovat do schránky, otevřít složku v Průzkumníku nebo
   vymazat.
+- Prohlížeč v aplikaci obarvuje řádky podle úrovně (červená pro
+  `ERROR`, oranžová pro `WARNING`, azurová pro `DEBUG`, default pro
+  `INFO`, tučně červená pro `CRITICAL`). Soubor na disku zůstává
+  obyčejný text - barvy jsou jenom v UI. Stránka Nastavení používá
+  celou šířku okna, aby se zarovnané sloupce nelámaly.
+- Logy jsou zabalené do `ft.SelectionArea`, takže myší přetáhneš
+  označení přes víc řádků a stiskneš `Ctrl+C`, nebo nahoře klikneš
+  **Zkopírovat** a do schránky se přesune celý soubor. Kopírování jde
+  přes OS schránku (pyperclip) - žádná Flet session, žádné padání na
+  `Session closed` jako dřív.
 - Žádná osobní data se do logu nezapisují - jenom co kdo kliknul, co se
   podařilo a stack trace případné chyby.
+
+Od května 2026 je log strukturovaný do **sloupcového formátu**, takže
+se v něm dá zorientovat na první pohled:
+
+```
+2026-05-09 19:32:14.501 | INFO  | ai_career.pipeline       | run_full_analysis_start  | url=… kind=cv
+2026-05-09 19:32:14.620 | INFO  | ai_career.pipeline       | activity                  | text="Fetching job posting…"
+2026-05-09 19:32:18.044 | INFO  | ai_career.pipeline       | run_full_analysis_done    | duration_ms=3543 status=ok
+2026-05-09 19:32:18.060 | ERROR | ai_career.tab_documents  | refine_failed             | reason=ProviderError trace=…
+```
+
+Co je nového:
+
+- `@logger_service.timed_call("…")` se dá pověsit na jakoukoli funkci
+  a logger sám měří dobu běhu a zaznamená `duration_ms`.
+- `logger_service.log_state("…", state, fields=("…",))` je standardní
+  způsob, jak zalogovat snapshot sekce ve chvíli, kdy se tam zrovna něco
+  děje (např. před spuštěním pipeline).
+- Skoro všechny `except: pass` výjimky v sekcích `ai_career` a
+  `ai_linkedin` byly nahrazeny voláním `logger_service.log_exception(...)`,
+  takže žádná chyba v UI nebo workeru už nemizí potichu.
+
+Detaily k novým pravidlům jsou ve workspace pravidlech
+[`.cursor/rules/sections.mdc`](.cursor/rules/sections.mdc).
 
 ## Struktura projektu
 
@@ -172,6 +228,7 @@ ai-hub/
     │   ├── SECTION_TEMPLATE/     # šablona pro novou sekci (READ ME)
     │   ├── dashboard/
     │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter)
+    │   ├── ai_linkedin/          # plně napojené (LinkedIn Profile Builder + content)
     │   ├── ai_legal/              # plně postavené (4 funkční taby + drag-drop)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # postavené podle návrhu (mock UI)
@@ -213,9 +270,18 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
     - GitHub URL s automatickým fetchem veřejných repos
     - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
     - inline refine ("Problem 1, Problem 2 …" → AI revize)
-    - export do MD / HTML / DOCX / PDF a uložení kompletní analýzy do `outputs/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem)
+    - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
   - Demo režim (offline showcase) v obou režimech
   - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
+- **AI LinkedIn Profile Builder** - kompletní pipeline pro generování / přepis LinkedIn profilu:
+  - **Setup** - jméno, město, jazyk profilu (EN/CS), tone (warm / sharp / executive / casual), cílová role, target jobs (URL nebo text), CV / LinkedIn export upload, GitHub URL, do-not-mention seznam (témata, která AI nesmí zmínit) a pin / preferred sekce
+  - **Sections** - výběr sekcí, které se mají vygenerovat (Headline, About, Experience, Education, Skills, Featured, Projects, Services, Courses, Recommendations, Posts, Messages, …); každá sekce může spustit svou pipeline samostatně nebo jednorázově běží **Run full profile build**
+  - 1 strukturovaný LLM krok pro celkový profil + per-section follow-up calls (každý drží schéma a HR / brand pravidla)
+  - **Anti-cringe** filtr (zakázaný buzzword glossary, no humble-bragging) přímo v system promptech
+  - **Profile Completeness Checklist** s prioritami (must-have / nice-to-have / advanced) a celkovým profile score 0-100
+  - **Output** tab - náhled per sekce + tlačítka Copy, Refine ("Problem 1 …"), Regenerate
+  - Save complete LinkedIn package → `outputs/linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
+  - Demo režim, EN/CS strings, doplňující otázky (clarifying questions) když chybí signál pro některou sekci
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - 4 funkční taby (Chat, Analýza dokumentu, Návrhy dokumentů, Šablony), OS drag-drop PDF, mock LLM
 - Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline

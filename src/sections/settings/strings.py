@@ -60,6 +60,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "logs_view_desc": "Tail of the current ~/AI Hub/logs/app.log. Older lines roll into app.log.1 / .2 / .3.",
         "logs_path_template": "Log file: {path}",
         "logs_empty": "No log entries yet. Use the app for a moment and refresh.",
+        "logs_selection_hint": "Tip: drag with the mouse to select multiple lines, then press Ctrl+C - or use the Copy button to grab the whole file.",
 
         "vault_unavailable_title": "OS keystore is not reachable",
         "vault_unavailable_desc": "On Linux you may need to install gnome-keyring or kwallet. Until a backend is reachable, API keys can't be saved.",
@@ -130,6 +131,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "logs_view_desc": "Konec aktuálního ~/AI Hub/logs/app.log. Starší záznamy se odlévají do app.log.1 / .2 / .3.",
         "logs_path_template": "Log soubor: {path}",
         "logs_empty": "Zatím žádné záznamy. Chvilku appku používej a klikni Obnovit.",
+        "logs_selection_hint": "Tip: označ víc řádků myší a stiskni Ctrl+C - nebo tlačítkem Zkopírovat zkopíruj celý soubor.",
 
         "vault_unavailable_title": "Úložiště OS není dostupné",
         "vault_unavailable_desc": "Na Linuxu může chybět gnome-keyring nebo kwallet. Dokud nebude backend dostupný, API klíče nelze uložit.",

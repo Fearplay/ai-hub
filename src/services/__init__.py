@@ -16,4 +16,6 @@ Modules:
 * :mod:`src.services.exporter` - Markdown → HTML / DOCX / PDF writers.
 * :mod:`src.services.store` - JSON-backed history & run output paths.
 * :mod:`src.services.settings_store` - chosen provider / model + flags.
+* :mod:`src.services.clipboard` - synchronous OS clipboard (replaces the
+  flaky ``ft.Clipboard`` async service).
 """

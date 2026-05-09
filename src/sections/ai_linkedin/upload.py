@@ -1,10 +1,9 @@
-"""Click-to-browse upload zone for AI Career uploads (resume, LinkedIn export).
+"""Click-to-browse upload zone for AI LinkedIn (resume + LinkedIn export).
 
-Thin wrapper around :func:`src.components.file_drop_zone.file_drop_zone`
-so AI Career and AI LinkedIn share a single tested implementation. The
-shared component already handles best-effort OS drag-and-drop wiring,
-graceful click-to-browse fallback, and a "paste path" affordance for
-power users.
+This is a thin wrapper around :func:`src.components.file_drop_zone.file_drop_zone`
+introduced as part of the LinkedIn builder + UX polish PR. The shared
+component handles best-effort OS drag-and-drop with a graceful click-to-
+browse fallback so the same widget powers both AI Career and AI LinkedIn.
 """
 
 from __future__ import annotations
@@ -31,15 +30,17 @@ def upload_zone(
     paste_path_tooltip: str | None = None,
     cta_label: str | None = None,
 ) -> ft.Control:
-    """Section-local alias preserved for backwards compatibility.
+    """Section-local alias around :func:`file_drop_zone`.
 
-    Adds optional kwargs so callers can pass localised paste-path /
-    call-to-action labels without touching the shared
-    :func:`src.components.file_drop_zone.file_drop_zone` API.
+    Existing call sites in :mod:`src.sections.ai_linkedin.tab_setup`
+    refer to ``upload_zone`` so we keep the symbol around. When the
+    caller does not pass a localised ``paste_path_label`` /
+    ``cta_label`` the shared component falls back to its English
+    defaults so the buttons are still visible.
     """
     return file_drop_zone(
         theme,
-        log_area="ai_career.upload",
+        log_area="ai_linkedin.upload",
         title=title,
         hint=hint,
         extensions=extensions,

@@ -118,7 +118,11 @@ if exist "AIHub.spec" del /Q "AIHub.spec" >nul 2>nul
 set "ICON_ARG="
 if exist "assets\icon.ico" set "ICON_ARG=--icon assets\icon.ico"
 
-flet pack main.py --name AIHub --product-name "AI Hub" --product-version 0.1.0 --copyright "MIT" %ICON_ARG%
+REM ``--hidden-import pyperclip`` is defensive: PyInstaller's static
+REM scanner already picks up the top-level ``pyperclip`` import we have
+REM in src/services/clipboard.py, but the explicit flag protects us if
+REM that import ever moves into a lazy ``try / except`` block.
+flet pack main.py --name AIHub --product-name "AI Hub" --product-version 0.1.0 --copyright "MIT" --hidden-import pyperclip %ICON_ARG%
 if errorlevel 1 (
     echo  ^> flet pack failed.
     set "EXIT_CODE=1"

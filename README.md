@@ -10,9 +10,10 @@
 
 A desktop AI Hub built in Python with [Flet](https://flet.dev). Three-column
 layout: navigation in the left sidebar, the main workspace in the middle,
-and a context panel on the right. The **AI CV / Career** section is fully
-wired to OpenAI / Anthropic; other sections share the same architecture
-and are being filled in as we go.
+and a context panel on the right. **AI CV / Career** and the new
+**AI LinkedIn Profile Builder** are fully wired to OpenAI / Anthropic;
+other sections share the same architecture and are being filled in as
+we go.
 
 ## Requirements
 
@@ -45,12 +46,33 @@ py main.py            # Windows
 python main.py        # macOS / Linux
 ```
 
-The upload zones in **AI Legal assistant** and **AI CV / Career** are
-*click-to-browse* (they open the native file picker). Real OS-level
-drag-and-drop would require `flet-dropzone` + `flet build`, which adds a
-Flutter SDK + Visual Studio C++ dependency - we deliberately avoid that
-because it would break the one-click build flow for collaborators (see
-`build_exe.bat`).
+The upload zones in **AI Legal assistant**, **AI CV / Career**,
+**AI LinkedIn Profile Builder**, and **AI Doc Assistant** all share one
+component (`src/components/file_drop_zone.py`) that:
+
+* Renders a dashed-border drop zone with a prominent "Click to browse"
+  call-to-action - clicking opens the native file picker (the
+  guaranteed code path on every supported platform).
+* Always shows a **Paste path** button beneath the zone. On Windows you
+  can `Shift+Right-click` a file in Explorer -> *Copy as path*, then
+  click the button - the file is loaded immediately.
+* Best-effort wires `page.on_drop` / `page.on_files_drop` so OS-level
+  drag-and-drop will start working transparently the moment a future
+  Flet release adds those events to the `flet pack` runtime; today
+  click + paste are the supported paths.
+
+OS-level drag-and-drop via `flet-dropzone` + `flet build` would add a
+Flutter SDK + Visual Studio C++ dependency - we deliberately avoid
+that because it would break the one-click build flow for collaborators
+(see `build_exe.bat`).
+
+The clipboard handling itself is centralised in
+`src/services/clipboard.py`. It is a thin synchronous wrapper around
+[pyperclip](https://pypi.org/project/pyperclip/) (with `win32clipboard`
+/ `pbcopy` / `xclip` / `tkinter` fallbacks) that bypasses Flet's
+async `Clipboard` service - the latter could die with
+`RuntimeError("Session closed")` after a navigation, which used to
+silently break Copy / Paste buttons.
 
 ## Build the .exe (Windows)
 
@@ -146,8 +168,29 @@ save), the app keeps a small log file:
 - Open **Settings -> Debug logs -> View logs** in the app. You can
   refresh the view, copy the file to the clipboard, open the folder in
   the OS file browser, or clear it.
+- The in-app viewer colours each row by level (red for `ERROR`, amber
+  for `WARNING`, cyan for `DEBUG`, default for `INFO`, bold red for
+  `CRITICAL`). The bytes on disk stay plain text - the colours live
+  only in the viewer. The Settings page also uses the full window
+  width so the column-aligned rows do not wrap.
+- The viewer wraps the rows in a Flet `SelectionArea`, so you can
+  drag-select across multiple rows with the mouse and press `Ctrl+C`,
+  or use the **Copy** button at the top to grab the whole file. Copy
+  goes through the OS clipboard (pyperclip) - no Flet session, no
+  more `Session closed` failures.
 - No personal data is logged - only what was clicked, what succeeded,
   and the stack trace of any caught exception.
+- Format is column-aligned for fast skimming:
+
+  ```
+  2026-05-09 19:47:11.123 | INFO  | ai_career.pipeline     | activity_change            | prev=ready new=analyzing
+  2026-05-09 19:47:14.886 | ERROR | ai_career.pipeline     | extract_candidate_failed   | error=ProviderError(...) elapsed_ms=3759
+  2026-05-09 19:47:14.890 | ERROR | ai_career.pipeline     | extract_candidate_failed.traceback | Traceback (most recent call last): ...
+  ```
+
+  Long-running pipeline steps emit `*_start` / `*_done` / `*_failed`
+  pairs with `elapsed_ms` so the log doubles as a coarse profiler
+  (`@logger_service.timed_call` decorator in `src/services/logger.py`).
 
 ## Project structure
 
@@ -176,6 +219,7 @@ ai-hub/
     │   ├── chat_message.py
     │   ├── chat_input.py
     │   ├── context_panel.py      # shell + helpers for the right panel
+    │   ├── file_drop_zone.py     # shared upload zone (click + best-effort OS drop + paste-path)
     │   ├── language_toggle.py    # EN / CS toggle
     │   ├── theme_toggle.py       # dark / light toggle
     │   └── placeholder.py        # default "coming soon" view
@@ -187,15 +231,17 @@ ai-hub/
     │   ├── job_scraper.py         # URL -> job posting text
     │   ├── file_parser.py         # PDF / DOCX / TXT / HTML -> plain text
     │   ├── github_client.py       # public profile + repo summary
-    │   ├── exporter.py            # Markdown -> MD / HTML / DOCX / PDF
+    │   ├── exporter.py            # Markdown -> MD / HTML / DOCX / PDF (clickable PDF links)
+    │   ├── html_pdf.py            # Playwright print-to-PDF (Modern CV + themed Cover Letter)
     │   ├── store.py               # JSON-backed history & run output paths
-    │   └── logger.py              # rotating debug log under ~/AI Hub/logs/app.log
+    │   └── logger.py              # rotating debug log + @timed_call + log_state helpers
     ├── sections/                 # FEATURE FOLDERS - 1 folder = 1 sidebar entry
     │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY groups)
     │   ├── _base.py              # Section dataclass (with nav_group)
     │   ├── SECTION_TEMPLATE/     # template for a new section (READ ME)
     │   ├── dashboard/
     │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter)
+    │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
     │   ├── ai_legal/              # fully built (4 working tabs + drag-drop)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # designed mock UI
@@ -237,12 +283,22 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
     - GitHub URL with automatic fetch of public repos,
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
-    - export to MD / HTML / DOCX / PDF and save the full analysis to `outputs/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
+    - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
   - Demo mode (offline showcase) in both modes.
   - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
+- **AI LinkedIn Profile Builder** - same two-mode shell (Chat / Builder), aimed at a complete LinkedIn rewrite:
+  - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
+  - **Sections** picker - presets (essentials / full polish / job hunt / thought leadership) + 12-section grid with checkboxes (Headline, About, Experience, Education, Certifications, Skills, Featured, Projects, Services, Courses, Recommendations, Posts).
+  - One LLM **profile-extraction** call followed by per-section generators that all reuse the cached profile JSON (cost-aware - never re-sends the raw CV text).
+  - **Anti-cringe + no-hallucination** prompts; an unsupported-claims report flags any AI bullet that wasn't backed by source evidence.
+  - **Profile completeness checklist** with priority levels (critical / important / nice to have) and a 0-100 profile score.
+  - **Output** tab renders every generated section as a card (with copy-to-clipboard) + the checklist + the score.
+  - Save the complete profile to `outputs/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
+  - Demo mode (offline showcase) populates a curated end-to-end example in seconds.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - 4 working tabs (Chat, Document analysis, Document drafts, Templates), OS drag-drop PDF, mock LLM.
-- Right context panel showing **session cost** (calls / tokens / $) and the pipeline activity.
+- **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
+- Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
 
 ## Not yet (deliberately)
 

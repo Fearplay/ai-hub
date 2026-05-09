@@ -23,3 +23,7 @@ python-docx>=1.1.0
 # Document export pipeline (Markdown -> HTML / DOCX / PDF)
 markdown2>=2.5.0
 reportlab>=4.0.0
+
+# OS-level clipboard (replaces flet's flaky async Clipboard service in
+# src/services/clipboard.py). Cross-platform, no UI dependency.
+pyperclip>=1.9.0

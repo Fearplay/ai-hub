@@ -19,6 +19,7 @@ from typing import Callable
 
 import flet as ft
 
+from src.services import logger as logger_service
 from src.services import store
 from src.sections.ai_career.refs import safe
 from src.sections.ai_career.state import STATE, TAB_MATCH
@@ -36,8 +37,10 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["open", path])
         else:
             subprocess.Popen(["xdg-open", path])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.tab_history", "open_in_explorer_failed", exc, path=path,
+        )
 
 
 def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
@@ -188,10 +191,7 @@ def build_history_tab(
                 padding=ft.padding.symmetric(horizontal=18, vertical=12),
                 expand=True,
             )
-        try:
-            list_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(list_holder)
 
     def _open_app(folder: str) -> None:
         _restore_run(folder, on_done=on_request_rerender)

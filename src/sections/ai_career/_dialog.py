@@ -10,11 +10,18 @@ These mirror the small helpers that already lived in
 :mod:`src.sections.ai_career.followup_dialog`; centralising them lets the
 language picker, follow-up questions, and any future modal share one
 implementation.
+
+Errors are logged via :func:`log_exception` instead of swallowed - we
+still fall through to the next compatibility path so the user keeps
+seeing the dialog, but the failure shows up in Settings -> Debug logs
+so we know why we had to fall back.
 """
 
 from __future__ import annotations
 
 import flet as ft
+
+from src.services import logger as logger_service
 
 
 def open_dialog(page: ft.Page, dialog: ft.AlertDialog) -> None:
@@ -23,19 +30,27 @@ def open_dialog(page: ft.Page, dialog: ft.AlertDialog) -> None:
         page.show_dialog(dialog)
         return
     except AttributeError:
+        # Expected on older Flet versions that lack ``show_dialog``.
         pass
     try:
         page.open(dialog)  # type: ignore[attr-defined]
         return
-    except Exception:
+    except AttributeError:
+        # Even older Flet that lacks ``page.open``; fall through.
         pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career._dialog", "open_dialog_page_open_failed", exc,
+        )
     # Last-resort path for very old Flet versions: assign + flag + flush.
     try:
         page.dialog = dialog  # type: ignore[attr-defined]
         dialog.open = True
         page.update()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career._dialog", "open_dialog_legacy_failed", exc,
+        )
 
 
 def close_dialog(page: ft.Page) -> None:
@@ -44,12 +59,20 @@ def close_dialog(page: ft.Page) -> None:
         page.pop_dialog()
         return
     except AttributeError:
+        # Expected on older Flet versions that lack ``pop_dialog``.
         pass
     try:
         page.close(None)  # type: ignore[attr-defined]
-    except Exception:
+    except AttributeError:
+        # Older Flet without ``page.close``; fall through.
         pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career._dialog", "close_dialog_page_close_failed", exc,
+        )
     try:
         page.update()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career._dialog", "close_dialog_page_update_failed", exc,
+        )

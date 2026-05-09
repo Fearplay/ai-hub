@@ -324,7 +324,7 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
                 )
                 result = None  # type: ignore[assignment]
             STATE.activity = "ready"
-            safe(REFS.rerender_context)
+            REFS.request_context_refresh()
             if result is not None:
                 logger_service.log_event(
                     "INFO" if result.ok else "ERROR",
