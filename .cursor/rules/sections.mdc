@@ -151,8 +151,62 @@ logger_service.log_event(
 )
 ```
 
+For "I just rewrote a chunk of state, here's the snapshot" moments,
+prefer `log_state` so the intent is obvious:
+
+```python
+logger_service.log_state(
+    "<key>.view", "mode_changed",
+    mode=STATE.mode, tab=STATE.active_tab,
+)
+```
+
+For long-running orchestrators (LLM calls, full pipeline runs), use the
+`@timed_call` decorator. It emits a `*_start` and a matching `*_done`
+line with `elapsed_ms`, plus a `*_failed` line with the traceback if
+the function raises. This is what makes the debug log double as a
+coarse profiler:
+
+```python
+@logger_service.timed_call("<key>.pipeline", "run_full_build")
+def run_full_build(*, output_lang: str) -> PipelineResult:
+    ...
+```
+
+### Cross-thread UI refresh (mandatory for worker threads)
+
+Worker threads (anything spawned via `threading.Thread`,
+`page.run_thread`, etc.) must NOT call `safe(REFS.rerender_context)`
+directly: the refresh runs on the worker thread, only schedules a Flet
+patch on the page loop, and the user sees the update only after the
+next window event. Use the dispatch helpers instead:
+
+* **Right-hand context panel** (activity badge, cost, attachments,
+  recent runs): `REFS.request_context_refresh()`. It is thread-safe -
+  no-ops on the very first render, otherwise routes through
+  `loop.call_soon_threadsafe` so the Activity pill repaints
+  immediately.
+* **Full section rebuild**: `REFS.dispatch(_request_full_refresh)`.
+  Same threading semantics, but rebuilds the entire `build_view` tree.
+
+```python
+def _worker() -> None:
+    STATE.activity = "analyzing"
+    REFS.request_context_refresh()  # not safe(REFS.rerender_context)!
+    result = pipeline.do_step(...)
+    STATE.activity = "ready"
+    REFS.request_context_refresh()
+    REFS.dispatch(_request_full_refresh)
+```
+
+Pipeline `_set_activity()` already wires this for you - sections that
+write `STATE.activity = ...` directly inside an event handler must
+follow up with the same helper so the right-hand panel actually
+reflects the new state.
+
 Reference implementation: [`src/sections/ai_career/`](mdc:../../src/sections/ai_career)
-(`view.py`, `tab_chat.py`, `tab_documents.py`, `pipeline.py`).
+(`view.py`, `tab_chat.py`, `tab_documents.py`, `pipeline.py`,
+`refs.py`).
 
 ## Sections that call AI
 

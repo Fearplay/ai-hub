@@ -21,6 +21,7 @@ from typing import Callable
 
 import flet as ft
 
+from src.services import logger as logger_service
 from src.sections.ai_career import pipeline
 from src.sections.ai_career._dialog import close_dialog, open_dialog
 from src.sections.ai_career.refs import REFS, safe
@@ -33,7 +34,10 @@ def _request_full_refresh() -> None:
     """Trigger a full section rebuild from anywhere in this module."""
     try:
         from src.app import request_section_refresh
-    except Exception:
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.tab_match", "request_full_refresh_import", exc,
+        )
         return
     request_section_refresh()
 
@@ -360,10 +364,7 @@ def build_match_tab(
     def _show_status(message: str, *, error: bool = False) -> None:
         status_text.value = message
         status_text.color = "#EF4444" if error else theme.text_muted
-        try:
-            status_text.update()
-        except Exception:
-            pass
+        logger_service.try_update(status_text)
 
     def _is_running() -> bool:
         # Source-of-truth lives on STATE so the disabled state survives the
@@ -399,10 +400,12 @@ def build_match_tab(
             opacity=0.6 if running else 1.0,
             on_click=(None if running else _start_generate_all),
         )
-        try:
-            button_holder.update()
-        except Exception:
-            pass
+        if not logger_service.try_update(button_holder):
+            logger_service.log_event(
+                "ERROR",
+                "ai_career.tab_match",
+                "render_button_update_failed",
+            )
 
     def _start_generate_all(_e: ft.ControlEvent | None = None) -> None:
         if _is_running():
@@ -412,7 +415,7 @@ def build_match_tab(
         def _start_with_lang(doc_lang: str) -> None:
             STATE.activity = "generating"
             STATE.last_error = ""
-            safe(REFS.rerender_context)
+            REFS.request_context_refresh()
             _show_status(txt["match_generating_documents"])
             _render_button()
             REFS.dispatch(_request_full_refresh)
@@ -426,7 +429,7 @@ def build_match_tab(
                     STATE.active_tab = TAB_DOCUMENTS
                 finally:
                     STATE.activity = "ready"
-                    safe(REFS.rerender_context)
+                    REFS.request_context_refresh()
                     REFS.dispatch(_request_full_refresh)
 
             threading.Thread(target=_worker, daemon=True).start()

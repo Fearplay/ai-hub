@@ -406,10 +406,7 @@ def _problem_inputs(
         fields_holder.controls = [
             _build_field(i, v) for i, v in enumerate(problems)
         ]
-        try:
-            fields_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(fields_holder)
 
     def _update_value(idx: int, value: str) -> None:
         if 0 <= idx < len(problems):
@@ -475,19 +472,13 @@ def _build_active_doc_panel(
 
     def _refresh_body() -> None:
         body_holder.content = _document_body(theme, txt, kind)
-        try:
-            body_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(body_holder)
 
     def _refresh_theme_controls() -> None:
         theme_controls_holder.content = _build_theme_controls(
             theme, lang, txt, kind, on_changed=lambda: _refresh_body_and_controls()
         )
-        try:
-            theme_controls_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(theme_controls_holder)
 
     def _refresh_body_and_controls() -> None:
         # The theme cycle buttons mutate ``STATE.modern_cv_theme`` and
@@ -524,10 +515,7 @@ def _build_active_doc_panel(
             enabled=has_text and not running and not is_evidence_locked,
             on_click=lambda e: _start_refine(),
         )
-        try:
-            refine_button_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(refine_button_holder)
         generate_label = txt["doc_running"] if running else (
             txt["doc_regenerate_btn"] if has_text else txt["doc_generate_btn"]
         )
@@ -539,10 +527,7 @@ def _build_active_doc_panel(
             enabled=not running and not is_evidence_locked,
             on_click=lambda e: _start_generate(),
         )
-        try:
-            generate_button_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(generate_button_holder)
 
     def _start_generate() -> None:
         refine_running["value"] = True
@@ -654,10 +639,7 @@ def build_documents_tab(
     def _show_status(message: str, is_error: bool) -> None:
         status_text.value = message
         status_text.color = "#EF4444" if (is_error and message) else theme.text_muted
-        try:
-            status_text.update()
-        except Exception:
-            pass
+        logger_service.try_update(status_text)
 
     def _refresh_body() -> None:
         # In-place swap of the doc panel - cheaper than a full section
@@ -671,10 +653,7 @@ def build_documents_tab(
             on_request_rerender=on_request_rerender,
             show_status=_show_status,
         )
-        try:
-            body_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(body_holder)
 
     tab_bar_holder = ft.Container()
 
@@ -689,10 +668,7 @@ def build_documents_tab(
             active_index=visible_kinds.index(STATE.active_document),
             on_change=_on_doc_tab,
         )
-        try:
-            tab_bar_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(tab_bar_holder)
 
     def _on_doc_tab(idx: int) -> None:
         new_doc = visible_kinds[idx]

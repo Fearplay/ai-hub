@@ -55,6 +55,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "linkedin_drop_title": "Drop your LinkedIn export here",
         "linkedin_drop_hint": "Optional - click to browse",
         "linkedin_no_file": "No file selected",
+        "upload_paste_path_btn": "Paste path",
+        "upload_paste_path_tooltip": "Tip on Windows: Shift+Right-click a file in Explorer -> Copy as path, then click here.",
+        "upload_cta_label": "Click to browse",
 
         "step_3_label": "STEP 3",
         "step_3_title": "GitHub profile",
@@ -297,6 +300,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "linkedin_drop_title": "Přetáhni LinkedIn export sem",
         "linkedin_drop_hint": "Volitelné - klikni a vyber z disku",
         "linkedin_no_file": "Není vybrán žádný soubor",
+        "upload_paste_path_btn": "Vložit cestu",
+        "upload_paste_path_tooltip": "Tip pro Windows: ve Průzkumníku Shift+pravý klik na soubor -> Kopírovat jako cestu, pak klikni sem.",
+        "upload_cta_label": "Klikni a vyber soubor",
 
         "step_3_label": "KROK 3",
         "step_3_title": "GitHub profil",

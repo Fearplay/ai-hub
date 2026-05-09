@@ -164,8 +164,26 @@ def export_markdown(text: str, target: Path) -> Path:
     return target
 
 
+# Shared "play nicely with PDF print + text selection" rules.
+# * ``print-color-adjust:exact`` keeps backgrounds + accent colours
+#   when Chrome / Edge print the page (without it the headings lose
+#   their colour and the page looks washed out).
+# * ``::selection`` gives the user a high-contrast highlight when they
+#   drag-select inside the PDF preview - prior CSS left the highlight
+#   colour inheriting from the parent which on dark accent banners
+#   produced "I can't read what I just selected" complaints.
+# * ``a { ... text-decoration:underline }`` makes links visibly
+#   clickable in Chrome's PDF viewer.
+_PRINT_BASE_CSS = (
+    "  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}\n"
+    "  ::selection{background:#FDE68A;color:#0F172A;}\n"
+    "  a{color:#1D4ED8;text-decoration:underline;}\n"
+    "  a:visited{color:#1D4ED8;}\n"
+)
+
 _ATS_CSS = (
-    "  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; "
+    _PRINT_BASE_CSS
+    + "  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; "
     "max-width: 760px; margin: 32px auto; padding: 0 24px; line-height: 1.5; }\n"
     "  h1 { font-size: 24px; margin: 18px 0 8px; }\n"
     "  h2 { font-size: 18px; margin: 16px 0 6px; }\n"
@@ -179,7 +197,8 @@ _ATS_CSS = (
 # pastes it back into a tool) but with a coloured H1, accent rules, and
 # a more confident type stack.
 _MODERN_CSS = (
-    "  :root { --accent: #6366F1; --ink: #0F172A; --muted: #475569; }\n"
+    _PRINT_BASE_CSS
+    + "  :root { --accent: #6366F1; --ink: #0F172A; --muted: #475569; }\n"
     "  body { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, "
     "sans-serif; color: var(--ink); max-width: 780px; margin: 40px auto; "
     "padding: 0 36px; line-height: 1.55; }\n"
@@ -196,6 +215,7 @@ _MODERN_CSS = (
     "  ul, ol { margin: 6px 0 14px 22px; }\n"
     "  ul li { margin-bottom: 4px; }\n"
     "  strong { color: var(--ink); }\n"
+    "  a{color:var(--accent);}\n"
 )
 
 
@@ -415,11 +435,34 @@ def _strip_inline(text: str) -> str:
     return text
 
 
+_LINK_COLOR = "#1D4ED8"
+
+
 def _inline_to_html(text: str) -> str:
+    """Inline markdown -> ReportLab Paragraph mini-XML, with clickable links.
+
+    ReportLab's Paragraph supports a ``<link href="...">label</link>`` tag
+    that produces a real PDF hyperlink annotation - the user can ctrl-
+    click it inside any modern PDF viewer and jump to the URL. We escape
+    HTML first, then layer the inline markdown rules + the link
+    transformation on top so URLs round-trip correctly.
+    """
     escaped = _escape_html(text)
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
     escaped = re.sub(r"\*(.+?)\*", r"<i>\1</i>", escaped)
     escaped = re.sub(r"`([^`]+)`", r"<font face='Courier'>\1</font>", escaped)
+    # ``[label](url)`` markdown link -> reportlab <link>
+    escaped = re.sub(
+        r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
+        rf'<link href="\2" color="{_LINK_COLOR}"><u>\1</u></link>',
+        escaped,
+    )
+    # Bare URL fallback. Skip URLs already inside a <link href="..."> tag.
+    escaped = re.sub(
+        r'(?<!href=")(?<!href=\")(https?://[^\s<]+)',
+        rf'<link href="\1" color="{_LINK_COLOR}"><u>\1</u></link>',
+        escaped,
+    )
     return escaped
 
 
@@ -548,7 +591,9 @@ def _summary_css(theme: object) -> str:
     heading_font = getattr(theme, "heading_font", body_font)
 
     return f"""
-*{{box-sizing:border-box;margin:0;padding:0}}
+*{{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+::selection{{background:#FDE68A;color:#0F172A}}
+@media print{{a[href]::after{{content:""}}}}
 html,body{{font-family:{body_font};color:{text_primary};background:#F8FAFC;line-height:1.55;font-size:14px}}
 .shell{{max-width:920px;margin:0 auto;padding:32px 28px 64px 28px}}
 .banner{{background:linear-gradient(135deg,{accent} 0%,{accent_dark} 100%);color:#FFFFFF;border-radius:14px;padding:28px 30px;margin-bottom:24px;box-shadow:0 18px 40px rgba(15,23,42,0.10)}}

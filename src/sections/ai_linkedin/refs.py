@@ -1,27 +1,16 @@
-"""Cross-thread refresh helpers for AI Career.
+"""Cross-thread refresh helpers for AI LinkedIn.
 
-The section talks to LLMs / scrapes / writes files on daemon threads. Once
-those workers mutate :data:`STATE`, the UI has to repaint, but in Flet
-0.84 calling ``page.update()`` directly from a non-UI thread queues a
-patch on the page's asyncio loop without forcing the loop to run a tick -
-the user sees the redirect only after the next window event (focus,
-resize, …). The fix is to bounce the work onto the loop via
+The section talks to LLMs / scrapes / writes files on daemon threads.
+Once those workers mutate :data:`STATE`, the UI has to repaint, but in
+Flet 0.84 calling ``page.update()`` directly from a non-UI thread queues
+a patch on the page's asyncio loop without forcing the loop to run a
+tick - the user sees the new state only after the next window event
+(focus, resize, …). The fix is to bounce the work onto the loop via
 ``loop.call_soon_threadsafe`` so the patch ships immediately.
 
 UI-thread callers can keep calling ``request_section_refresh()`` directly;
 worker threads should go through ``REFS.dispatch(callback)`` so the
 ``page.update()`` lands on the right thread.
-
-Convenience wrapper:
-
-* :meth:`CareerRefs.request_context_refresh` – the right-hand context
-  panel re-render. The pipeline calls this after every activity / cost
-  / state change, so the worker thread doesn't have to worry about
-  whether ``rerender_context`` is wired yet (during very first render
-  it is not) or about routing through the page loop manually.
-
-Every error path logs via :func:`log_exception` instead of swallowing,
-matching the section rules in ``.cursor/rules/sections.mdc``.
 """
 
 from __future__ import annotations
@@ -33,7 +22,7 @@ from src.services import logger as logger_service
 
 
 @dataclass
-class CareerRefs:
+class LinkedInRefs:
     """Cross-cutting handles shared between view + worker threads.
 
     * ``rerender_context`` - light right-hand-panel refresh used after
@@ -53,8 +42,8 @@ class CareerRefs:
         Because from a worker thread that pair only schedules a patch -
         the UI client doesn't repaint until the loop runs again. Routing
         through ``loop.call_soon_threadsafe`` wakes the loop immediately
-        so the redirect / new tab body actually shows up without the
-        user having to minimize / restore the window.
+        so the new tab / activity badge / generated card actually shows
+        up without the user having to minimise / restore the window.
 
         Falls back to a synchronous call when the page or its loop is
         not available yet (e.g. during the very first render).
@@ -65,7 +54,7 @@ class CareerRefs:
                 callback()
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.refs", "dispatch_no_page_callback_failed", exc,
+                    "ai_linkedin.refs", "dispatch_no_page_callback_failed", exc,
                 )
             return
         loop = None
@@ -78,32 +67,32 @@ class CareerRefs:
                 callback()
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.refs", "dispatch_no_loop_callback_failed", exc,
+                    "ai_linkedin.refs", "dispatch_no_loop_callback_failed", exc,
                 )
             try:
                 page.update()
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.refs", "dispatch_no_loop_update_failed", exc,
+                    "ai_linkedin.refs", "dispatch_no_loop_update_failed", exc,
                 )
             return
         try:
             loop.call_soon_threadsafe(_run_and_flush, callback, page)
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.refs", "dispatch_call_soon_failed", exc,
+                "ai_linkedin.refs", "dispatch_call_soon_failed", exc,
             )
             try:
                 callback()
             except Exception as exc2:
                 logger_service.log_exception(
-                    "ai_career.refs", "dispatch_fallback_callback_failed", exc2,
+                    "ai_linkedin.refs", "dispatch_fallback_callback_failed", exc2,
                 )
             try:
                 page.update()
             except Exception as exc2:
                 logger_service.log_exception(
-                    "ai_career.refs", "dispatch_fallback_update_failed", exc2,
+                    "ai_linkedin.refs", "dispatch_fallback_update_failed", exc2,
                 )
 
     def request_context_refresh(self) -> None:
@@ -119,8 +108,6 @@ class CareerRefs:
         if callback is None:
             return
         if self.page is None:
-            # First render path - call straight through; the safe
-            # wrapper logs any failure on the worker thread.
             safe(callback)
             return
         self.dispatch(callback)
@@ -139,33 +126,26 @@ def _run_and_flush(callback: Callable[[], None], page: Any) -> None:
         callback()
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.refs", "run_and_flush_callback_failed", exc,
+            "ai_linkedin.refs", "run_and_flush_callback_failed", exc,
         )
     try:
         page.update()
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.refs", "run_and_flush_page_update_failed", exc,
+            "ai_linkedin.refs", "run_and_flush_page_update_failed", exc,
         )
 
 
-REFS = CareerRefs()
+REFS = LinkedInRefs()
 
 
 def safe(callback: Optional[Callable[[], None]]) -> None:
-    """Call ``callback`` if non-None, logging any exception.
-
-    Used by event handlers running on the UI thread. Worker threads
-    should prefer :meth:`CareerRefs.request_context_refresh` (or
-    :meth:`CareerRefs.dispatch` for arbitrary callables) so the
-    ``page.update()`` flushes on the loop instead of getting silently
-    queued.
-    """
+    """Call ``callback`` if non-None, logging any exception."""
     if callback is None:
         return
     try:
         callback()
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.refs", "safe_callback_failed", exc,
+            "ai_linkedin.refs", "safe_callback_failed", exc,
         )

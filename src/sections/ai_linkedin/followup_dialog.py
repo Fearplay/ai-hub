@@ -1,22 +1,9 @@
 """Modal dialog for the optional follow-up questions step.
 
-When the user opts into "Ask clarifying questions before each run" in
-Settings, the pipeline pauses after candidate / job-spec extraction and
-asks the LLM for any unclear items it spotted (Python experience, team
-lead history, ...). Each question carries:
-
-* a short ``topic`` chip,
-* the ``question`` text and a ``rationale`` line,
-* a list of pre-canned ``options`` (chips the user toggles),
-* a ``multi_select`` flag (radio vs. checkbox behaviour),
-* an ``allow_free_text`` flag that reveals an "Other" text field.
-
-The user picks zero or more options, optionally types an Other answer, or
-just leaves the row blank to skip. The dialog is opened via
-``open_followup_dialog`` and triggers ``on_submit`` with a list of
-``{topic, question, rationale, answer}`` dicts (the dialog flattens
-multiple selections + Other text into a single human-readable answer
-string), or ``on_cancel`` when the user bails out.
+Cloned from :mod:`src.sections.ai_career.followup_dialog` so the
+LinkedIn section stays isolated per the section contract. Future
+refactor: extract the shared widget into ``src/components/`` and have
+both sections delegate to it.
 """
 
 from __future__ import annotations
@@ -26,21 +13,13 @@ from typing import Callable, Sequence
 import flet as ft
 
 from src.services import logger as logger_service
-from src.sections.ai_career._dialog import close_dialog as _close_dialog
-from src.sections.ai_career._dialog import open_dialog as _open_dialog
+from src.sections.ai_linkedin._dialog import close_dialog as _close_dialog
+from src.sections.ai_linkedin._dialog import open_dialog as _open_dialog
 from src.theme import Theme
 
 
 class _QuestionRowState:
-    """Tracks the user's interaction state for one question row.
-
-    ``selected`` indexes track which options are currently picked. For
-    single-select questions only one index sticks at a time; for multi-
-    select the set grows / shrinks as the user toggles chips. ``other_on``
-    + ``other_field`` carry the free-text answer. ``compose_answer`` joins
-    everything into a single human-readable string when the dialog
-    submits.
-    """
+    """Tracks the user's interaction state for one question row."""
 
     def __init__(
         self,
@@ -76,17 +55,19 @@ class _QuestionRowState:
             visible=False,
         )
 
-        # Filled in by build_row(); we keep references so toggle handlers
-        # can repaint just the chip controls in place.
         self.option_holders: list[ft.Container] = []
         self.other_holder: ft.Container | None = None
-
-    # --- toggle handlers ----------------------------------------------------
 
     def _refresh_chip(self, idx: int) -> None:
         if 0 <= idx < len(self.option_holders):
             self.option_holders[idx].content = self._chip_view(idx)
-            logger_service.try_update(self.option_holders[idx])
+            if not logger_service.try_update(self.option_holders[idx]):
+                logger_service.log_event(
+                    "DEBUG",
+                    "ai_linkedin.followup_dialog",
+                    "chip_update_skipped",
+                    idx=idx,
+                )
 
     def _refresh_other_chip(self) -> None:
         if self.other_holder is not None:
@@ -117,16 +98,12 @@ class _QuestionRowState:
         logger_service.try_update(self.other_field)
         self._refresh_other_chip()
 
-    # --- chip rendering -----------------------------------------------------
-
     def _chip_view(self, idx: int) -> ft.Control:
         active = idx in self.selected
         return _chip(self.theme, self.options[idx], active=active)
 
     def _other_chip_view(self) -> ft.Control:
         return _chip(self.theme, self.other_label, active=self.other_on)
-
-    # --- compose final answer ----------------------------------------------
 
     def compose_answer(self) -> str:
         parts: list[str] = []
@@ -215,7 +192,6 @@ def open_followup_dialog(
                 ft.Text(rationale, color=theme.text_muted, size=11, italic=True)
             )
 
-        # Build the chip row (option chips + optional Other chip).
         chip_controls: list[ft.Control] = []
         for idx, _opt in enumerate(state.options):
             holder = ft.Container(
@@ -236,9 +212,6 @@ def open_followup_dialog(
             )
             state.other_holder = other_holder
             chip_controls.append(other_holder)
-            # When there are no options, default to having the Other field
-            # already open - otherwise the user has nothing to interact with
-            # except the chip.
             if not state.options:
                 state.other_on = True
                 state.other_field.visible = True

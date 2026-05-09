@@ -19,6 +19,7 @@ import flet as ft
 
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
+from src.services import logger as logger_service
 from src.services import settings_store
 from src.services.cost_tracker import COST
 from src.sections.ai_career.refs import REFS, safe
@@ -272,17 +273,31 @@ def build_context(theme: Theme, lang: str) -> ft.Container:
         # to ``page.update()`` when we have a page reference forces the
         # whole tree to flush, which makes the Activity pill actually
         # animate while a fetch is in flight.
+        logger_service.try_update(panel_holder)
+        # Reading ``panel_holder.page`` directly would raise
+        # ``RuntimeError: Control must be added to the page first`` on
+        # the very first render (called synchronously from
+        # ``build_context`` before the panel is mounted). The app keeps
+        # a live ``ft.Page`` reference we can grab without walking the
+        # parent chain, so use that instead and store it on REFS for
+        # later worker threads.
         try:
-            panel_holder.update()
-        except Exception:
-            pass
+            from src.app import get_active_page
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.context", "panel_page_import_failed", exc,
+            )
+            return
+        page = get_active_page()
+        if page is None:
+            return
+        REFS.page = page
         try:
-            page = panel_holder.page
-            if page is not None:
-                REFS.page = page
-                page.update()
-        except Exception:
-            pass
+            page.update()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.context", "panel_page_update_failed", exc,
+            )
 
     def _on_cost_change() -> None:
         _render()
@@ -291,8 +306,10 @@ def build_context(theme: Theme, lang: str) -> ft.Container:
     if callable(prev):
         try:
             prev()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.context", "previous_unsubscribe_failed", exc,
+            )
     _PREV_UNSUBSCRIBE["fn"] = COST.subscribe(_on_cost_change)
     REFS.rerender_context = _render
 

@@ -43,6 +43,19 @@ _CHANNEL_PREFERENCES: tuple[tuple[str, str], ...] = (
 )
 
 
+# Forced print-time CSS tacked on top of every PDF render. It guarantees
+# (a) selection highlight contrast, (b) link colour + underline, and
+# (c) accent backgrounds keep their colour even if the page CSS forgot
+# to set ``print-color-adjust``. Inlined into the page via
+# ``page.add_style_tag`` right before we trigger ``page.pdf(...)``.
+_PRINT_HARDENING_CSS = (
+    "*{-webkit-print-color-adjust:exact !important;"
+    "print-color-adjust:exact !important}"
+    "::selection{background:#FDE68A !important;color:#0F172A !important}"
+    "a[href]{text-decoration:underline !important}"
+)
+
+
 class PdfRendererUnavailableError(RuntimeError):
     """Raised when no usable browser is reachable through Playwright."""
 
@@ -142,6 +155,20 @@ def render_html_to_pdf(html: str, target: Path | str) -> Path:
             page.set_content(html, wait_until="domcontentloaded")
             with suppress(Exception):
                 page.wait_for_load_state("networkidle", timeout=8_000)
+            # Force the page into "print" media so any ``@media print``
+            # blocks (such as our ``a[href]{text-decoration:underline}``
+            # and ``print-color-adjust`` overrides) actually fire when
+            # we call ``page.pdf(...)``. Without this Chromium prints
+            # against the screen stylesheet, which is why some links
+            # used to come out unstyled in the saved PDF even though
+            # the in-browser preview was correct.
+            with suppress(Exception):
+                page.emulate_media(media="print")
+            # Inject a last-line-of-defence print stylesheet so PDFs
+            # produced by older saved HTML still get the selection /
+            # link colour fixes the rest of the app applies inline.
+            with suppress(Exception):
+                page.add_style_tag(content=_PRINT_HARDENING_CSS)
             if not hasattr(page, "pdf"):
                 raise PdfRendererUnavailableError(
                     "Selected browser does not expose a PDF printer. "

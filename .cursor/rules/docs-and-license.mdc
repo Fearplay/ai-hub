@@ -1,0 +1,120 @@
+---
+description: Keep README.md, README.cs.md, LICENSE, and .gitignore in sync with the code at the end of every task
+alwaysApply: true
+---
+
+# AI Hub - documentation, license, and gitignore upkeep
+
+Whenever Cursor finishes a task that changes how the app is installed,
+configured, run, or shipped, it MUST update the user-facing
+documentation in the same commit. The user should never have to chase
+down "wait, what file did you add" or "why does my build fail" by
+reading the diff - the README is the single source of truth they
+trust.
+
+## Hard rules - never break these
+
+1. **README.md (English) AND README.cs.md (Czech) are paired.** If you
+ touch one, you touch the other. Both files must mention every visible
+ feature, every new section, every new dependency, every new build /
+ run flag. The translations should be roughly equivalent in length
+ and structure - users who read only one of them must get the same
+ information.
+2. **`requirements.txt` is the canonical dependency list.** Every new
+ `pip install <pkg>` you make must land in `requirements.txt`
+ (pinned to the latest stable version - never blank, never `*`).
+ The README's "Dependencies" section must list new third-party
+ packages with one short sentence describing why they are there.
+3. **`LICENSE` must keep covering everything you ship.** When you add
+ third-party assets (fonts, icon packs, vendored snippets), append
+ their attribution to `LICENSE` (or a sibling `THIRD_PARTY_LICENSES`
+ file) so the bundled .exe stays redistributable. Do **not** silently
+ import code that is GPL-incompatible with the project's MIT licence.
+4. **`.gitignore` must keep build / cache / secret artefacts out of
+ git.** Whenever you introduce a new build folder, cache directory,
+ lock file, or generated asset that the user should not commit, add
+ it to `.gitignore`. If you add an environment-variable-driven
+ secret loader, add the matching `.env` / `*.secrets` glob.
+5. **Never delete documentation just because the code that needed it
+ went away.** Update it - don't drop sections without explaining the
+ replacement, or you orphan readers who are following an older
+ README.
+6. **Generated files do not belong in git.** `build/`, `dist/`,
+ `.venv/`, `*.spec`, and the test caches are already in
+ `.gitignore`; do not commit them by accident with `git add -A` -
+ always inspect with `git status` first.
+
+## When to update which file
+
+| Change you made                                | README.md / README.cs.md | requirements.txt | LICENSE | .gitignore |
+|-----------------------------------------------|:-----------------------:|:----------------:|:-------:|:----------:|
+| New section folder under `src/sections/<key>` |            ✅           |        —         |    —    |     —      |
+| New AI provider, new pipeline step             |            ✅           |        ✅        |    —    |     —      |
+| New `pip` package                              |            ✅           |        ✅        | maybe* |     —      |
+| New build flag in `build_exe.bat`              |            ✅           |        —         |    —    |     —      |
+| New env / secret store                         |            ✅           |        —         |    —    |     ✅     |
+| New cache / build folder                       |            —           |        —         |    —    |     ✅     |
+| New bundled font / icon pack                   |            ✅           |        —         |   ✅    |     —      |
+| New on-disk format / `~/AI Hub/` subfolder     |            ✅           |        —         |    —    |     —      |
+| Removed feature                                |            ✅           |     maybe        |    —    |     —      |
+
+*"maybe" = check the licence of the package; permissive (MIT / BSD /
+Apache-2.0) just needs a one-liner in the dependency list, copyleft
+(LGPL / GPL) needs an entry in `LICENSE` or a separate
+`THIRD_PARTY_LICENSES`.
+
+## What "updated README" actually means
+
+Both READMEs must include, at minimum:
+
+* **Quick start**: how to run the dev app (`python main.py`), how to
+ build the .exe (`build_exe.bat`), how to wipe state (`~/AI Hub/`).
+* **Feature list**: every visible left-sidebar section + a one-line
+ description of what it does.
+* **Dependencies**: top-level `pip` packages with a short rationale
+ (e.g. "`flet>=0.25` - desktop UI", "`reportlab>=4` - PDF export").
+* **Settings + secrets**: where API keys live (OS keystore via
+ `keyring`), how the user enters them, the path to `~/AI Hub/`.
+* **Building**: which script to run, what artefacts it produces, what
+ prerequisites the user needs (none - `build_exe.bat` is
+ self-bootstrapping).
+* **Architecture pointers**: the auto-discovery contract for
+ sections, where translations live, where mock data lives. Link to
+ the Cursor rules folder so contributors can find the canonical
+ conventions.
+
+## Workflow at the end of a task
+
+```bash
+# 1) See what you actually touched
+git status
+
+# 2) For every line of code that introduces a new behaviour, update
+#    README.md AND README.cs.md. Keep both in lockstep.
+
+# 3) For every new pip dep, append it to requirements.txt + the
+#    Dependencies block of both READMEs.
+
+# 4) For every new bundled asset / vendored file / GPL dep,
+#    append the attribution to LICENSE.
+
+# 5) For every new build / cache / secret artefact, append the
+#    pattern to .gitignore.
+
+# 6) git status one more time - the only modified files left should
+#    be the code you wrote, requirements.txt, README.md / README.cs.md,
+#    LICENSE / .gitignore, and build_exe.bat. Anything else is a leak.
+```
+
+## Do not
+
+- Do **not** create a `CHANGELOG.md` unless the user asks - the README
+ is the changelog for this project.
+- Do **not** translate the README via an automated translator and call
+ it done; read both files in full and cross-check terminology.
+- Do **not** leave the Czech README half-finished with English
+ placeholders. If you cannot translate something, ask the user
+ instead of shipping a mixed-language file.
+- Do **not** commit `.env`, `credentials.json`, or any other file that
+ might contain secrets, even when `.gitignore` would catch it - belt
+ and braces, not just braces.

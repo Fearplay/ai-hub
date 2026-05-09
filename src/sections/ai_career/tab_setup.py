@@ -21,6 +21,7 @@ from typing import Callable, Optional
 
 import flet as ft
 
+from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
 from src.sections.ai_career import pipeline
@@ -240,7 +241,7 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
             else:
                 STATE.activity = "error"
                 STATE.last_error = error or txt["job_url_failed"]
-            safe(REFS.rerender_context)
+            REFS.request_context_refresh()
             REFS.dispatch(_request_full_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -281,10 +282,7 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 content=ft.Text(txt["resume_no_file"], color=theme.text_muted, size=12),
                 padding=ft.padding.symmetric(horizontal=4, vertical=8),
             )
-        try:
-            resume_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(resume_holder)
 
     def _render_linkedin() -> None:
         if STATE.linkedin:
@@ -296,10 +294,7 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 content=ft.Text(txt["linkedin_no_file"], color=theme.text_muted, size=12),
                 padding=ft.padding.symmetric(horizontal=4, vertical=8),
             )
-        try:
-            linkedin_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(linkedin_holder)
 
     def _clear_resume() -> None:
         STATE.resume = None
@@ -346,6 +341,9 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 extensions=_RESUME_EXTENSIONS,
                 unsupported_message=txt["resume_unsupported"],
                 on_file_resolved=_on_resume,
+                paste_path_label=txt["upload_paste_path_btn"],
+                paste_path_tooltip=txt["upload_paste_path_tooltip"],
+                cta_label=txt["upload_cta_label"],
             ),
             resume_holder,
             ft.Container(height=8),
@@ -358,6 +356,9 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
                 unsupported_message=txt["resume_unsupported"],
                 on_file_resolved=_on_linkedin,
                 height=104,
+                paste_path_label=txt["upload_paste_path_btn"],
+                paste_path_tooltip=txt["upload_paste_path_tooltip"],
+                cta_label=txt["upload_cta_label"],
             ),
             linkedin_holder,
         ],
@@ -411,15 +412,9 @@ def _step_3(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> ft.
         if value:
             STATE.github_profile = None
             status.value = ""
-            try:
-                status.update()
-            except Exception:
-                pass
+            logger_service.try_update(status)
         url_field.disabled = value
-        try:
-            url_field.update()
-        except Exception:
-            pass
+        logger_service.try_update(url_field)
         on_state_change()
 
     body = ft.Column(
@@ -484,10 +479,7 @@ def _footer_bar(
     def _set_status(message: str, *, error: bool = False) -> None:
         run_status.value = message
         run_status.color = "#EF4444" if error else theme.text_muted
-        try:
-            run_status.update()
-        except Exception:
-            pass
+        logger_service.try_update(run_status)
 
     def _label_for(stage: str) -> str:
         if stage == "demo":
@@ -512,10 +504,7 @@ def _footer_bar(
             enabled=enabled,
             on_click=lambda e: _on_run(e.page),
         )
-        try:
-            run_button_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(run_button_holder)
 
     def _set_stage(stage: str) -> None:
         STATE.run_stage = stage
@@ -541,7 +530,7 @@ def _footer_bar(
             _set_stage("")
             return
         STATE.activity = "ready"
-        safe(REFS.rerender_context)
+        REFS.request_context_refresh()
         _set_stage("")
         _go_to_match()
 
@@ -555,14 +544,14 @@ def _footer_bar(
         def _on_submit(answers: list[dict]) -> None:
             STATE.followup_qa = answers
             STATE.activity = "analyzing"
-            safe(REFS.rerender_context)
+            REFS.request_context_refresh()
             REFS.dispatch(_request_full_refresh)
             threading.Thread(target=_phase2_match, daemon=True).start()
 
         def _on_cancel() -> None:
             STATE.followup_qa = []
             STATE.activity = "ready"
-            safe(REFS.rerender_context)
+            REFS.request_context_refresh()
             _set_stage("")
             REFS.dispatch(_request_full_refresh)
 
@@ -639,7 +628,7 @@ def _footer_bar(
                 if settings_store.get_ask_followups():
                     _set_stage("followups")
                     STATE.activity = "followups"
-                    safe(REFS.rerender_context)
+                    REFS.request_context_refresh()
                     res = pipeline.generate_followup_questions(output_lang=lang)
                     if not res.ok:
                         _set_status(res.error, error=True)
@@ -647,7 +636,7 @@ def _footer_bar(
                         return
                     if STATE.followup_questions:
                         STATE.activity = "waiting_user"
-                        safe(REFS.rerender_context)
+                        REFS.request_context_refresh()
                         # Dialog must open on the page's asyncio loop. From a
                         # worker thread ``page.show_dialog(...)`` only schedules
                         # the patch and the loop doesn't run a tick until a
@@ -757,18 +746,19 @@ def build_setup_tab(
         if fn is not None:
             try:
                 fn(None)
-            except Exception:
-                pass
-        try:
-            footer_holder.update()
-        except Exception:
-            pass
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_setup", "refresh_footer_fn_failed", exc,
+                )
+        logger_service.try_update(footer_holder)
         try:
             page = footer_holder.page
             if page is not None:
                 page.update()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.tab_setup", "refresh_footer_page_update_failed", exc,
+            )
 
     body = ft.ListView(
         controls=[

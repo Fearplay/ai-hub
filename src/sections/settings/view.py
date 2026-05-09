@@ -15,12 +15,13 @@ miss it when the snackbar dismisses.
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 import flet as ft
 
 from src.components.header import header
-from src.services import logger as logger_service
+from src.services import clipboard, logger as logger_service
 from src.services import secrets, settings_store
 from src.sections.settings.data import SECTION_ICON, key_rows
 from src.sections.settings.strings import s
@@ -29,6 +30,74 @@ from src.theme import Theme
 
 MODE_MAIN = "main"
 MODE_LOGS = "logs"
+
+
+# Matches the timestamp + level prefix written by the rotating logger
+# (see src/services/logger.py - _AlignedFormatter).
+# Example match: ``2026-05-09 20:42:15.255 | ERROR | ...``
+_LEVEL_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+\|\s+(\w+)\s+\|"
+)
+
+# Per-level colours for the in-app debug logs viewer. ``None`` means
+# "use theme.text" - we colour the *whole row* (timestamp included) by
+# level so the eye can find ERROR / WARNING lines while skimming a long
+# tail. Continuation lines (tracebacks, blank lines) inherit the colour
+# of the previous classified row so a multi-line stack stays red.
+_LEVEL_COLOURS: dict[str, str | None] = {
+    "DEBUG": "#06B6D4",      # cyan
+    "INFO": None,             # default text colour
+    "WARNING": "#F59E0B",     # amber
+    "ERROR": "#EF4444",       # red
+    "CRITICAL": "#DC2626",    # bold red
+}
+
+
+def _colour_for_level(level: str | None, theme: Theme) -> str:
+    if level is None:
+        return theme.text
+    colour = _LEVEL_COLOURS.get(level)
+    if colour is None:
+        return theme.text
+    return colour
+
+
+def _log_line_controls(text: str, theme: Theme) -> list[ft.Control]:
+    """Turn the raw log tail into one coloured ``ft.Text`` per line.
+
+    The per-row ``ft.Text`` controls are NOT marked ``selectable=True``
+    on purpose - the parent :class:`ft.SelectionArea` (see
+    :func:`_logs_view`) is what enables drag-select across rows.
+    Mixing ``SelectableText`` widgets inside a ``SelectionArea`` makes
+    Flutter ignore the area-level selection because each
+    ``SelectableText`` claims its own selection scope.
+    """
+    if not text:
+        return []
+    rows: list[ft.Control] = []
+    last_level: str | None = None
+    for raw in text.split("\n"):
+        match = _LEVEL_RE.match(raw)
+        if match:
+            level: str | None = match.group(1).upper()
+            last_level = level
+        else:
+            level = last_level
+        rows.append(
+            ft.Text(
+                raw if raw else " ",
+                color=_colour_for_level(level, theme),
+                size=12,
+                font_family="Consolas, Menlo, monospace",
+                weight=(
+                    ft.FontWeight.W_700
+                    if level == "CRITICAL"
+                    else ft.FontWeight.W_400
+                ),
+                no_wrap=False,
+            )
+        )
+    return rows
 
 
 def _card(theme: Theme, *, icon: str, title: str, desc: str, body: ft.Control) -> ft.Container:
@@ -579,34 +648,71 @@ def _logs_view(
     *,
     on_back: Callable[[], None],
 ) -> ft.Control:
-    """Tail of ``app.log`` with Refresh / Copy / Open folder / Clear actions."""
+    """Tail of ``app.log`` with Refresh / Copy / Open folder / Clear actions.
 
-    log_text_field = ft.TextField(
-        value="",
-        multiline=True,
-        read_only=True,
-        text_style=ft.TextStyle(color=theme.text, size=12, font_family="Consolas"),
+    UX choices:
+
+    * One ``ft.Text`` per log line (so we can colour ERROR / WARNING
+      rows red / amber for skim-friendliness).
+    * Wrapped in ``ft.SelectionArea`` so mouse drag-select spans
+      multiple rows - native ``selectable=True`` on each ``ft.Text``
+      only selects within one line at a time, which is what the user
+      hit before this refactor.
+    * Copy goes through :mod:`src.services.clipboard`, a synchronous
+      pyperclip-first helper. The previous implementation used
+      ``ft.Clipboard().set(...)`` which dies with
+      ``RuntimeError("Session closed")`` after the page session enters
+      a half-closed state - users saw the Copy button doing nothing
+      while the log filled with ``logs_copy_failed`` traces.
+    """
+
+    log_column = ft.Column(
+        controls=[],
+        spacing=0,
+        tight=True,
+    )
+    selectable_log = ft.SelectionArea(content=log_column)
+    scroll_holder = ft.Column(
+        controls=[selectable_log],
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+        spacing=0,
+        tight=True,
+    )
+    log_box = ft.Container(
+        content=ft.Container(
+            content=scroll_holder,
+            padding=ft.padding.symmetric(horizontal=12, vertical=10),
+            expand=True,
+        ),
         bgcolor=theme.surface_2,
-        border=ft.InputBorder.NONE,
-        filled=True,
-        cursor_color=theme.primary,
-        content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
         border_radius=10,
-        min_lines=20,
-        max_lines=20,
+        border=ft.border.all(1, theme.border),
         expand=True,
     )
     status_text = ft.Text("", color=theme.text_muted, size=11)
 
     def _refresh_log(*, after_action_message: str = "", after_color: str = "") -> None:
         body = logger_service.read_log()
-        log_text_field.value = body or txt["logs_empty"]
-        # During the initial build of the Logs view we set the value and
-        # call ``update()`` before the field is mounted on the page. Flet
-        # 0.84 raises ``RuntimeError`` in that case; ``try_update``
-        # silences the expected mount error so the log doesn't fill with
-        # bogus traces (real update errors still raise).
-        logger_service.try_update(log_text_field)
+        if body:
+            controls = _log_line_controls(body, theme)
+        else:
+            controls = [
+                ft.Text(
+                    txt["logs_empty"],
+                    color=theme.text_muted,
+                    size=12,
+                    font_family="Consolas, Menlo, monospace",
+                )
+            ]
+        log_column.controls = controls
+        # During the initial build of the Logs view we set ``controls``
+        # and call ``update()`` before the column is mounted on the
+        # page. Flet 0.84 raises ``RuntimeError`` in that case; the
+        # ``try_update`` helper silences the expected mount error so
+        # the log file does not fill with bogus traces (real update
+        # errors still raise).
+        logger_service.try_update(log_column)
         if after_action_message:
             status_text.value = after_action_message
             status_text.color = after_color or theme.text_muted
@@ -619,52 +725,36 @@ def _logs_view(
         logger_service.log_event("INFO", "settings.view", "logs_refresh")
         _refresh_log()
 
-    def _on_copy(e: ft.ControlEvent) -> None:
-        page = e.page
+    def _on_copy(_e: ft.ControlEvent) -> None:
         body = logger_service.read_log()
-        if page is None:
-            _refresh_log(after_action_message=txt["logs_copy_failed"], after_color="#EF4444")
+        if not body:
+            _refresh_log(
+                after_action_message=txt["logs_empty"],
+                after_color=theme.text_muted,
+            )
             return
-        # Flet 0.84 dropped ``page.set_clipboard()`` in favour of the
-        # ``Clipboard`` service whose ``set`` method is async. We schedule
-        # the coroutine on the page's event loop via ``run_task`` and let
-        # the snackbar status update immediately - the actual clipboard
-        # write completes a tick later but the user does not perceive
-        # the difference on a click.
-        async def _do_copy() -> None:
-            try:
-                clipboard = ft.Clipboard()
-                registry = getattr(page, "_services", None)
-                if registry is not None:
-                    try:
-                        registry.register_service(clipboard)
-                    except Exception as exc:
-                        logger_service.log_exception(
-                            "settings.view", "clipboard_register_failed", exc,
-                        )
-                await clipboard.set(body or "")
-            except Exception as exc:
-                logger_service.log_exception(
-                    "settings.view", "logs_copy_failed", exc
-                )
-                _refresh_log(
-                    after_action_message=txt["logs_copy_failed"],
-                    after_color="#EF4444",
-                )
-                return
+        # Synchronous pyperclip-backed helper; no asyncio, no Flet
+        # session involved, so the previous "Session closed" race
+        # cannot happen any more.
+        ok = clipboard.copy(body)
+        if ok:
             logger_service.log_event(
-                "INFO", "settings.view", "logs_copied", chars=len(body or "")
+                "INFO", "settings.view", "logs_copied",
+                chars=len(body), backend=clipboard.backend_name(),
             )
             _refresh_log(
                 after_action_message=txt["logs_copy_done"],
                 after_color="#22C55E",
             )
-
-        try:
-            page.run_task(_do_copy)
-        except Exception as exc:
-            logger_service.log_exception("settings.view", "logs_copy_run_failed", exc)
-            _refresh_log(after_action_message=txt["logs_copy_failed"], after_color="#EF4444")
+        else:
+            logger_service.log_event(
+                "ERROR", "settings.view", "logs_copy_failed_sync",
+                backend=clipboard.backend_name(),
+            )
+            _refresh_log(
+                after_action_message=txt["logs_copy_failed"],
+                after_color="#EF4444",
+            )
 
     def _on_clear(_e: ft.ControlEvent) -> None:
         ok = logger_service.clear_log()
@@ -712,6 +802,12 @@ def _logs_view(
         italic=True,
         selectable=True,
     )
+    selection_hint = ft.Text(
+        txt["logs_selection_hint"],
+        color=theme.text_subtle,
+        size=11,
+        italic=True,
+    )
 
     actions = ft.Row(
         controls=[
@@ -755,8 +851,9 @@ def _logs_view(
             header_row,
             description,
             log_path_text,
+            selection_hint,
             actions,
-            ft.Container(content=log_text_field, expand=True),
+            log_box,
         ],
         spacing=12,
         expand=True,

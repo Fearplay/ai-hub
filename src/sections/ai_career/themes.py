@@ -374,12 +374,14 @@ def _bold_to_html(text: str | None) -> str:
 # CV is short - that way the sidebar / banner background extends to the
 # bottom of the page rather than collapsing to content height.
 _CSS_BASE_PAGE = """
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @page{size:A4;margin:0}
+::selection{background:#FDE68A;color:#0F172A}
 @media print{
   html,body{background:#fff !important}
   .page{box-shadow:none !important;margin:0}
-  .sidebar,.banner,.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sidebar,.banner,.header,.summary,.leadership-banner,.highlight-pill,.skill-tag,.contact-bar,.skills-row,.skills-grid,.lang-list,.job ul li,section.block{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  a[href]{text-decoration:underline}
 }
 .job,.project-card,.edu-row,.cert-item,.lang-row,.skill-group,.skills-row .group,.skills-grid .group,.lang-list .lang,section.block{break-inside:avoid;page-break-inside:avoid}
 .job-header,.edu-row .top{break-inside:avoid;page-break-inside:avoid}

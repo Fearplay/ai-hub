@@ -31,3 +31,19 @@ compatible with the MIT License above.
 - Flet (https://flet.dev) - Apache License 2.0
   Copyright (c) Appveyor Systems Inc.
   https://github.com/flet-dev/flet/blob/main/LICENSE
+
+- openai (https://github.com/openai/openai-python) - Apache License 2.0
+- anthropic (https://github.com/anthropics/anthropic-sdk-python) - MIT License
+- keyring (https://github.com/jaraco/keyring) - MIT License
+- httpx (https://www.python-httpx.org) - BSD-3-Clause License
+- beautifulsoup4 (https://www.crummy.com/software/BeautifulSoup/) - MIT License
+- lxml (https://lxml.de) - BSD-3-Clause License
+- playwright (https://playwright.dev/python/) - Apache License 2.0
+- pypdf (https://github.com/py-pdf/pypdf) - BSD-3-Clause License
+- python-docx (https://github.com/python-openxml/python-docx) - MIT License
+- markdown2 (https://github.com/trentm/python-markdown2) - MIT License
+- reportlab (https://www.reportlab.com) - BSD-3-Clause License
+
+All listed licenses are permissive and compatible with the MIT License above.
+Each library retains its own copyright notice; consult the linked
+repositories for the full text.
