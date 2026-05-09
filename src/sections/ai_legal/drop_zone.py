@@ -1,15 +1,10 @@
 """Click-to-browse drop zone for the AI Legal section.
 
-We intentionally do **not** use ``flet-dropzone`` here. That package needs
-the Flutter ``desktop_drop`` native plugin which is bundled by
-``flet build windows`` but **not** by ``flet pack`` (PyInstaller). Our
-distribution flow is ``flet pack``, so the native bridge would never be
-present at runtime - rendering the dropzone control would surface as the
-red "Unknown control: flet_dropzone" banner. We side-step the whole
-problem by giving the visual zone a click handler that opens
-``ft.FilePicker`` instead - the user attaches a PDF the conventional
-way and ``STATE.uploaded_file`` ends up with the same shape it would
-have had via OS drag-drop.
+The Qt port reuses the shared :func:`src.components.file_drop_zone.file_drop_zone`
+component which already handles native OS drag-and-drop, file picker
+fallback and the paste-path affordance. This wrapper preserves the
+section-specific dictionary shape that ``STATE.uploaded_file`` expects
+(``{"name": ..., "type": ..., "size": ...}``).
 """
 
 from __future__ import annotations
@@ -17,18 +12,12 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
-import flet as ft
+from PySide6.QtWidgets import QWidget
 
+from src.components.file_drop_zone import file_drop_zone
+from src.services.file_parser import ParsedFile, human_size
 from src.sections.ai_legal.strings import s
 from src.theme import Theme
-
-
-def _format_size(num_bytes: int) -> str:
-    if num_bytes >= 1024 * 1024:
-        return f"{num_bytes / (1024 * 1024):.1f} MB"
-    if num_bytes >= 1024:
-        return f"{num_bytes / 1024:.0f} kB"
-    return f"{num_bytes} B"
 
 
 def _path_to_file_dict(path: str) -> Optional[dict]:
@@ -39,30 +28,20 @@ def _path_to_file_dict(path: str) -> Optional[dict]:
     if ext != "pdf":
         return None
     try:
-        size = _format_size(os.path.getsize(path))
+        size = human_size(os.path.getsize(path))
     except OSError:
         size = "?"
     return {"name": name, "type": "PDF", "size": size}
 
 
-def _picker_to_file_dict(file: ft.FilePickerFile) -> Optional[dict]:
-    if file.path:
-        result = _path_to_file_dict(file.path)
-        if result is not None:
-            return result
-    name = file.name or ""
-    if not name.lower().endswith(".pdf"):
+def _parsed_to_file_dict(parsed: ParsedFile) -> Optional[dict]:
+    if parsed.ext != "pdf":
         return None
-    size_str = _format_size(file.size) if isinstance(file.size, int) else "?"
-    return {"name": name, "type": "PDF", "size": size_str}
-
-
-def _idle_bg(theme: Theme) -> str:
-    return ft.Colors.with_opacity(0.10, theme.primary)
-
-
-def _idle_border(theme: Theme) -> ft.Border:
-    return ft.border.all(2, ft.Colors.with_opacity(0.30, theme.primary))
+    return {
+        "name": parsed.name,
+        "type": "PDF",
+        "size": human_size(parsed.size_bytes),
+    }
 
 
 def drop_zone(
@@ -71,87 +50,25 @@ def drop_zone(
     *,
     on_file_resolved: Callable[[dict], None],
     height: int = 132,
-) -> ft.Control:
+) -> QWidget:
     txt = s(lang)
-    file_picker = ft.FilePicker()
-    picker_registered: dict[str, bool] = {"done": False}
 
-    inner_ref = ft.Ref[ft.Container]()
-    error_ref = ft.Ref[ft.Text]()
-
-    def _show_error(message: Optional[str]) -> None:
-        e = error_ref.current
-        if e is None:
-            return
-        e.value = message or ""
-        e.visible = bool(message)
-        try:
-            e.update()
-        except AssertionError:
-            pass
-
-    def _resolve_and_emit(resolved: Optional[dict]) -> None:
+    def _on_parsed(parsed: ParsedFile) -> None:
+        resolved = _parsed_to_file_dict(parsed)
         if resolved is None:
-            _show_error(txt["drop_zone_only_pdf"])
             return
-        _show_error(None)
         on_file_resolved(resolved)
 
-    async def _open_picker(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is None:
-            return
-        if not picker_registered["done"]:
-            registry = getattr(page, "_services", None)
-            if registry is not None:
-                try:
-                    registry.register_service(file_picker)
-                except Exception:
-                    pass
-            picker_registered["done"] = True
-        try:
-            files = await file_picker.pick_files(
-                dialog_title=txt["drop_zone_title"],
-                file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=["pdf"],
-            )
-        except Exception:
-            files = []
-        if not files:
-            return
-        _resolve_and_emit(_picker_to_file_dict(files[0]))
-
-    icon = ft.Icon(ft.Icons.CLOUD_UPLOAD_OUTLINED, color=theme.primary, size=28)
-    title = ft.Text(
-        txt["drop_zone_title"],
-        color=theme.text,
-        size=13,
-        weight=ft.FontWeight.W_600,
-    )
-    hint = ft.Text(txt["drop_zone_hint"], color=theme.text_muted, size=11)
-    error = ft.Text(
-        ref=error_ref,
-        value="",
-        color="#EF4444",
-        size=11,
-        weight=ft.FontWeight.W_500,
-        visible=False,
-    )
-
-    return ft.Container(
-        ref=inner_ref,
-        content=ft.Column(
-            controls=[icon, title, hint, error],
-            spacing=4,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-        ),
-        padding=14,
-        bgcolor=_idle_bg(theme),
-        border=_idle_border(theme),
-        border_radius=12,
-        alignment=ft.Alignment.CENTER,
+    return file_drop_zone(
+        theme,
+        log_area="ai_legal.drop_zone",
+        title=txt["drop_zone_title"],
+        hint=txt["drop_zone_hint"],
+        extensions=("pdf",),
+        unsupported_message=txt["drop_zone_only_pdf"],
+        on_file_resolved=_on_parsed,
         height=height,
-        ink=True,
-        on_click=_open_picker,
+        paste_path_label=txt.get("drop_zone_paste_path", "Paste path"),
+        paste_path_tooltip=txt.get("drop_zone_paste_path_tooltip"),
+        cta_label=txt.get("drop_zone_cta", "Click to browse"),
     )

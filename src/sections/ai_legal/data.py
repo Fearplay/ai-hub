@@ -10,12 +10,12 @@ Everything here is static demo content. Real data flow:
 
 from __future__ import annotations
 
-import flet as ft
+from src.qt.icons import Icons
 
 from src.sections.ai_legal.strings import s
 
 
-SECTION_ICON = ft.Icons.GAVEL_OUTLINED
+SECTION_ICON = Icons.GAVEL_OUTLINED
 
 DEFAULT_UPLOADED_FILE: dict = {
     "name": "smlouva_o_dilo.pdf",
@@ -37,10 +37,10 @@ def tabs(lang: str) -> list[str]:
 def chat_quick_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.SUMMARIZE_OUTLINED, "label": txt["chat_action_summarize"]},
-        {"icon": ft.Icons.WARNING_AMBER_OUTLINED, "label": txt["chat_action_risks"]},
-        {"icon": ft.Icons.MENU_BOOK_OUTLINED, "label": txt["chat_action_explain"]},
-        {"icon": ft.Icons.EDIT_NOTE_OUTLINED, "label": txt["chat_action_changes"]},
+        {"icon": Icons.SUMMARIZE_OUTLINED, "label": txt["chat_action_summarize"]},
+        {"icon": Icons.WARNING_AMBER_OUTLINED, "label": txt["chat_action_risks"]},
+        {"icon": Icons.MENU_BOOK_OUTLINED, "label": txt["chat_action_explain"]},
+        {"icon": Icons.EDIT_NOTE_OUTLINED, "label": txt["chat_action_changes"]},
     ]
 
 
@@ -107,10 +107,10 @@ def drafts_preview_paragraphs(lang: str) -> list[str]:
 def drafts_quick_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.SENTIMENT_SATISFIED_OUTLINED, "label": txt["drafts_action_consumer"]},
-        {"icon": ft.Icons.UNFOLD_LESS, "label": txt["drafts_action_shorter"]},
-        {"icon": ft.Icons.SHIELD_OUTLINED, "label": txt["drafts_action_gdpr"]},
-        {"icon": ft.Icons.UNDO, "label": txt["drafts_action_revert"]},
+        {"icon": Icons.SENTIMENT_SATISFIED_OUTLINED, "label": txt["drafts_action_consumer"]},
+        {"icon": Icons.UNFOLD_LESS, "label": txt["drafts_action_shorter"]},
+        {"icon": Icons.SHIELD_OUTLINED, "label": txt["drafts_action_gdpr"]},
+        {"icon": Icons.UNDO, "label": txt["drafts_action_revert"]},
     ]
 
 
@@ -194,25 +194,25 @@ def context_stats(lang: str) -> list[dict]:
     txt = s(lang)
     return [
         {
-            "icon": ft.Icons.CHECK_CIRCLE_OUTLINED,
+            "icon": Icons.CHECK_CIRCLE_OUTLINED,
             "title": txt["ctx_stat_summary"],
             "desc": txt["ctx_stat_summary_desc"],
             "status": "ok",
         },
         {
-            "icon": ft.Icons.WARNING_AMBER_OUTLINED,
+            "icon": Icons.WARNING_AMBER_OUTLINED,
             "title": txt["ctx_stat_risks"],
             "desc": txt["ctx_stat_risks_desc"],
             "status": "warn",
         },
         {
-            "icon": ft.Icons.CHECK_CIRCLE_OUTLINED,
+            "icon": Icons.CHECK_CIRCLE_OUTLINED,
             "title": txt["ctx_stat_clauses"],
             "desc": txt["ctx_stat_clauses_desc"],
             "status": "ok",
         },
         {
-            "icon": ft.Icons.INFO_OUTLINE,
+            "icon": Icons.INFO_OUTLINE,
             "title": txt["ctx_stat_recommendations"],
             "desc": txt["ctx_stat_recommendations_desc"],
             "status": "info",
@@ -223,8 +223,8 @@ def context_stats(lang: str) -> list[dict]:
 def context_quick_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.MENU_BOOK_OUTLINED, "label": txt["ctx_qa_explain"]},
-        {"icon": ft.Icons.WARNING_AMBER_OUTLINED, "label": txt["ctx_qa_check_risks"]},
-        {"icon": ft.Icons.EDIT_NOTE_OUTLINED, "label": txt["ctx_qa_suggest_changes"]},
-        {"icon": ft.Icons.COMPARE_ARROWS, "label": txt["ctx_qa_compare"]},
+        {"icon": Icons.MENU_BOOK_OUTLINED, "label": txt["ctx_qa_explain"]},
+        {"icon": Icons.WARNING_AMBER_OUTLINED, "label": txt["ctx_qa_check_risks"]},
+        {"icon": Icons.EDIT_NOTE_OUTLINED, "label": txt["ctx_qa_suggest_changes"]},
+        {"icon": Icons.COMPARE_ARROWS, "label": txt["ctx_qa_compare"]},
     ]

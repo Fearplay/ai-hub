@@ -1,23 +1,36 @@
-"""Sections tab - pick what to build, then run the LinkedIn pipeline.
-
-The user lands here after Setup. Three blocks live in this tab:
-
-1. **Section picker** - presets + a fine-grained checkbox grid.
-2. **Post kinds** - secondary picker: which post variants to emit.
-3. **Footer bar** - "Ask clarifying questions first" + "Run profile build".
-
-Running the build kicks off :func:`pipeline.run_full_profile_build` on a
-worker thread; ``REFS.dispatch`` makes sure the activity feed and the
-Output tab repaint as soon as each section comes back from the LLM.
-"""
+"""Sections tab - pick what to build, then run the LinkedIn pipeline (PySide6)."""
 
 from __future__ import annotations
 
 import threading
 from typing import Callable, Optional
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QScrollArea,
+    QSizePolicy,
+    QWidget,
+)
 
+from src.qt.icons import Icons
+from src.qt.runtime import dispatch as runtime_dispatch
+from src.qt.runtime import get_main_window
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    GhostButton,
+    IconLabel,
+    MutedLabel,
+    PrimaryButton,
+    TitleLabel,
+    custom_label,
+    hbox,
+    vbox,
+)
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.sections.ai_linkedin import pipeline
@@ -26,7 +39,7 @@ from src.sections.ai_linkedin.data import (
     section_picker_options,
 )
 from src.sections.ai_linkedin.followup_dialog import open_followup_dialog
-from src.sections.ai_linkedin.refs import REFS, safe
+from src.sections.ai_linkedin.refs import REFS
 from src.sections.ai_linkedin.state import (
     DEFAULT_SECTIONS,
     POST_LEARNING_UPDATE,
@@ -53,55 +66,30 @@ def _request_full_refresh() -> None:
     request_section_refresh()
 
 
-def _flat_button(
-    theme: Theme,
-    label: str,
-    *,
-    icon: str | None = None,
-    primary: bool = False,
-    enabled: bool = True,
-    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    color = ft.Colors.WHITE if (primary and enabled) else (theme.text if enabled else theme.text_subtle)
-    bg = theme.primary if (primary and enabled) else theme.surface_2
-    border = None if (primary and enabled) else ft.border.all(1, theme.border)
-    children: list[ft.Control] = []
-    if icon:
-        children.append(ft.Icon(icon, color=color, size=14))
-    children.append(ft.Text(label, color=color, size=12, weight=ft.FontWeight.W_600))
-    return ft.Container(
-        content=ft.Row(controls=children, spacing=6, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
-        bgcolor=bg,
-        border=border,
-        border_radius=10,
-        ink=enabled,
-        on_click=(on_click if enabled else None),
-        opacity=1.0 if enabled else 0.55,
+def _preset_chip(theme: Theme, *, label: str, active: bool, on_click: Callable[[], None]) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.primary if active else theme.surface_2};
+            border: 1px solid {theme.primary if active else theme.border};
+            border-radius: 999px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.primary_hover if active else theme.surface};
+        }}
+        """
     )
-
-
-def _preset_chip(
-    theme: Theme,
-    *,
-    label: str,
-    active: bool,
-    on_click: Callable[[ft.ControlEvent], None],
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Text(
-            label,
-            color=ft.Colors.WHITE if active else theme.text,
-            size=12,
-            weight=ft.FontWeight.W_700 if active else ft.FontWeight.W_500,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=7),
-        bgcolor=theme.primary if active else theme.surface_2,
-        border_radius=999,
-        border=ft.border.all(1, theme.primary if active else theme.border),
-        ink=True,
-        on_click=on_click,
-    )
+    layout = hbox(spacing=0, margins=(12, 7, 12, 7))
+    chip.setLayout(layout)
+    layout.addWidget(custom_label(
+        label,
+        color="#FFFFFF" if active else theme.text,
+        size=12,
+        weight=QFont.Weight.Bold if active else QFont.Weight.Medium,
+    ))
+    chip.clicked.connect(on_click)
+    return chip
 
 
 def _section_card(
@@ -111,94 +99,49 @@ def _section_card(
     hint: str,
     selected: bool,
     on_toggle: Callable[[bool], None],
-) -> ft.Container:
-    def _on_click(_e: ft.ControlEvent) -> None:
-        on_toggle(not selected)
-
-    badge = ft.Container(
-        content=ft.Icon(
-            ft.Icons.CHECK if selected else ft.Icons.ADD,
-            color=ft.Colors.WHITE if selected else theme.text_muted,
-            size=14,
-        ),
-        width=24,
-        height=24,
-        bgcolor=theme.primary if selected else theme.surface_2,
-        border_radius=12,
-        alignment=ft.Alignment.CENTER,
+) -> ClickFrame:
+    card = ClickFrame()
+    card.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.primary if selected else theme.border};
+            border-radius: 12px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                badge,
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            label,
-                            color=theme.text,
-                            size=13,
-                            weight=ft.FontWeight.W_600,
-                        ),
-                        ft.Text(
-                            hint,
-                            color=theme.text_muted,
-                            size=11,
-                        ),
-                    ],
-                    spacing=2,
-                    expand=True,
-                    tight=True,
-                ),
-            ],
-            spacing=12,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=10),
-        bgcolor=theme.surface,
-        border_radius=12,
-        border=ft.border.all(
-            1,
-            theme.primary if selected else theme.border,
-        ),
-        ink=True,
-        on_click=_on_click,
+    layout = hbox(spacing=12, margins=(12, 10, 12, 10))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    card.setLayout(layout)
+
+    badge = QFrame()
+    badge.setFixedSize(24, 24)
+    badge.setStyleSheet(
+        f"background-color: {theme.primary if selected else theme.surface_2}; border-radius: 12px;"
     )
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(IconLabel(
+        Icons.CHECK if selected else Icons.ADD,
+        color="#FFFFFF" if selected else theme.text_muted,
+        size=14,
+    ), alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(badge)
 
+    info = QFrame()
+    info.setStyleSheet("background: transparent;")
+    il = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(il)
+    il.addWidget(BodyLabel(label, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    il.addWidget(MutedLabel(hint, theme=theme, size=11))
+    layout.addWidget(info, 1)
 
-def _build_section_grid(
-    theme: Theme, lang: str, on_state_change: Callable[[], None]
-) -> ft.Container:
-    options = section_picker_options(lang)
-    holder = ft.Container()
-
-    def _toggle(key: str, value: bool) -> None:
-        if value:
-            STATE.selected_sections.add(key)
-        else:
-            STATE.selected_sections.discard(key)
-        _render()
-        on_state_change()
-
-    def _render() -> None:
-        cards = [
-            _section_card(
-                theme,
-                label=opt["label"],
-                hint=opt["hint"],
-                selected=opt["key"] in STATE.selected_sections,
-                on_toggle=lambda val, k=opt["key"]: _toggle(k, val),
-            )
-            for opt in options
-        ]
-        holder.content = ft.Column(
-            controls=cards,
-            spacing=8,
-            tight=True,
-        )
-        logger_service.try_update(holder)
-
-    _render()
-    return holder
+    card.clicked.connect(lambda: on_toggle(not selected))
+    return card
 
 
 def _preset_for_state() -> str:
@@ -216,42 +159,6 @@ def _preset_for_state() -> str:
     return "custom"
 
 
-def _post_kind_chips(
-    theme: Theme, lang: str, on_state_change: Callable[[], None]
-) -> ft.Container:
-    holder = ft.Container()
-    options = post_kind_options(lang)
-
-    def _toggle(key: str) -> None:
-        if key in STATE.selected_post_kinds:
-            STATE.selected_post_kinds.discard(key)
-        else:
-            STATE.selected_post_kinds.add(key)
-        _render()
-        on_state_change()
-
-    def _render() -> None:
-        chips = [
-            _preset_chip(
-                theme,
-                label=opt["label"],
-                active=opt["key"] in STATE.selected_post_kinds,
-                on_click=lambda _e, k=opt["key"]: _toggle(k),
-            )
-            for opt in options
-        ]
-        holder.content = ft.Row(
-            controls=chips,
-            spacing=8,
-            run_spacing=8,
-            wrap=True,
-        )
-        logger_service.try_update(holder)
-
-    _render()
-    return holder
-
-
 def _apply_preset(name: str) -> None:
     if name == "just_headline":
         STATE.selected_sections = {SEC_HEADLINE}
@@ -265,85 +172,204 @@ def _apply_preset(name: str) -> None:
         STATE.selected_sections = set(SECTION_IDS)
 
 
+def _clear_layout(layout) -> None:
+    while layout.count():
+        item = layout.takeAt(0)
+        if item is None:
+            continue
+        w = item.widget()
+        if w is not None:
+            w.deleteLater()
+
+
 def build_sections_tab(
     theme: Theme,
     lang: str,
     *,
     on_request_rerender: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
-) -> ft.Column:
+) -> QWidget:
     txt = s(lang)
 
-    presets_holder = ft.Container()
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    root_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(root_layout)
 
-    def _on_state_change() -> None:
-        safe(REFS.rerender_context)
-        _render_presets()
+    body_holder = QWidget()
+    body_holder.setStyleSheet(f"background-color: {theme.bg};")
+    body_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
+    body_holder.setLayout(body_layout)
+
+    section_card_target = QFrame()
+    section_card_target.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 14px;
+        }}
+        """
+    )
+    sc_layout = vbox(spacing=4, margins=(18, 18, 18, 18))
+    section_card_target.setLayout(sc_layout)
+    sc_layout.addWidget(TitleLabel(txt["sections_title"], theme=theme, size=15, weight=QFont.Weight.Bold))
+    sc_layout.addWidget(MutedLabel(txt["sections_desc"], theme=theme, size=12))
+    spacer1 = QWidget()
+    spacer1.setFixedHeight(8)
+    sc_layout.addWidget(spacer1)
+
+    presets_holder = QWidget()
+    presets_holder.setStyleSheet("background: transparent;")
+    presets_layout = QGridLayout(presets_holder)
+    presets_layout.setContentsMargins(0, 0, 0, 0)
+    presets_layout.setHorizontalSpacing(8)
+    presets_layout.setVerticalSpacing(8)
+    sc_layout.addWidget(presets_holder)
+
+    spacer2 = QWidget()
+    spacer2.setFixedHeight(10)
+    sc_layout.addWidget(spacer2)
+
+    grid_holder = QWidget()
+    grid_holder.setStyleSheet("background: transparent;")
+    grid_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    grid_holder.setLayout(grid_layout)
+    sc_layout.addWidget(grid_holder)
+    body_layout.addWidget(section_card_target)
+
+    posts_card = QFrame()
+    posts_card.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 14px;
+        }}
+        """
+    )
+    posts_layout = vbox(spacing=4, margins=(18, 18, 18, 18))
+    posts_card.setLayout(posts_layout)
+    posts_layout.addWidget(TitleLabel(txt["sections_post_kinds_title"], theme=theme, size=15, weight=QFont.Weight.Bold))
+    posts_layout.addWidget(MutedLabel(txt["sections_post_kinds_desc"], theme=theme, size=12))
+    spacer3 = QWidget()
+    spacer3.setFixedHeight(8)
+    posts_layout.addWidget(spacer3)
+
+    post_kinds_holder = QWidget()
+    post_kinds_holder.setStyleSheet("background: transparent;")
+    pk_layout = QGridLayout(post_kinds_holder)
+    pk_layout.setContentsMargins(0, 0, 0, 0)
+    pk_layout.setHorizontalSpacing(8)
+    pk_layout.setVerticalSpacing(8)
+    posts_layout.addWidget(post_kinds_holder)
+    body_layout.addWidget(posts_card)
+    body_layout.addStretch(1)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(body_holder)
+    root_layout.addWidget(scroll, 1)
+
+    footer = QFrame()
+    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    footer_layout = hbox(spacing=10, margins=(24, 12, 24, 12))
+    footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    footer.setLayout(footer_layout)
+
+    followup_btn = GhostButton(txt["sections_followup_button"], theme=theme, icon=Icons.QUIZ_OUTLINED)
+    footer_layout.addWidget(followup_btn)
+    footer_layout.addStretch(1)
+    run_btn = PrimaryButton(txt["sections_run_button"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
+    footer_layout.addWidget(run_btn)
+    root_layout.addWidget(footer)
 
     def _render_presets() -> None:
         active = _preset_for_state()
+        _clear_layout(presets_layout)
         chips = [
-            _preset_chip(
-                theme,
-                label=txt["sections_preset_just_headline"],
-                active=active == "just_headline",
-                on_click=lambda _e: (_apply_preset("just_headline"), _on_state_change(), _refresh_grid()),
-            ),
-            _preset_chip(
-                theme,
-                label=txt["sections_preset_just_about"],
-                active=active == "just_about",
-                on_click=lambda _e: (_apply_preset("just_about"), _on_state_change(), _refresh_grid()),
-            ),
-            _preset_chip(
-                theme,
-                label=txt["sections_preset_just_posts"],
-                active=active == "just_posts",
-                on_click=lambda _e: (_apply_preset("just_posts"), _on_state_change(), _refresh_grid()),
-            ),
-            _preset_chip(
-                theme,
-                label=txt["sections_preset_everything"],
-                active=active == "everything",
-                on_click=lambda _e: (_apply_preset("everything"), _on_state_change(), _refresh_grid()),
-            ),
-            _preset_chip(
-                theme,
-                label=txt["sections_preset_custom"],
-                active=active == "custom",
-                on_click=lambda _e: None,
-            ),
+            (txt["sections_preset_just_headline"], "just_headline"),
+            (txt["sections_preset_just_about"], "just_about"),
+            (txt["sections_preset_just_posts"], "just_posts"),
+            (txt["sections_preset_everything"], "everything"),
+            (txt["sections_preset_custom"], "custom"),
         ]
-        presets_holder.content = ft.Row(
-            controls=chips,
-            spacing=8,
-            run_spacing=8,
-            wrap=True,
-        )
-        logger_service.try_update(presets_holder)
+        col = 0
+        for label, key in chips:
+            chip = _preset_chip(
+                theme,
+                label=label,
+                active=active == key,
+                on_click=(lambda k=key: _on_preset(k)) if key != "custom" else (lambda: None),
+            )
+            presets_layout.addWidget(chip, 0, col)
+            col += 1
 
-    grid_holder_ref: dict[str, Optional[ft.Container]] = {"holder": None}
+    def _on_preset(name: str) -> None:
+        _apply_preset(name)
+        _render_presets()
+        _render_grid()
+        _on_state_change()
 
-    def _refresh_grid() -> None:
-        h = grid_holder_ref["holder"]
-        if h is None:
-            return
-        h.content = _build_section_grid(theme, lang, _on_state_change)
-        logger_service.try_update(h)
+    def _on_state_change() -> None:
+        REFS.request_context_refresh()
+        _render_presets()
 
-    grid = _build_section_grid(theme, lang, _on_state_change)
-    grid_holder = ft.Container(content=grid)
-    grid_holder_ref["holder"] = grid_holder
+    def _render_grid() -> None:
+        _clear_layout(grid_layout)
+        options = section_picker_options(lang)
+        for opt in options:
+            card = _section_card(
+                theme,
+                label=opt["label"],
+                hint=opt["hint"],
+                selected=opt["key"] in STATE.selected_sections,
+                on_toggle=lambda val, k=opt["key"]: _toggle_section(k, val),
+            )
+            grid_layout.addWidget(card)
+
+    def _toggle_section(key: str, value: bool) -> None:
+        if value:
+            STATE.selected_sections.add(key)
+        else:
+            STATE.selected_sections.discard(key)
+        _render_grid()
+        _render_presets()
+        _on_state_change()
+
+    def _render_post_kinds() -> None:
+        _clear_layout(pk_layout)
+        options = post_kind_options(lang)
+        col = 0
+        for opt in options:
+            chip = _preset_chip(
+                theme,
+                label=opt["label"],
+                active=opt["key"] in STATE.selected_post_kinds,
+                on_click=lambda k=opt["key"]: _toggle_post_kind(k),
+            )
+            pk_layout.addWidget(chip, 0, col)
+            col += 1
+
+    def _toggle_post_kind(key: str) -> None:
+        if key in STATE.selected_post_kinds:
+            STATE.selected_post_kinds.discard(key)
+        else:
+            STATE.selected_post_kinds.add(key)
+        _render_post_kinds()
+        _on_state_change()
+
     _render_presets()
+    _render_grid()
+    _render_post_kinds()
 
-    post_kinds_holder = _post_kind_chips(theme, lang, _on_state_change)
-
-    run_holder = ft.Container()
-
-    def _phase_run(*, ask_followups: bool, page: ft.Page | None) -> None:
+    def _phase_run(*, ask_followups: bool) -> None:
         STATE.run_stage = "running"
         STATE.last_error = ""
-        safe(REFS.rerender_context)
+        REFS.request_context_refresh()
 
         def _worker() -> None:
             output_lang = (STATE.output_lang or lang or "en")
@@ -359,11 +385,9 @@ def build_sections_tab(
                         STATE.run_stage = ""
                         REFS.dispatch(_request_full_refresh)
                         return
-                    if STATE.followup_questions and page is not None:
+                    if STATE.followup_questions:
                         STATE.run_stage = "followups"
-                        REFS.dispatch(
-                            lambda: _open_followups(page=page, output_lang=output_lang)
-                        )
+                        REFS.dispatch(lambda: _open_followups(output_lang=output_lang))
                         return
 
                 res = pipeline.run_full_profile_build(output_lang=output_lang)
@@ -381,9 +405,7 @@ def build_sections_tab(
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _open_followups(*, page: ft.Page, output_lang: str) -> None:
-        REFS.page = page
-
+    def _open_followups(*, output_lang: str) -> None:
         def _on_submit(answers: list[dict]) -> None:
             STATE.followup_qa = answers
             STATE.activity = "analyzing"
@@ -414,7 +436,7 @@ def build_sections_tab(
             REFS.dispatch(_request_full_refresh)
 
         open_followup_dialog(
-            page,
+            get_main_window(),
             theme,
             title=txt["followup_dialog_title"],
             intro=txt["followup_dialog_subtitle"],
@@ -429,10 +451,7 @@ def build_sections_tab(
             on_cancel=_on_cancel,
         )
 
-    def _on_run(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is not None:
-            REFS.page = page
+    def _on_run() -> None:
         if not STATE.demo_mode and not STATE.target_roles:
             logger_service.log_event(
                 "WARNING", "ai_linkedin.tab_sections", "run_no_target_roles",
@@ -452,117 +471,13 @@ def build_sections_tab(
                 )
                 return
         ask = STATE.ask_followups
-        _phase_run(ask_followups=ask, page=page)
-        _render_run()
+        _phase_run(ask_followups=ask)
 
-    def _on_followup_first(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is not None:
-            REFS.page = page
+    def _on_followup_first() -> None:
         STATE.ask_followups = True
-        _phase_run(ask_followups=True, page=page)
-        _render_run()
+        _phase_run(ask_followups=True)
 
-    def _render_run() -> None:
-        running = bool(STATE.run_stage)
-        run_label = txt["sections_run_running"] if running else txt["sections_run_button"]
-        run_holder.content = ft.Row(
-            controls=[
-                _flat_button(
-                    theme,
-                    txt["sections_followup_button"],
-                    icon=ft.Icons.QUIZ_OUTLINED,
-                    enabled=not running,
-                    on_click=_on_followup_first,
-                ),
-                ft.Container(expand=True),
-                _flat_button(
-                    theme,
-                    run_label,
-                    icon=ft.Icons.PLAY_ARROW_ROUNDED,
-                    primary=True,
-                    enabled=not running,
-                    on_click=_on_run,
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-        logger_service.try_update(run_holder)
+    run_btn.clicked.connect(_on_run)
+    followup_btn.clicked.connect(_on_followup_first)
 
-    _render_run()
-
-    section_card_target = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["sections_title"],
-                    color=theme.text,
-                    size=15,
-                    weight=ft.FontWeight.W_700,
-                ),
-                ft.Text(
-                    txt["sections_desc"],
-                    color=theme.text_muted,
-                    size=12,
-                ),
-                ft.Container(height=8),
-                presets_holder,
-                ft.Container(height=10),
-                grid_holder,
-            ],
-            spacing=4,
-            tight=True,
-        ),
-        padding=18,
-        bgcolor=theme.surface,
-        border_radius=14,
-        border=ft.border.all(1, theme.border),
-    )
-
-    posts_card = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["sections_post_kinds_title"],
-                    color=theme.text,
-                    size=15,
-                    weight=ft.FontWeight.W_700,
-                ),
-                ft.Text(
-                    txt["sections_post_kinds_desc"],
-                    color=theme.text_muted,
-                    size=12,
-                ),
-                ft.Container(height=8),
-                post_kinds_holder,
-            ],
-            spacing=4,
-            tight=True,
-        ),
-        padding=18,
-        bgcolor=theme.surface,
-        border_radius=14,
-        border=ft.border.all(1, theme.border),
-    )
-
-    body = ft.ListView(
-        controls=[section_card_target, posts_card],
-        spacing=14,
-        padding=ft.padding.symmetric(horizontal=24, vertical=18),
-        expand=True,
-    )
-
-    footer = ft.Container(
-        content=run_holder,
-        padding=ft.padding.symmetric(horizontal=24, vertical=12),
-        border=ft.border.only(top=ft.BorderSide(1, theme.border)),
-        bgcolor=theme.bg,
-    )
-
-    return ft.Column(
-        controls=[body, footer],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    return container

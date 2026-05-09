@@ -8,24 +8,25 @@
 > [.cursor/rules/](.cursor/rules/) define how new sections, AI calls,
 > and the `.exe` build are added so contributions stay consistent.
 
-A desktop AI Hub built in Python with [Flet](https://flet.dev). Three-column
-layout: navigation in the left sidebar, the main workspace in the middle,
-and a context panel on the right. **AI CV / Career** and the new
-**AI LinkedIn Profile Builder** are fully wired to OpenAI / Anthropic;
-other sections share the same architecture and are being filled in as
-we go.
+A desktop AI Hub built in Python with
+[PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
+Three-column layout: navigation in the left sidebar, the main workspace
+in the middle, and a context panel on the right. **AI CV / Career** and
+the new **AI LinkedIn Profile Builder** are fully wired to OpenAI /
+Anthropic; other sections share the same architecture and are being
+filled in as we go.
 
 ## Requirements
 
 - Python 3.10+
-- Flet >= 0.25.0 (tested on 0.84.0)
+- PySide6 >= 6.7.0 (Qt 6.x, ships its own Qt runtime - no extra SDK)
 - API keys (optional - without them the app runs in Demo mode):
   - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`) under **Settings**
   - **GitHub** personal access token (optional, lifts the rate limit for AI Career)
 
-> No Flutter SDK or Visual Studio C++ workload is required. Builds run
-> through `flet pack` (PyInstaller), which only needs a plain Python on
-> `PATH`.
+> No Flutter SDK, Qt SDK, or Visual Studio C++ workload is required.
+> Builds run through `pyinstaller` (driven by `build_exe.bat`), which
+> only needs a plain Python on `PATH`.
 
 ## Install (development)
 
@@ -51,28 +52,19 @@ The upload zones in **AI Legal assistant**, **AI CV / Career**,
 component (`src/components/file_drop_zone.py`) that:
 
 * Renders a dashed-border drop zone with a prominent "Click to browse"
-  call-to-action - clicking opens the native file picker (the
-  guaranteed code path on every supported platform).
+  call-to-action - clicking opens the native file picker.
 * Always shows a **Paste path** button beneath the zone. On Windows you
   can `Shift+Right-click` a file in Explorer -> *Copy as path*, then
   click the button - the file is loaded immediately.
-* Best-effort wires `page.on_drop` / `page.on_files_drop` so OS-level
-  drag-and-drop will start working transparently the moment a future
-  Flet release adds those events to the `flet pack` runtime; today
-  click + paste are the supported paths.
-
-OS-level drag-and-drop via `flet-dropzone` + `flet build` would add a
-Flutter SDK + Visual Studio C++ dependency - we deliberately avoid
-that because it would break the one-click build flow for collaborators
-(see `build_exe.bat`).
+* Accepts real **OS drag-and-drop** thanks to Qt's `dragEnterEvent` /
+  `dropEvent` plumbing - drop a file from Explorer / Finder / Files
+  directly onto the zone and it loads instantly.
 
 The clipboard handling itself is centralised in
 `src/services/clipboard.py`. It is a thin synchronous wrapper around
 [pyperclip](https://pypi.org/project/pyperclip/) (with `win32clipboard`
-/ `pbcopy` / `xclip` / `tkinter` fallbacks) that bypasses Flet's
-async `Clipboard` service - the latter could die with
-`RuntimeError("Session closed")` after a navigation, which used to
-silently break Copy / Paste buttons.
+/ `pbcopy` / `xclip` / `tkinter` fallbacks) so Copy / Paste buttons stay
+robust regardless of the Qt session state.
 
 ## Build the .exe (Windows)
 
@@ -87,7 +79,9 @@ What the script does:
    available either, it prints a python.org link and exits.
 2. If `.venv\` doesn't exist, it creates one.
 3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
-4. Runs `flet pack main.py --name AIHub` and produces `dist\AIHub.exe`.
+4. Runs `pyinstaller --onefile --windowed --name AIHub` (with the
+   Material Icons font under `assets\fonts\` baked in) and produces
+   `dist\AIHub.exe`.
 
 Usage:
 
@@ -96,11 +90,10 @@ build_exe.bat            REM standard build (skipped when the exe is newer than 
 build_exe.bat --force    REM always rebuild, even when nothing changed
 ```
 
-Trade-off: `flet pack` (unlike `flet build windows`) **does not need the
-Flutter SDK or Visual Studio C++**, so the build works on a clean
-Windows machine. The price is that real OS file drag-and-drop is not
-available - upload zones react to click and open the native file picker
-instead.
+Trade-off: PyInstaller bundles PySide6's Qt 6 runtime into the .exe -
+no Flutter SDK, no Qt SDK, no Visual Studio C++ workload required.
+Real OS drag-and-drop **is** available because Qt handles the events
+natively.
 
 The Cursor rule [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc)
 makes the agent run `build_exe.bat` at the end of every task, so
@@ -121,9 +114,9 @@ The script:
 - Installs Python via `winget` if missing.
 - Creates a local `.venv\` and installs `requirements.txt` exactly as you
   see it (commit-pinned).
-- `flet pack` generates **its own** `AIHub.spec` (the one you might see
-  locally is just an artefact of the last build, it doesn't belong in
-  git).
+- `pyinstaller` generates **its own** `AIHub.spec` (the one you might
+  see locally is just an artefact of the last build, it doesn't belong
+  in git).
 - Produces `dist\AIHub.exe`.
 
 If you only want dev mode (no exe), steps 1-2 plus
@@ -173,11 +166,11 @@ save), the app keeps a small log file:
   `CRITICAL`). The bytes on disk stay plain text - the colours live
   only in the viewer. The Settings page also uses the full window
   width so the column-aligned rows do not wrap.
-- The viewer wraps the rows in a Flet `SelectionArea`, so you can
-  drag-select across multiple rows with the mouse and press `Ctrl+C`,
-  or use the **Copy** button at the top to grab the whole file. Copy
-  goes through the OS clipboard (pyperclip) - no Flet session, no
-  more `Session closed` failures.
+- The viewer renders the tail in a `QPlainTextEdit` with a
+  `QSyntaxHighlighter`, so you can drag-select across multiple rows
+  with the mouse and press `Ctrl+C`, or use the **Copy** button at the
+  top to grab the whole file. Copy goes through the OS clipboard
+  (pyperclip) for cross-platform reliability.
 - No personal data is logged - only what was clicked, what succeeded,
   and the stack trace of any caught exception.
 - Format is column-aligned for fast skimming:
@@ -203,11 +196,21 @@ ai-hub/
 ├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
+├── assets/
+│   └── fonts/                     # bundled Material Icons font + codepoints
 └── src/
     ├── theme.py                  # design tokens (dark + light)
     ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
     ├── i18n.py                   # global EN/CS strings + t(key, lang)
-    ├── components/               # shared UI primitives
+    ├── qt/                        # PySide6 building blocks
+    │   ├── theme.py              # QSS emitter + rgba helper
+    │   ├── icons.py              # Material Icons font loader + codepoint registry
+    │   ├── widgets.py            # Card / IconLabel / typography / buttons / Pill
+    │   ├── effects.py            # drop shadow + opacity helpers
+    │   ├── markdown.py           # bold-spans helper for plain QLabel
+    │   ├── dialog.py             # BaseDialog (themed modal scaffold)
+    │   └── runtime.py             # cross-thread UI dispatcher (worker -> GUI)
+    ├── components/               # shared UI primitives (PySide6)
     │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
     │   ├── user_card.py
@@ -219,7 +222,7 @@ ai-hub/
     │   ├── chat_message.py
     │   ├── chat_input.py
     │   ├── context_panel.py      # shell + helpers for the right panel
-    │   ├── file_drop_zone.py     # shared upload zone (click + best-effort OS drop + paste-path)
+    │   ├── file_drop_zone.py     # shared upload zone (real OS drag-drop + click + paste-path)
     │   ├── language_toggle.py    # EN / CS toggle
     │   ├── theme_toggle.py       # dark / light toggle
     │   └── placeholder.py        # default "coming soon" view
@@ -359,12 +362,13 @@ Want to help? Branch / commit conventions are documented in
 
 This project is licensed under the **MIT License** - see [LICENSE](LICENSE).
 
-Libraries used:
+Libraries and assets used:
 
-| Library | License | Link |
+| Item | License | Link |
 | --- | --- | --- |
-| [Flet](https://flet.dev) | Apache License 2.0 | https://github.com/flet-dev/flet/blob/main/LICENSE |
+| [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
+| [Material Icons (Outlined)](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 
-Apache 2.0 is fully compatible with MIT, so we can distribute this
-project under MIT as long as we keep the upstream attribution (see
-[LICENSE](LICENSE)).
+LGPL-3.0 and Apache-2.0 are both compatible with MIT redistribution as
+long as we keep the upstream attribution (see [LICENSE](LICENSE)).

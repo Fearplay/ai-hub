@@ -1,19 +1,13 @@
-"""AI LinkedIn - main center view (Chat + Builder modes).
+"""AI LinkedIn - main center view (Chat + Builder modes) - PySide6 port.
 
 Mirrors the Career section's layout pattern:
 
 * Top header with the section icon, title, subtitle, ``?`` how-to and an
-  overflow menu (New build / Save complete profile / Open run folder /
-  Show history / How to use).
+  overflow menu.
 * Mode tab bar (Chat vs. Builder).
-* In Chat mode the body is the LinkedIn voice chat (analogous to
-  AI Career's chat mode).
+* In Chat mode the body is the LinkedIn voice chat.
 * In Builder mode a four-tab bar (Setup / Sections / Output / History)
   drives the structured profile pipeline.
-
-State persists in :data:`STATE` so theme / language toggles never throw
-away the in-flight build. Re-renders go through ``request_section_refresh``
-and worker threads dispatch via :class:`REFS`.
 """
 
 from __future__ import annotations
@@ -22,11 +16,16 @@ import os
 import subprocess
 import sys
 import threading
+from typing import Optional
 
-import flet as ft
+from PySide6.QtWidgets import QFrame, QMessageBox, QWidget
 
 from src.components.header import HeaderMenuItem, header
 from src.components.tab_bar import tab_bar
+from src.qt.icons import Icons
+from src.qt.runtime import dispatch as runtime_dispatch
+from src.qt.runtime import get_main_window
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_linkedin import pipeline
 from src.sections.ai_linkedin.data import SECTION_ICON, builder_tabs, mode_tabs
 from src.sections.ai_linkedin.how_to import open_linkedin_how_to
@@ -52,13 +51,7 @@ from src.theme import Theme
 
 
 def _refresh() -> None:
-    """Trigger a full section rebuild via the app shell.
-
-    Imported lazily so this module can be imported during section
-    auto-discovery without forcing :mod:`src.app` to load first.
-    """
     from src.app import request_section_refresh
-
     request_section_refresh()
 
 
@@ -85,55 +78,21 @@ def _open_in_explorer(path: str) -> None:
         )
 
 
-def _show_snack(page: ft.Page | None, message: str) -> None:
-    if page is None or not message:
+def _show_message(message: str) -> None:
+    if not message:
         return
+    parent = get_main_window()
     try:
-        page.snack_bar = ft.SnackBar(content=ft.Text(message))
-        page.snack_bar.open = True
-        page.update()
+        QMessageBox.information(parent, "AI LinkedIn", message)
     except Exception as exc:
         logger_service.log_exception(
-            "ai_linkedin.view", "show_snack_failed", exc,
+            "ai_linkedin.view", "show_message_failed", exc,
         )
-
-
-def _build_builder_body(theme: Theme, lang: str) -> ft.Control:
-    if STATE.active_tab == TAB_SECTIONS:
-        return build_sections_tab(
-            theme,
-            lang,
-            on_request_rerender=_refresh,
-            on_navigate_tab=_navigate_tab,
-        )
-    if STATE.active_tab == TAB_OUTPUT:
-        return build_output_tab(
-            theme,
-            lang,
-            on_request_rerender=_refresh,
-            on_navigate_tab=_navigate_tab,
-        )
-    if STATE.active_tab == TAB_HISTORY:
-        return build_history_tab(
-            theme,
-            lang,
-            on_request_rerender=_refresh,
-            on_navigate_tab=_navigate_tab,
-        )
-    return build_setup_tab(
-        theme,
-        lang,
-        on_request_rerender=_refresh,
-        on_navigate_tab=_navigate_tab,
-    )
 
 
 def _navigate_tab(index: int) -> None:
-    """Programmatic navigation hook handed to child tabs."""
     logger_service.log_event(
-        "INFO",
-        "ai_linkedin.view",
-        "navigate_tab",
+        "INFO", "ai_linkedin.view", "navigate_tab",
         prev_mode=STATE.mode,
         prev_tab=STATE.active_tab,
         new_tab=index,
@@ -143,35 +102,30 @@ def _navigate_tab(index: int) -> None:
     _refresh()
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def _build_builder_body(theme: Theme, lang: str) -> QWidget:
+    if STATE.active_tab == TAB_SECTIONS:
+        return build_sections_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
+    if STATE.active_tab == TAB_OUTPUT:
+        return build_output_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
+    if STATE.active_tab == TAB_HISTORY:
+        return build_history_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
+    return build_setup_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
+
+
+def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    def _capture_page() -> None:
-        try:
-            from src.app import get_active_page
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_linkedin.view", "capture_page_import_failed", exc,
-            )
-            return
-        page = get_active_page()
-        if page is not None:
-            REFS.page = page
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
 
     def _on_stage_tab_change(index: int) -> None:
         logger_service.log_event(
-            "INFO",
-            "ai_linkedin.view",
-            "stage_tab_change",
-            index=index,
-            prev_tab=STATE.active_tab,
-            mode=STATE.mode,
+            "INFO", "ai_linkedin.view", "stage_tab_change",
+            index=index, prev_tab=STATE.active_tab, mode=STATE.mode,
         )
         if STATE.mode != MODE_BUILDER:
-            logger_service.log_event(
-                "DEBUG", "ai_linkedin.view", "stage_tab_ignored_mode",
-                mode=STATE.mode,
-            )
             return
         if index == STATE.active_tab:
             return
@@ -181,71 +135,31 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     def _on_mode_change(index: int) -> None:
         new_mode = MODE_CHAT if index == 0 else MODE_BUILDER
         logger_service.log_event(
-            "INFO",
-            "ai_linkedin.view",
-            "mode_change",
-            index=index,
-            prev_mode=STATE.mode,
-            new_mode=new_mode,
+            "INFO", "ai_linkedin.view", "mode_change",
+            index=index, prev_mode=STATE.mode, new_mode=new_mode,
         )
         if new_mode == STATE.mode:
             return
         STATE.mode = new_mode
         _refresh()
 
-    mode_tab_bar = tab_bar(
-        theme,
-        tabs=mode_tabs(lang),
-        active_index=0 if STATE.mode == MODE_CHAT else 1,
-        on_change=_on_mode_change,
-    )
-    if STATE.mode == MODE_CHAT:
-        stage_tab_bar_control: ft.Control = ft.Container(height=0)
-    else:
-        stage_tab_bar_control = tab_bar(
-            theme,
-            tabs=builder_tabs(lang),
-            active_index=STATE.active_tab,
-            on_change=_on_stage_tab_change,
-        )
+    def _on_help() -> None:
+        open_linkedin_how_to(get_main_window(), theme, lang)
 
-    if STATE.mode == MODE_CHAT:
-        body_control: ft.Control = build_chat_tab(
-            theme,
-            lang,
-            on_request_rerender=_refresh,
-            on_navigate_tab=_navigate_tab,
-            on_switch_to_builder=_refresh,
-        )
-    else:
-        body_control = _build_builder_body(theme, lang)
-
-    content_holder = ft.Container(content=body_control, expand=True)
-    _capture_page()
-
-    def _on_help(e: ft.ControlEvent) -> None:
-        if e.page is None:
-            return
-        REFS.page = e.page
-        open_linkedin_how_to(e.page, theme, lang)
-
-    def _menu_new_build(_e: ft.ControlEvent) -> None:
+    def _menu_new_build() -> None:
         logger_service.log_event("INFO", "ai_linkedin.view", "menu_new_build")
         STATE.reset_all()
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_SETUP
         _refresh()
 
-    def _menu_open_history(_e: ft.ControlEvent) -> None:
+    def _menu_open_history() -> None:
         logger_service.log_event("INFO", "ai_linkedin.view", "menu_open_history")
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_HISTORY
         _refresh()
 
-    def _menu_open_folder(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is not None:
-            REFS.page = page
+    def _menu_open_folder() -> None:
         try:
             store.ensure_dirs()
         except Exception as exc:
@@ -257,31 +171,26 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
             "INFO", "ai_linkedin.view", "menu_open_folder", path=outputs_root,
         )
         if not os.path.isdir(outputs_root):
-            _show_snack(page, txt["history_empty_desc"])
+            _show_message(txt["history_empty_desc"])
             return
         _open_in_explorer(outputs_root)
 
-    def _menu_save_full(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is not None:
-            REFS.page = page
+    def _menu_save_full() -> None:
         if not STATE.has_results():
             logger_service.log_event(
                 "WARNING", "ai_linkedin.view", "menu_save_full_empty",
             )
-            _show_snack(page, txt["error_no_inputs"])
+            _show_message(txt["error_no_inputs"])
             return
         logger_service.log_event(
-            "INFO",
-            "ai_linkedin.view",
-            "menu_save_full_start",
+            "INFO", "ai_linkedin.view", "menu_save_full_start",
             has_about=bool(STATE.about_variants),
             has_headlines=bool(STATE.headlines),
         )
         STATE.activity = "saving"
         STATE.last_error = ""
-        safe(REFS.rerender_context)
-        REFS.dispatch(_refresh)
+        REFS.request_context_refresh()
+        runtime_dispatch(_refresh)
 
         def _worker() -> None:
             try:
@@ -290,105 +199,73 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
                 logger_service.log_exception(
                     "ai_linkedin.view", "menu_save_full_worker", exc,
                 )
-                result = None  # type: ignore[assignment]
+                result = None
             STATE.activity = "ready"
             REFS.request_context_refresh()
             if result is not None:
                 logger_service.log_event(
                     "INFO" if result.ok else "ERROR",
-                    "ai_linkedin.view",
-                    "menu_save_full_done",
-                    ok=result.ok,
-                    folder=result.folder,
-                    error=result.error,
+                    "ai_linkedin.view", "menu_save_full_done",
+                    ok=result.ok, folder=result.folder, error=result.error,
                 )
-            if result is not None and result.ok and page is not None:
-                try:
-                    page.snack_bar = ft.SnackBar(
-                        content=ft.Text(
-                            f"{txt['menu_save_full']}: {result.folder}"
-                        ),
-                    )
-                    page.snack_bar.open = True
-                except Exception as exc:
-                    logger_service.log_exception(
-                        "ai_linkedin.view", "menu_save_full_snack", exc,
-                    )
-            REFS.dispatch(_refresh)
+            if result is not None and result.ok:
+                runtime_dispatch(lambda: _show_message(f"{txt['menu_save_full']}: {result.folder}"))
+            runtime_dispatch(_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _menu_how_to(e: ft.ControlEvent) -> None:
-        if e.page is None:
-            return
-        REFS.page = e.page
-        open_linkedin_how_to(e.page, theme, lang)
+    def _menu_how_to() -> None:
+        open_linkedin_how_to(get_main_window(), theme, lang)
 
     has_results = STATE.has_results()
 
     menu_items: list[HeaderMenuItem] = [
-        HeaderMenuItem(
-            icon=ft.Icons.RESTART_ALT,
-            label=txt["menu_new_build"],
-            on_click=_menu_new_build,
-        ),
-        HeaderMenuItem(
-            icon=ft.Icons.SAVE_OUTLINED,
-            label=txt["menu_save_full"],
-            on_click=_menu_save_full,
-            enabled=has_results,
-        ),
-        HeaderMenuItem(
-            icon=ft.Icons.FOLDER_OPEN,
-            label=txt["menu_open_folder"],
-            on_click=_menu_open_folder,
-        ),
-        HeaderMenuItem(
-            icon=ft.Icons.HISTORY,
-            label=txt["menu_show_history"],
-            on_click=_menu_open_history,
-        ),
-        HeaderMenuItem(
-            icon=ft.Icons.MENU_BOOK_OUTLINED,
-            label=txt["menu_how_to"],
-            on_click=_menu_how_to,
-        ),
+        HeaderMenuItem(icon=Icons.RESTART_ALT, label=txt["menu_new_build"], on_click=_menu_new_build),
+        HeaderMenuItem(icon=Icons.SAVE_OUTLINED, label=txt["menu_save_full"], on_click=_menu_save_full, enabled=has_results),
+        HeaderMenuItem(icon=Icons.FOLDER_OPEN, label=txt["menu_open_folder"], on_click=_menu_open_folder),
+        HeaderMenuItem(icon=Icons.HISTORY, label=txt["menu_show_history"], on_click=_menu_open_history),
+        HeaderMenuItem(icon=Icons.MENU_BOOK_OUTLINED, label=txt["menu_how_to"], on_click=_menu_how_to),
     ]
 
-    demo_pill: ft.Control | None = None
+    demo_pill: Optional[QWidget] = None
     if STATE.demo_mode:
-        demo_pill = ft.Container(
-            content=ft.Text(
-                txt["demo_pill"],
-                color=ft.Colors.WHITE,
-                size=11,
-                weight=ft.FontWeight.W_700,
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=4),
-            bgcolor="#F59E0B",
-            border_radius=10,
-            tooltip=txt["demo_pill_tooltip"],
-        )
+        demo_pill = Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
 
-    header_control = header(
-        theme,
-        lang,
+    layout.addWidget(header(
+        theme, lang,
         icon=SECTION_ICON,
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
         trailing=demo_pill,
         menu_items=menu_items,
-    )
+    ))
 
-    return ft.Column(
-        controls=[
-            header_control,
-            mode_tab_bar,
-            stage_tab_bar_control,
-            content_holder,
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    layout.addWidget(tab_bar(
+        theme,
+        tabs=mode_tabs(lang),
+        active_index=0 if STATE.mode == MODE_CHAT else 1,
+        on_change=_on_mode_change,
+    ))
+
+    if STATE.mode == MODE_BUILDER:
+        layout.addWidget(tab_bar(
+            theme,
+            tabs=builder_tabs(lang),
+            active_index=STATE.active_tab,
+            on_change=_on_stage_tab_change,
+        ))
+
+    if STATE.mode == MODE_CHAT:
+        body = build_chat_tab(
+            theme, lang,
+            on_request_rerender=_refresh,
+            on_navigate_tab=_navigate_tab,
+            on_switch_to_builder=_refresh,
+        )
+    else:
+        body = _build_builder_body(theme, lang)
+
+    layout.addWidget(body, 1)
+
+    return container

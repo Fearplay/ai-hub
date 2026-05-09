@@ -1,4 +1,5 @@
-flet>=0.25.0
+# Desktop UI - Qt for Python (Qt 6.x)
+PySide6>=6.7.0
 
 # AI providers (called only via src.services.ai_provider; sections never import these directly)
 openai>=1.50.0
@@ -24,6 +25,5 @@ python-docx>=1.1.0
 markdown2>=2.5.0
 reportlab>=4.0.0
 
-# OS-level clipboard (replaces flet's flaky async Clipboard service in
-# src/services/clipboard.py). Cross-platform, no UI dependency.
+# OS-level clipboard helper (cross-platform, no UI dependency)
 pyperclip>=1.9.0

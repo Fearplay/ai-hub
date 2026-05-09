@@ -1,28 +1,34 @@
-"""Right-hand context panel for AI Career.
-
-Three cards stack here:
-
-* **Session cost** - calls / tokens / dollar estimate from
-  :data:`src.services.cost_tracker.COST`. Hidden in Demo mode (always $0).
-* **Activity** - one-line status reflecting the pipeline stage (idle,
-  scraping, parsing, analyzing, generating, exporting, error).
-* **Quick actions** - shortcuts to start a fresh run, open History, or
-  reopen the how-to dialog.
-
-The view subscribes a re-render callback on :data:`COST` so each LLM call
-updates the panel without an explicit page repaint.
-"""
+"""Right-hand context panel for AI Career (PySide6 port)."""
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
+from src.qt.icons import Icons
+from src.qt.runtime import get_main_window
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    IconOnlyButton,
+    MutedLabel,
+    SubtleLabel,
+    custom_label,
+    hbox,
+    vbox,
+)
 from src.services import logger as logger_service
 from src.services import settings_store
 from src.services.cost_tracker import COST
-from src.sections.ai_career.refs import REFS, safe
+from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
     MODE_CHAT,
     MODE_FORM,
@@ -35,7 +41,6 @@ from src.theme import Theme
 
 
 def _request_full_refresh() -> None:
-    """Trigger a full section rebuild from anywhere in this module."""
     try:
         from src.app import request_section_refresh
     except Exception:
@@ -56,48 +61,42 @@ _ACTIVITY_KEYS = {
 }
 
 
-def _cost_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
+def _cost_body(theme: Theme, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
     if STATE.demo_mode:
-        body = ft.Text(txt["ctx_cost_demo"], color=theme.text_muted, size=12)
-    else:
-        provider_label = (
-            settings_store.PROVIDER_OPENAI
-            if settings_store.get_provider() == settings_store.PROVIDER_OPENAI
-            else settings_store.PROVIDER_ANTHROPIC
-        )
-        model_label = settings_store.get_model()
-        body = ft.Column(
-            controls=[
-                ft.Text(
-                    txt["ctx_cost_calls_template"].format(calls=COST.calls, tokens=COST.tokens_total),
-                    color=theme.text,
-                    size=13,
-                ),
-                ft.Text(
-                    txt["ctx_cost_session_template"].format(cost=COST.cost_usd),
-                    color=theme.text,
-                    size=13,
-                    weight=ft.FontWeight.W_700,
-                ),
-                ft.Text(
-                    txt["ctx_provider_template"].format(provider=provider_label.title(), model=model_label),
-                    color=theme.text_subtle,
-                    size=11,
-                    italic=True,
-                ),
-            ],
-            spacing=2,
-            tight=True,
-        )
-    return section_card(
-        theme,
-        ft.Icons.PAYMENTS_OUTLINED,
-        txt["ctx_cost_title"],
-        body,
+        layout.addWidget(MutedLabel(txt["ctx_cost_demo"], theme=theme, size=12))
+        return holder
+
+    provider_label = (
+        settings_store.PROVIDER_OPENAI
+        if settings_store.get_provider() == settings_store.PROVIDER_OPENAI
+        else settings_store.PROVIDER_ANTHROPIC
     )
+    model_label = settings_store.get_model()
+    layout.addWidget(BodyLabel(
+        txt["ctx_cost_calls_template"].format(calls=COST.calls, tokens=COST.tokens_total),
+        theme=theme, size=13,
+    ))
+    layout.addWidget(BodyLabel(
+        txt["ctx_cost_session_template"].format(cost=COST.cost_usd),
+        theme=theme, size=13, weight=QFont.Weight.Bold,
+    ))
+    layout.addWidget(SubtleLabel(
+        txt["ctx_provider_template"].format(provider=provider_label.title(), model=model_label),
+        theme=theme, size=11, italic=True,
+    ))
+    return holder
 
 
-def _activity_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
+def _activity_body(theme: Theme, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
     key = _ACTIVITY_KEYS.get(STATE.activity, "ctx_activity_ready")
     label = txt.get(key) or txt["ctx_activity_ready"]
     color = "#22C55E" if STATE.activity == "ready" else (
@@ -105,34 +104,45 @@ def _activity_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
         "#F59E0B" if STATE.activity == "waiting_user" else
         theme.primary
     )
-    body = ft.Column(
-        controls=[
-            ft.Row(
-                controls=[
-                    ft.Container(
-                        width=10,
-                        height=10,
-                        bgcolor=color,
-                        border_radius=5,
-                    ),
-                    ft.Text(label, color=theme.text, size=13, weight=ft.FontWeight.W_600, expand=True),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-        ],
-        spacing=4,
-        tight=True,
-    )
-    if STATE.last_error and STATE.activity == "error":
-        body.controls.append(ft.Text(STATE.last_error, color="#EF4444", size=11))
 
-    return section_card(
-        theme,
-        ft.Icons.RADIO_BUTTON_CHECKED,
-        txt["ctx_activity_title"],
-        body,
-    )
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    rl = hbox(spacing=8, margins=(0, 0, 0, 0))
+    rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(rl)
+    dot = QFrame()
+    dot.setFixedSize(10, 10)
+    dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+    rl.addWidget(dot)
+    rl.addWidget(BodyLabel(label, theme=theme, size=13, weight=QFont.Weight.DemiBold), 1)
+    layout.addWidget(row)
+
+    if STATE.last_error and STATE.activity == "error":
+        layout.addWidget(custom_label(STATE.last_error, color="#EF4444", size=11))
+    return holder
+
+
+def _attachments_body(theme: Theme, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    if not STATE.chat_attachments:
+        layout.addWidget(MutedLabel(txt["chat_mode_no_attachments"], theme=theme, size=12))
+        return holder
+    for name in list(STATE.chat_attachments.keys()):
+        row = QFrame()
+        row.setStyleSheet(f"background-color: {theme.surface_2}; border-radius: 8px;")
+        rl = hbox(spacing=8, margins=(8, 4, 4, 4))
+        rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.setLayout(rl)
+        rl.addWidget(IconLabel(Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=16))
+        rl.addWidget(BodyLabel(name, theme=theme, size=12), 1)
+        close = IconOnlyButton(Icons.CLOSE, color=theme.text_muted, size=14, bg_hover=theme.surface, tooltip=txt["resume_clear_btn"])
+        close.clicked.connect(lambda _checked=False, n=name: _remove_attachment(n))
+        rl.addWidget(close)
+        layout.addWidget(row)
+    return holder
 
 
 def _remove_attachment(name_to_remove: str) -> None:
@@ -141,163 +151,86 @@ def _remove_attachment(name_to_remove: str) -> None:
         REFS.rerender_context()
 
 
-def _attached_docs_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
-    if not STATE.chat_attachments:
-        body: ft.Control = ft.Text(
-            txt["chat_mode_no_attachments"],
-            color=theme.text_muted,
-            size=12,
+def _quick_actions_body(theme: Theme, lang: str, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
+    def _row(icon: str, label: str, on_click) -> ClickFrame:
+        row = ClickFrame()
+        row.setStyleSheet(
+            f"""
+            ClickFrame {{
+                background: transparent;
+                border-radius: 8px;
+            }}
+            ClickFrame:hover {{
+                background-color: {theme.surface_2};
+            }}
+            """
         )
-    else:
-        rows: list[ft.Control] = []
-        for name in list(STATE.chat_attachments.keys()):
-            rows.append(
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=16),
-                            ft.Text(
-                                name,
-                                color=theme.text,
-                                size=12,
-                                expand=True,
-                                max_lines=1,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.CLOSE,
-                                icon_color=theme.text_muted,
-                                icon_size=14,
-                                tooltip=txt["resume_clear_btn"],
-                                on_click=lambda e, n=name: _remove_attachment(n),
-                            ),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
-                    bgcolor=theme.surface_2,
-                    border_radius=8,
-                )
-            )
-        body = ft.Column(controls=rows, spacing=6, tight=True)
+        rl = hbox(spacing=10, margins=(8, 10, 8, 10))
+        rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.setLayout(rl)
+        rl.addWidget(IconLabel(icon, color=theme.text_muted, size=16))
+        rl.addWidget(BodyLabel(label, theme=theme, size=13), 1)
+        rl.addWidget(IconLabel(Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16))
+        row.clicked.connect(on_click)
+        return row
 
-    return section_card(
-        theme,
-        ft.Icons.ATTACH_FILE,
-        txt["chat_mode_attached_docs_title"],
-        body,
-    )
-
-
-def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
-    def _row(icon: str, label: str, on_click) -> ft.Container:
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(icon, color=theme.text_muted, size=16),
-                    ft.Text(label, color=theme.text, size=13, expand=True),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16),
-                ],
-                spacing=10,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.padding.symmetric(horizontal=8, vertical=10),
-            border_radius=8,
-            ink=True,
-            on_click=on_click,
-        )
-
-    def _new_run(_e: ft.ControlEvent) -> None:
-        # Hard wipe - same contract as the header menu's "New analysis"
-        # entry. Every input the user might have entered is cleared so
-        # the next run starts fresh.
+    def _new_run() -> None:
         STATE.reset_all()
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
         _request_full_refresh()
 
-    def _open_history(_e: ft.ControlEvent) -> None:
-        # Quick actions need to override the chat-vs-form mode too,
-        # otherwise clicking "Show history" while in Chat mode is a no-op
-        # because History only renders inside the Form-mode tab body.
+    def _open_history() -> None:
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_HISTORY
         _request_full_refresh()
 
-    def _open_how_to(e: ft.ControlEvent) -> None:
+    def _open_how_to() -> None:
         from src.sections.ai_career.how_to import open_career_how_to
+        open_career_how_to(get_main_window(), theme, lang)
 
-        if e.page is not None:
-            REFS.page = e.page
-            open_career_how_to(e.page, theme, lang)
-
-    body = ft.Column(
-        controls=[
-            _row(ft.Icons.RESTART_ALT, txt["ctx_qa_new_run"], _new_run),
-            _row(ft.Icons.HISTORY, txt["ctx_qa_show_history"], _open_history),
-            _row(ft.Icons.MENU_BOOK_OUTLINED, txt["ctx_qa_open_how_to"], _open_how_to),
-        ],
-        spacing=2,
-        tight=True,
-    )
-    return section_card(
-        theme,
-        ft.Icons.BOLT_OUTLINED,
-        txt["ctx_quick_actions_title"],
-        body,
-    )
+    layout.addWidget(_row(Icons.RESTART_ALT, txt["ctx_qa_new_run"], _new_run))
+    layout.addWidget(_row(Icons.HISTORY, txt["ctx_qa_show_history"], _open_history))
+    layout.addWidget(_row(Icons.MENU_BOOK_OUTLINED, txt["ctx_qa_open_how_to"], _open_how_to))
+    return holder
 
 
-# Tracks the previously-subscribed cost listener so we can release it when
-# the section is rebuilt (theme / lang change, return to AI Career, …).
 _PREV_UNSUBSCRIBE: dict[str, object] = {"fn": None}
 
 
-def build_context(theme: Theme, lang: str) -> ft.Container:
+def build_context(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    panel_holder = ft.Container()
+    panel_holder = QFrame()
+    panel_holder.setStyleSheet("background: transparent;")
+    panel_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    panel_holder.setLayout(panel_layout)
+
+    def _clear() -> None:
+        while panel_layout.count():
+            item = panel_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _render() -> None:
-        cards: list[ft.Control] = [_cost_card(theme, lang, txt)]
+        _clear()
+        cards: list[QWidget] = [
+            section_card(theme, icon=Icons.PAYMENTS_OUTLINED, title=txt["ctx_cost_title"], body=_cost_body(theme, txt)),
+        ]
         if STATE.mode == MODE_CHAT:
-            cards.append(_attached_docs_card(theme, lang, txt))
-        cards.append(_activity_card(theme, lang, txt))
-        cards.append(_quick_actions_card(theme, lang, txt))
-        panel_holder.content = context_panel_shell(theme, *cards)
-        # ``control.update()`` only flushes the changed control to the
-        # frontend; from a background thread (the fetch / extract /
-        # analyze workers all live on a daemon thread) it can race with
-        # the main UI loop and silently drop the message. Falling back
-        # to ``page.update()`` when we have a page reference forces the
-        # whole tree to flush, which makes the Activity pill actually
-        # animate while a fetch is in flight.
-        logger_service.try_update(panel_holder)
-        # Reading ``panel_holder.page`` directly would raise
-        # ``RuntimeError: Control must be added to the page first`` on
-        # the very first render (called synchronously from
-        # ``build_context`` before the panel is mounted). The app keeps
-        # a live ``ft.Page`` reference we can grab without walking the
-        # parent chain, so use that instead and store it on REFS for
-        # later worker threads.
-        try:
-            from src.app import get_active_page
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_career.context", "panel_page_import_failed", exc,
-            )
-            return
-        page = get_active_page()
-        if page is None:
-            return
-        REFS.page = page
-        try:
-            page.update()
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_career.context", "panel_page_update_failed", exc,
-            )
+            cards.append(section_card(theme, icon=Icons.ATTACH_FILE, title=txt["chat_mode_attached_docs_title"], body=_attachments_body(theme, txt)))
+        cards.append(section_card(theme, icon=Icons.RADIO_BUTTON_CHECKED, title=txt["ctx_activity_title"], body=_activity_body(theme, txt)))
+        cards.append(section_card(theme, icon=Icons.BOLT_OUTLINED, title=txt["ctx_quick_actions_title"], body=_quick_actions_body(theme, lang, txt)))
+        shell = context_panel_shell(theme, *cards)
+        panel_layout.addWidget(shell)
 
     def _on_cost_change() -> None:
         _render()

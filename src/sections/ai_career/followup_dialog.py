@@ -1,47 +1,34 @@
-"""Modal dialog for the optional follow-up questions step.
-
-When the user opts into "Ask clarifying questions before each run" in
-Settings, the pipeline pauses after candidate / job-spec extraction and
-asks the LLM for any unclear items it spotted (Python experience, team
-lead history, ...). Each question carries:
-
-* a short ``topic`` chip,
-* the ``question`` text and a ``rationale`` line,
-* a list of pre-canned ``options`` (chips the user toggles),
-* a ``multi_select`` flag (radio vs. checkbox behaviour),
-* an ``allow_free_text`` flag that reveals an "Other" text field.
-
-The user picks zero or more options, optionally types an Other answer, or
-just leaves the row blank to skip. The dialog is opened via
-``open_followup_dialog`` and triggers ``on_submit`` with a list of
-``{topic, question, rationale, answer}`` dicts (the dialog flattens
-multiple selections + Other text into a single human-readable answer
-string), or ``on_cancel`` when the user bails out.
-"""
+"""Modal dialog for the optional follow-up questions step (PySide6 port)."""
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QPushButton,
+    QScrollArea,
+    QWidget,
+)
 
-from src.services import logger as logger_service
-from src.sections.ai_career._dialog import close_dialog as _close_dialog
-from src.sections.ai_career._dialog import open_dialog as _open_dialog
+from src.qt.dialog import BaseDialog
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    MutedLabel,
+    SubtleLabel,
+    custom_label,
+    hbox,
+    themed_text_edit,
+    vbox,
+)
 from src.theme import Theme
 
 
 class _QuestionRowState:
-    """Tracks the user's interaction state for one question row.
-
-    ``selected`` indexes track which options are currently picked. For
-    single-select questions only one index sticks at a time; for multi-
-    select the set grows / shrinks as the user toggles chips. ``other_on``
-    + ``other_field`` carry the free-text answer. ``compose_answer`` joins
-    everything into a single human-readable string when the dialog
-    submits.
-    """
-
     def __init__(
         self,
         *,
@@ -56,77 +43,50 @@ class _QuestionRowState:
         self.allow_free_text: bool = bool(question.get("allow_free_text", True))
         self.theme = theme
         self.other_label = other_label
+        self.other_hint = other_hint
 
         self.selected: set[int] = set()
         self.other_on: bool = False
 
-        self.other_field = ft.TextField(
-            hint_text=other_hint,
-            multiline=True,
-            min_lines=1,
-            max_lines=4,
-            text_style=ft.TextStyle(color=theme.text, size=13),
-            hint_style=ft.TextStyle(color=theme.text_subtle, size=12),
-            bgcolor=theme.surface_2,
-            border=ft.InputBorder.NONE,
-            filled=True,
-            cursor_color=theme.primary,
-            content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
-            border_radius=10,
-            visible=False,
-        )
+        self.other_field = themed_text_edit(theme, placeholder=other_hint, min_height=60)
+        self.other_field.setVisible(False)
 
-        # Filled in by build_row(); we keep references so toggle handlers
-        # can repaint just the chip controls in place.
-        self.option_holders: list[ft.Container] = []
-        self.other_holder: ft.Container | None = None
+        self.option_chips: list[ClickFrame] = []
+        self.other_chip: Optional[ClickFrame] = None
 
-    # --- toggle handlers ----------------------------------------------------
+    def _update_chip(self, chip: ClickFrame, label: str, *, active: bool) -> None:
+        chip.setStyleSheet(_chip_qss(self.theme, active=active))
+        layout = chip.layout()
+        if layout is None:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        layout.addWidget(custom_label(
+            label,
+            color="#FFFFFF" if active else self.theme.text,
+            size=12,
+            weight=QFont.Weight.DemiBold if active else QFont.Weight.Medium,
+        ))
 
-    def _refresh_chip(self, idx: int) -> None:
-        if 0 <= idx < len(self.option_holders):
-            self.option_holders[idx].content = self._chip_view(idx)
-            logger_service.try_update(self.option_holders[idx])
-
-    def _refresh_other_chip(self) -> None:
-        if self.other_holder is not None:
-            self.other_holder.content = self._other_chip_view()
-            logger_service.try_update(self.other_holder)
-
-    def _toggle_option(self, idx: int) -> None:
+    def toggle_option(self, idx: int) -> None:
         if self.multi_select:
             if idx in self.selected:
                 self.selected.discard(idx)
             else:
                 self.selected.add(idx)
-            self._refresh_chip(idx)
         else:
-            previously = list(self.selected)
-            if idx in self.selected:
-                self.selected.discard(idx)
-            else:
-                self.selected = {idx}
-            for prev in previously:
-                if prev != idx:
-                    self._refresh_chip(prev)
-            self._refresh_chip(idx)
+            self.selected = set() if idx in self.selected else {idx}
+        for i, chip in enumerate(self.option_chips):
+            self._update_chip(chip, self.options[i], active=i in self.selected)
 
-    def _toggle_other(self) -> None:
+    def toggle_other(self) -> None:
         self.other_on = not self.other_on
-        self.other_field.visible = self.other_on
-        logger_service.try_update(self.other_field)
-        self._refresh_other_chip()
-
-    # --- chip rendering -----------------------------------------------------
-
-    def _chip_view(self, idx: int) -> ft.Control:
-        active = idx in self.selected
-        return _chip(self.theme, self.options[idx], active=active)
-
-    def _other_chip_view(self) -> ft.Control:
-        return _chip(self.theme, self.other_label, active=self.other_on)
-
-    # --- compose final answer ----------------------------------------------
+        self.other_field.setVisible(self.other_on)
+        if self.other_chip is not None:
+            self._update_chip(self.other_chip, self.other_label, active=self.other_on)
 
     def compose_answer(self) -> str:
         parts: list[str] = []
@@ -134,32 +94,43 @@ class _QuestionRowState:
             if 0 <= idx < len(self.options):
                 parts.append(self.options[idx])
         if self.other_on:
-            other_text = (self.other_field.value or "").strip()
+            other_text = self.other_field.toPlainText().strip()
             if other_text:
                 parts.append(other_text)
         return ", ".join(parts)
 
 
-def _chip(theme: Theme, label: str, *, active: bool) -> ft.Container:
-    return ft.Container(
-        content=ft.Text(
-            label,
-            color=ft.Colors.WHITE if active else theme.text,
-            size=12,
-            weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_500,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=7),
-        bgcolor=theme.primary if active else theme.surface_2,
-        border_radius=999,
-        border=ft.border.all(
-            1,
-            theme.primary if active else theme.border,
-        ),
-    )
+def _chip_qss(theme: Theme, *, active: bool) -> str:
+    bg = theme.primary if active else theme.surface_2
+    border = theme.primary if active else theme.border
+    return f"""
+        ClickFrame {{
+            background-color: {bg};
+            border: 1px solid {border};
+            border-radius: 999px;
+        }}
+        ClickFrame:hover {{
+            border: 1px solid {theme.primary};
+        }}
+    """
+
+
+def _make_chip(theme: Theme, label: str, *, active: bool) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(_chip_qss(theme, active=active))
+    layout = hbox(spacing=0, margins=(12, 7, 12, 7))
+    chip.setLayout(layout)
+    layout.addWidget(custom_label(
+        label,
+        color="#FFFFFF" if active else theme.text,
+        size=12,
+        weight=QFont.Weight.DemiBold if active else QFont.Weight.Medium,
+    ))
+    return chip
 
 
 def open_followup_dialog(
-    page: ft.Page,
+    parent: Optional[QWidget],
     theme: Theme,
     *,
     title: str,
@@ -178,181 +149,142 @@ def open_followup_dialog(
         on_submit([])
         return
 
+    dialog = BaseDialog(parent=parent, theme=theme, title=title, width=680, height=620)
     states: list[_QuestionRowState] = []
 
-    def _question_row(q: dict) -> ft.Container:
-        topic = q.get("topic") or "—"
-        question_text = q.get("question") or ""
-        rationale = q.get("rationale") or ""
+    body_holder = QWidget()
+    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    body_holder.setLayout(body_layout)
+    body_layout.addWidget(MutedLabel(intro, theme=theme, size=12))
+    body_layout.addSpacing(4)
 
-        state = _QuestionRowState(
-            question=q,
-            other_label=other_label,
-            other_hint=other_hint,
-            theme=theme,
-        )
+    for q in questions:
+        state = _QuestionRowState(question=q, other_label=other_label, other_hint=other_hint, theme=theme)
         states.append(state)
 
-        topic_chip = ft.Container(
-            content=ft.Text(
-                topic,
-                color=theme.primary,
-                size=11,
-                weight=ft.FontWeight.W_700,
-                style=ft.TextStyle(letter_spacing=0.6),
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=4),
-            bgcolor=ft.Colors.with_opacity(0.14, theme.primary),
-            border_radius=8,
+        card = QFrame()
+        card.setStyleSheet(
+            f"""
+            QFrame {{
+                background-color: {theme.surface};
+                border: 1px solid {theme.border};
+                border-radius: 12px;
+            }}
+            """
         )
+        card_layout = vbox(spacing=8, margins=(14, 14, 14, 14))
+        card.setLayout(card_layout)
 
-        question_block: list[ft.Control] = [
-            ft.Row(controls=[topic_chip], spacing=0, tight=True),
-            ft.Text(question_text, color=theme.text, size=13, weight=ft.FontWeight.W_600),
-        ]
-        if rationale:
-            question_block.append(
-                ft.Text(rationale, color=theme.text_muted, size=11, italic=True)
-            )
-
-        # Build the chip row (option chips + optional Other chip).
-        chip_controls: list[ft.Control] = []
-        for idx, _opt in enumerate(state.options):
-            holder = ft.Container(
-                content=state._chip_view(idx),
-                ink=True,
-                on_click=lambda _e, i=idx, st=state: st._toggle_option(i),
-                border_radius=999,
-            )
-            state.option_holders.append(holder)
-            chip_controls.append(holder)
-
-        if state.allow_free_text or not state.options:
-            other_holder = ft.Container(
-                content=state._other_chip_view(),
-                ink=True,
-                on_click=lambda _e, st=state: st._toggle_other(),
-                border_radius=999,
-            )
-            state.other_holder = other_holder
-            chip_controls.append(other_holder)
-            # When there are no options, default to having the Other field
-            # already open - otherwise the user has nothing to interact with
-            # except the chip.
-            if not state.options:
-                state.other_on = True
-                state.other_field.visible = True
-
-        if chip_controls:
-            question_block.append(
-                ft.Row(
-                    controls=chip_controls,
-                    spacing=8,
-                    run_spacing=8,
-                    wrap=True,
-                )
-            )
-
-        question_block.append(state.other_field)
-
-        return ft.Container(
-            content=ft.Column(controls=question_block, spacing=8, tight=True),
-            padding=14,
-            bgcolor=theme.surface,
-            border=ft.border.all(1, theme.border),
-            border_radius=12,
+        topic = (q.get("topic") or "—").strip()
+        topic_holder = QFrame()
+        topic_holder.setStyleSheet("background: transparent; border: none;")
+        topic_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        topic_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        topic_holder.setLayout(topic_layout)
+        topic_chip = QFrame()
+        topic_chip.setStyleSheet(
+            f"background-color: {rgba(theme.primary, 0.14)}; border: none; border-radius: 8px;"
         )
+        tc_layout = hbox(spacing=0, margins=(10, 4, 10, 4))
+        topic_chip.setLayout(tc_layout)
+        tc_layout.addWidget(custom_label(topic, color=theme.primary, size=11, weight=QFont.Weight.Bold))
+        topic_layout.addWidget(topic_chip)
+        card_layout.addWidget(topic_holder)
 
-    rows = [_question_row(q) for q in questions]
+        card_layout.addWidget(BodyLabel(q.get("question") or "", theme=theme, size=13, weight=QFont.Weight.DemiBold))
+        if q.get("rationale"):
+            card_layout.addWidget(SubtleLabel(q["rationale"], theme=theme, size=11, italic=True))
 
-    body = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(intro, color=theme.text_muted, size=12),
-                ft.Container(height=4),
-                *rows,
-            ],
-            spacing=10,
-            tight=True,
-            scroll=ft.ScrollMode.ADAPTIVE,
-        ),
-        width=620,
-        height=520,
-    )
+        if state.options or state.allow_free_text:
+            chips_holder = QFrame()
+            chips_holder.setStyleSheet("background: transparent; border: none;")
+            chips_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+            chips_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            chips_holder.setLayout(chips_layout)
 
-    def _close() -> None:
-        _close_dialog(page)
+            for idx, opt in enumerate(state.options):
+                chip = _make_chip(theme, opt, active=False)
+                state.option_chips.append(chip)
+                chip.clicked.connect(lambda i=idx, st=state: st.toggle_option(i))
+                chips_layout.addWidget(chip)
+
+            if state.allow_free_text or not state.options:
+                other_chip = _make_chip(theme, other_label, active=False)
+                state.other_chip = other_chip
+                other_chip.clicked.connect(lambda st=state: st.toggle_other())
+                chips_layout.addWidget(other_chip)
+                if not state.options:
+                    state.toggle_other()
+            chips_layout.addStretch(1)
+            card_layout.addWidget(chips_holder)
+
+        card_layout.addWidget(state.other_field)
+        body_layout.addWidget(card)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.surface}; border: none; }}")
+    scroll.setWidget(body_holder)
+    scroll.setMinimumHeight(420)
+    dialog.body_layout.addWidget(scroll)
 
     def _build_answers() -> list[dict]:
         out: list[dict] = []
         for st in states:
-            out.append(
-                {
-                    "topic": st.question.get("topic") or "",
-                    "question": st.question.get("question") or "",
-                    "rationale": st.question.get("rationale") or "",
-                    "answer": st.compose_answer(),
-                }
-            )
+            out.append({
+                "topic": st.question.get("topic") or "",
+                "question": st.question.get("question") or "",
+                "rationale": st.question.get("rationale") or "",
+                "answer": st.compose_answer(),
+            })
         return out
 
-    def _on_continue(_e: ft.ControlEvent) -> None:
-        answered = _build_answers()
-        _close()
-        on_submit(answered)
-
-    def _on_skip_all(_e: ft.ControlEvent) -> None:
+    def _on_skip() -> None:
         skipped: list[dict] = []
         for st in states:
-            skipped.append(
-                {
-                    "topic": st.question.get("topic") or "",
-                    "question": st.question.get("question") or "",
-                    "rationale": st.question.get("rationale") or "",
-                    "answer": "",
-                }
-            )
-        _close()
+            skipped.append({
+                "topic": st.question.get("topic") or "",
+                "question": st.question.get("question") or "",
+                "rationale": st.question.get("rationale") or "",
+                "answer": "",
+            })
+        dialog.accept()
         on_submit(skipped)
 
-    def _on_cancel(_e: ft.ControlEvent) -> None:
-        _close()
+    def _on_cancel() -> None:
+        dialog.reject()
         on_cancel()
 
-    skip_button = ft.TextButton(
-        content=ft.Text(
-            skip_all_label, color=theme.text_muted, size=12, weight=ft.FontWeight.W_500
-        ),
-        style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=10, vertical=8)),
-        on_click=_on_skip_all,
+    def _on_continue() -> None:
+        answers = _build_answers()
+        dialog.accept()
+        on_submit(answers)
+
+    skip_btn = QPushButton(skip_all_label)
+    skip_btn.setStyleSheet(
+        f"QPushButton {{ background: transparent; color: {theme.text_muted}; border: none; padding: 8px 10px; }}"
     )
-    cancel_button = ft.TextButton(
-        content=ft.Text(
-            cancel_label, color=theme.text, size=12, weight=ft.FontWeight.W_500
-        ),
-        style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=12, vertical=8)),
-        on_click=_on_cancel,
+    cancel_btn = QPushButton(cancel_label)
+    cancel_btn.setStyleSheet(
+        f"QPushButton {{ background: transparent; color: {theme.text}; border: none; padding: 8px 12px; }}"
     )
-    continue_button = ft.TextButton(
-        content=ft.Text(
-            continue_label,
-            color=ft.Colors.WHITE,
-            size=13,
-            weight=ft.FontWeight.W_600,
-        ),
-        style=ft.ButtonStyle(
-            bgcolor=theme.primary,
-            padding=ft.padding.symmetric(horizontal=18, vertical=10),
-        ),
-        on_click=_on_continue,
+    continue_btn = QPushButton(continue_label)
+    continue_btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background-color: {theme.primary};
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{ background-color: {theme.primary_hover}; }}
+        """
     )
 
-    dialog = ft.AlertDialog(
-        modal=True,
-        bgcolor=theme.surface,
-        title=ft.Text(title, color=theme.text, size=18, weight=ft.FontWeight.W_700),
-        content=body,
-        actions=[skip_button, cancel_button, continue_button],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-    _open_dialog(page, dialog)
+    dialog.add_action(skip_btn, on_click=_on_skip)
+    dialog.add_action(cancel_btn, on_click=_on_cancel)
+    dialog.add_action(continue_btn, on_click=_on_continue)
+    dialog.exec()

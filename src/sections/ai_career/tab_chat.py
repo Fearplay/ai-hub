@@ -1,16 +1,4 @@
-"""Chat-mode body for the AI Career section (Version B).
-
-The Chat tab is the conversational counterpart to the structured Form
-mode. The user types in a free-form prompt, optionally attaches a CV or
-job posting, and the HR-expert assistant replies inline. Every turn is
-appended to :data:`STATE.chat_messages`; attachments parse to plain
-text and live in :data:`STATE.chat_attachments` so subsequent prompts
-can reference the same documents without re-reading the disk.
-
-Demo mode short-circuits the network call via
-:func:`src.sections.ai_career.pipeline.send_chat_message`, so the chat
-flow can be exercised without an API key.
-"""
+"""Chat-mode body for the AI Career section (PySide6 port)."""
 
 from __future__ import annotations
 
@@ -19,12 +7,37 @@ import threading
 from datetime import datetime
 from typing import Callable, Optional
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QScrollArea,
+    QWidget,
+)
 
-from src.services import clipboard, logger as logger_service
+from src.qt.icons import Icons
+from src.qt.runtime import dispatch as runtime_dispatch
+from src.qt.runtime import get_main_window
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    GhostButton,
+    IconLabel,
+    IconOnlyButton,
+    MutedLabel,
+    SubtleLabel,
+    custom_label,
+    hbox,
+    vbox,
+)
+from src.services import logger as logger_service
 from src.services.file_parser import ParsedFile, parse_file
 from src.sections.ai_career import pipeline
-from src.sections.ai_career.refs import REFS, safe
+from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
     MODE_FORM,
     STATE,
@@ -34,126 +47,114 @@ from src.sections.ai_career.strings import s
 from src.theme import Theme
 
 
+_RESUME_EXTENSIONS = ("pdf", "docx", "txt", "md", "html", "htm")
+
+
 def _request_full_refresh() -> None:
-    """Trigger a full section rebuild from anywhere in this module."""
     try:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_chat", "request_full_refresh_import", exc
+            "ai_career.tab_chat", "request_full_refresh_import", exc,
         )
         return
     request_section_refresh()
 
 
-_RESUME_EXTENSIONS = ("pdf", "docx", "txt", "md", "html", "htm")
-
-
-def _user_bubble(theme: Theme, *, text: str, time_label: str, attachment_name: str = "") -> ft.Row:
-    body_children: list[ft.Control] = []
+def _user_bubble(theme: Theme, *, text: str, time_label: str, attachment_name: str = "") -> QWidget:
+    bubble = QFrame()
+    bubble.setStyleSheet(f"background-color: {theme.user_bubble}; border-radius: 14px;")
+    bubble_layout = vbox(spacing=6, margins=(14, 10, 14, 10))
+    bubble.setLayout(bubble_layout)
     if text:
-        body_children.append(
-            ft.Text(text, color=theme.user_bubble_text, size=14, selectable=True)
-        )
+        bubble_layout.addWidget(custom_label(text, color=theme.user_bubble_text, size=14, selectable=True))
     if attachment_name:
-        body_children.append(
-            ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.ATTACH_FILE, color=theme.user_bubble_text, size=14),
-                    ft.Text(
-                        attachment_name,
-                        color=theme.user_bubble_text,
-                        size=12,
-                        weight=ft.FontWeight.W_500,
-                        max_lines=1,
-                        overflow=ft.TextOverflow.ELLIPSIS,
-                    ),
-                ],
-                spacing=6,
-                tight=True,
-            )
-        )
+        att = QFrame()
+        att.setStyleSheet("background: transparent;")
+        att_layout = hbox(spacing=6, margins=(0, 0, 0, 0))
+        att.setLayout(att_layout)
+        att_layout.addWidget(IconLabel(Icons.ATTACH_FILE, color=theme.user_bubble_text, size=14))
+        att_layout.addWidget(custom_label(attachment_name, color=theme.user_bubble_text, size=12, weight=QFont.Weight.Medium))
+        bubble_layout.addWidget(att)
 
-    bubble = ft.Container(
-        content=ft.Column(controls=body_children, spacing=6, tight=True),
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
-        bgcolor=theme.user_bubble,
-        border_radius=14,
-    )
-    avatar = ft.Container(
-        content=ft.Icon(ft.Icons.PERSON, color=ft.Colors.WHITE, size=16),
-        width=28,
-        height=28,
-        bgcolor=theme.primary_soft,
-        border_radius=14,
-        alignment=ft.Alignment.CENTER,
-    )
-    return ft.Row(
-        controls=[
-            ft.Column(
-                controls=[
-                    ft.Container(
-                        content=ft.Text(time_label, color=theme.text_muted, size=11),
-                        padding=ft.padding.only(right=4),
-                        alignment=ft.Alignment.CENTER_RIGHT,
-                    ),
-                    ft.Row(
-                        controls=[bubble, avatar],
-                        spacing=10,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
-                        tight=True,
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.END,
-                spacing=4,
-                tight=True,
-            ),
-        ],
-        alignment=ft.MainAxisAlignment.END,
-    )
+    avatar = QFrame()
+    avatar.setFixedSize(28, 28)
+    avatar.setStyleSheet(f"background-color: {theme.primary_soft}; border-radius: 14px;")
+    al = hbox(spacing=0, margins=(0, 0, 0, 0))
+    al.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(al)
+    al.addWidget(IconLabel(Icons.PERSON, color="#FFFFFF", size=16),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+
+    bubble_row = QFrame()
+    bubble_row.setStyleSheet("background: transparent;")
+    bl = hbox(spacing=10, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignBottom)
+    bubble_row.setLayout(bl)
+    bl.addWidget(bubble)
+    bl.addWidget(avatar)
+
+    inner = QFrame()
+    inner.setStyleSheet("background: transparent;")
+    inner_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    inner.setLayout(inner_layout)
+    time_holder = QFrame()
+    time_holder.setStyleSheet("background: transparent;")
+    tl = hbox(spacing=0, margins=(0, 0, 4, 0))
+    tl.setAlignment(Qt.AlignmentFlag.AlignRight)
+    time_holder.setLayout(tl)
+    tl.addWidget(MutedLabel(time_label, theme=theme, size=11))
+    inner_layout.addWidget(time_holder)
+    inner_layout.addWidget(bubble_row, 0, Qt.AlignmentFlag.AlignRight)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wl = QHBoxLayout(wrapper)
+    wl.setContentsMargins(0, 0, 0, 0)
+    wl.setSpacing(0)
+    wl.addStretch(1)
+    wl.addWidget(inner)
+    return wrapper
 
 
-def _assistant_bubble(theme: Theme, *, text: str, time_label: str) -> ft.Row:
-    body = ft.Container(
-        content=ft.Markdown(
-            text or "",
-            extension_set=ft.MarkdownExtensionSet.GITHUB_FLAVORED,
-            selectable=True,
-        ),
-        padding=14,
-        bgcolor=theme.assistant_bubble,
-        border_radius=14,
-    )
-    avatar = ft.Container(
-        content=ft.Icon(ft.Icons.WORK_OUTLINE, color=ft.Colors.WHITE, size=18),
-        width=36,
-        height=36,
-        bgcolor=theme.primary,
-        border_radius=10,
-        alignment=ft.Alignment.CENTER,
-    )
-    return ft.Row(
-        controls=[
-            avatar,
-            ft.Column(
-                controls=[
-                    ft.Container(
-                        content=ft.Text(time_label, color=theme.text_muted, size=11),
-                        padding=ft.padding.only(left=4),
-                    ),
-                    body,
-                ],
-                spacing=4,
-                expand=True,
-                tight=True,
-            ),
-        ],
-        spacing=12,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
+def _assistant_bubble(theme: Theme, *, text: str, time_label: str) -> QWidget:
+    bubble = QFrame()
+    bubble.setStyleSheet(f"background-color: {theme.assistant_bubble}; border-radius: 14px;")
+    bubble_layout = vbox(spacing=0, margins=(14, 14, 14, 14))
+    bubble.setLayout(bubble_layout)
+    text_label = BodyLabel(text or "", theme=theme, size=14, selectable=True)
+    text_label.setTextFormat(Qt.TextFormat.MarkdownText)
+    text_label.setWordWrap(True)
+    bubble_layout.addWidget(text_label)
+
+    avatar = QFrame()
+    avatar.setFixedSize(36, 36)
+    avatar.setStyleSheet(f"background-color: {theme.primary}; border-radius: 10px;")
+    al = hbox(spacing=0, margins=(0, 0, 0, 0))
+    al.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(al)
+    al.addWidget(IconLabel(Icons.WORK_OUTLINE, color="#FFFFFF", size=18),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+
+    body = QFrame()
+    body.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+    body_layout.addWidget(MutedLabel(time_label, theme=theme, size=11))
+    body_layout.addWidget(bubble)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wl = QHBoxLayout(wrapper)
+    wl.setContentsMargins(0, 0, 0, 0)
+    wl.setSpacing(12)
+    wl.setAlignment(Qt.AlignmentFlag.AlignTop)
+    wl.addWidget(avatar)
+    wl.addWidget(body, 1)
+    return wrapper
 
 
-def _intro_bubble(theme: Theme, txt: dict) -> ft.Row:
+def _intro_bubble(theme: Theme, txt: dict) -> QWidget:
     return _assistant_bubble(
         theme,
         text=txt["chat_mode_greeting"],
@@ -161,359 +162,182 @@ def _intro_bubble(theme: Theme, txt: dict) -> ft.Row:
     )
 
 
-def _quick_action_chip(
-    theme: Theme,
-    label: str,
-    icon: str,
-    on_click: Callable[[ft.ControlEvent], None],
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=14),
-                ft.Text(label, color=theme.text, size=12, weight=ft.FontWeight.W_500),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=10, vertical=6),
-        bgcolor=theme.surface,
-        border_radius=8,
-        border=ft.border.all(1, theme.border),
-        ink=True,
-        on_click=on_click,
+def _quick_action_chip(theme: Theme, label: str, icon: str, on_click: Callable[[], None]) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 8px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    layout = hbox(spacing=6, margins=(10, 6, 10, 6))
+    chip.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.primary, size=14))
+    layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.Medium))
+    chip.clicked.connect(on_click)
+    return chip
 
 
-def _message_list(theme: Theme, txt: dict, list_ref: ft.Ref[ft.ListView]) -> ft.ListView:
-    bubbles: list[ft.Control] = []
-    if not STATE.chat_messages:
-        bubbles.append(_intro_bubble(theme, txt))
-    else:
-        for msg in STATE.chat_messages:
-            if msg.role == "user":
-                bubbles.append(
-                    _user_bubble(
-                        theme,
-                        text=msg.text,
-                        time_label=msg.time,
-                        attachment_name=msg.attachment_name,
-                    )
-                )
-            else:
-                bubbles.append(
-                    _assistant_bubble(
-                        theme,
-                        text=msg.text,
-                        time_label=msg.time,
-                    )
-                )
-
-    return ft.ListView(
-        ref=list_ref,
-        controls=bubbles,
-        spacing=18,
-        padding=ft.padding.symmetric(horizontal=24, vertical=20),
-        expand=True,
-        auto_scroll=True,
-    )
-
-
-def _input_bar(
+def _build_input_bar(
     theme: Theme,
     lang: str,
     txt: dict,
-    *,
     on_after_send: Callable[[], None],
-) -> ft.Container:
-    text_field = ft.TextField(
-        hint_text=txt["chat_mode_send_hint"],
-        hint_style=ft.TextStyle(color=theme.text_subtle, size=13),
-        text_style=ft.TextStyle(color=theme.text, size=14),
-        border=ft.InputBorder.NONE,
-        filled=False,
-        bgcolor="transparent",
-        cursor_color=theme.primary,
-        content_padding=ft.padding.symmetric(horizontal=4, vertical=12),
-        expand=True,
-        multiline=True,
-        min_lines=1,
-        max_lines=4,
-    )
+) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=6, margins=(24, 10, 24, 14))
+    holder.setLayout(layout)
 
     pending_attachment: dict[str, Optional[ParsedFile]] = {"file": None}
 
-    # Flet 0.84 dropped ``FilePicker(on_result=...)`` and turned
-    # ``pick_files()`` into an async function that returns the picked
-    # files directly. We follow the same pattern used by
-    # ``ai_career/upload.py`` and ``ai_legal/drop_zone.py`` -
-    # ``await file_picker.pick_files(...)`` from an async click handler
-    # and register the picker as a service on first use.
-    file_picker = ft.FilePicker()
-    picker_registered: dict[str, bool] = {"done": False}
+    chip_holder = QFrame()
+    chip_holder.setStyleSheet("background: transparent;")
+    chip_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    chip_holder.setLayout(chip_layout)
+    chip_holder.hide()
+    layout.addWidget(chip_holder)
 
-    status_text = ft.Text("", color=theme.text_muted, size=11)
-    # Holders we re-render whenever the staged attachment changes so the
-    # chip + drop-target affordance stay in sync with reality.
-    attachment_chip_holder = ft.Container(visible=False)
-    drop_hint_holder = ft.Container(visible=True)
-    input_row_holder = ft.Container()
+    input_row = QFrame()
+    input_row.setObjectName("ChatInputRow")
+    input_row.setStyleSheet(
+        f"""
+        QFrame#ChatInputRow {{
+            background-color: {theme.surface};
+            border: 1.5px solid {rgba(theme.border, 0.55)};
+            border-radius: 14px;
+        }}
+        """
+    )
+    input_layout = hbox(spacing=8, margins=(10, 4, 10, 4))
+    input_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    input_row.setLayout(input_layout)
 
-    def _set_status(message: str, *, error: bool = False) -> None:
-        status_text.value = message
-        status_text.color = "#EF4444" if error else theme.text_muted
-        logger_service.try_update(status_text)
+    attach_btn = IconOnlyButton(Icons.ATTACH_FILE, color=theme.text_muted, size=20, bg_hover=theme.surface_2, tooltip=txt["chat_attachments_label"])
+    input_layout.addWidget(attach_btn)
 
-    def _build_attachment_chip(attachment: ParsedFile) -> ft.Control:
-        """Removable pill above the input row showing the staged file."""
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=14),
-                    ft.Text(
-                        attachment.name,
-                        color=theme.text,
-                        size=12,
-                        weight=ft.FontWeight.W_500,
-                        max_lines=1,
-                        overflow=ft.TextOverflow.ELLIPSIS,
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.CLOSE,
-                        icon_size=14,
-                        icon_color=theme.text_muted,
-                        tooltip=txt["chat_mode_attachment_remove"],
-                        on_click=_remove_attachment,
-                        padding=0,
-                    ),
-                ],
-                spacing=4,
-                tight=True,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.padding.only(left=10, right=2, top=2, bottom=2),
-            bgcolor=theme.assistant_bubble,
-            border_radius=999,
-            border=ft.border.all(1, theme.border),
+    field = QLineEdit()
+    field.setPlaceholderText(txt["chat_placeholder"])
+    field.setStyleSheet(
+        f"""
+        QLineEdit {{
+            background: transparent;
+            color: {theme.text};
+            border: none;
+            padding: 12px 4px;
+            selection-background-color: {rgba(theme.primary, 0.30)};
+            font-size: 14px;
+        }}
+        """
+    )
+    input_layout.addWidget(field, 1)
+
+    send_btn = IconOnlyButton(Icons.SEND, color="#FFFFFF", size=18, bg=theme.primary, bg_hover=theme.primary_hover, radius=10, tooltip=txt["sections_run_button"] if "sections_run_button" in txt else "Send")
+    send_btn.setFixedSize(40, 40)
+    input_layout.addWidget(send_btn)
+    layout.addWidget(input_row)
+
+    status_label = MutedLabel("", theme=theme, size=11)
+    footer = QFrame()
+    footer.setStyleSheet("background: transparent;")
+    footer_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    footer.setLayout(footer_layout)
+    if STATE.chat_running:
+        footer_layout.addWidget(SubtleLabel(txt["chat_running"], theme=theme, size=11, italic=True))
+    footer_layout.addStretch(1)
+    footer_layout.addWidget(status_label)
+    layout.addWidget(footer)
+
+    def _set_status(msg: str, *, error: bool = False) -> None:
+        status_label.setText(msg)
+        status_label.setStyleSheet(
+            f"color: {'#EF4444' if error else theme.text_muted}; background: transparent;"
         )
 
-    def _refresh_attachment_visuals() -> None:
+    def _refresh_chip() -> None:
+        while chip_layout.count():
+            it = chip_layout.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                w.deleteLater()
         attachment = pending_attachment["file"]
-        # NOTE on real OS-level file drop:
-        # Flet 0.84 does not surface OS drag-and-drop events on the
-        # ``flet pack`` runtime we ship through ``build_exe.bat`` (the
-        # only renderer that supports it - flet-dropzone - requires
-        # ``flet build`` + Flutter SDK + Visual Studio C++ workload,
-        # which violates the "no prerequisites" promise from
-        # ``build-exe.mdc``). The dashed border + hint label below are a
-        # *visual* affordance: clicking anywhere in the input row opens
-        # the file picker, which is functionally equivalent to dropping
-        # a file. Revisit if/when we move off ``flet pack``.
         if attachment is None:
-            attachment_chip_holder.content = None
-            attachment_chip_holder.visible = False
-            drop_hint_holder.visible = True
-            input_row_holder.border = ft.border.all(
-                1.5, ft.Colors.with_opacity(0.55, theme.border)
-            )
+            chip_holder.hide()
             _set_status("")
-        else:
-            attachment_chip_holder.content = _build_attachment_chip(attachment)
-            attachment_chip_holder.visible = True
-            drop_hint_holder.visible = False
-            input_row_holder.border = ft.border.all(1, theme.primary)
-            _set_status(txt["chat_mode_attached_template"].format(name=attachment.name))
-        for c in (attachment_chip_holder, drop_hint_holder, input_row_holder):
-            logger_service.try_update(c)
+            return
+        chip = QFrame()
+        chip.setStyleSheet(
+            f"""
+            QFrame {{
+                background-color: {theme.assistant_bubble};
+                border: 1px solid {theme.border};
+                border-radius: 999px;
+            }}
+            """
+        )
+        c_layout = hbox(spacing=4, margins=(10, 2, 2, 2))
+        chip.setLayout(c_layout)
+        c_layout.addWidget(IconLabel(Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=14))
+        c_layout.addWidget(BodyLabel(attachment.name, theme=theme, size=12, weight=QFont.Weight.Medium))
+        clear = IconOnlyButton(Icons.CLOSE, color=theme.text_muted, size=14, bg_hover=theme.surface)
+        clear.clicked.connect(_remove_attachment)
+        c_layout.addWidget(clear)
+        chip_layout.addWidget(chip)
+        chip_layout.addStretch(1)
+        chip_holder.show()
+        _set_status(attachment.name)
 
-    def _remove_attachment(_e: ft.ControlEvent) -> None:
+    def _remove_attachment() -> None:
         pending_attachment["file"] = None
-        _refresh_attachment_visuals()
+        _refresh_chip()
 
-    def _stage_file_from_path(path: str) -> None:
+    def _stage_file(path: str) -> None:
         if not path:
             return
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         if ext not in _RESUME_EXTENSIONS:
-            logger_service.log_event(
-                "WARNING",
-                "ai_career.tab_chat",
-                "stage_file_unsupported",
-                ext=ext,
-                path=path,
-            )
-            _set_status(txt["resume_unsupported"], error=True)
+            _set_status(f"Unsupported file: .{ext}", error=True)
             return
         parsed = parse_file(path)
         if not parsed.ok:
-            logger_service.log_event(
-                "WARNING",
-                "ai_career.tab_chat",
-                "stage_file_parse_failed",
-                path=path,
-                error=parsed.error,
-            )
-            _set_status(parsed.error or txt["resume_unsupported"], error=True)
+            _set_status(parsed.error or "Could not parse file", error=True)
             return
-        logger_service.log_event(
-            "INFO",
-            "ai_career.tab_chat",
-            "stage_file_ok",
-            name=parsed.name,
-            ext=ext,
-            chars=len(parsed.text or ""),
-        )
         pending_attachment["file"] = parsed
-        _refresh_attachment_visuals()
+        _refresh_chip()
 
-    def _ensure_picker_registered(page: ft.Page) -> None:
-        """Register the FilePicker as a page service so ``pick_files`` works.
-
-        In Flet 0.84 ``FilePicker`` is a :class:`Service` - it lives in
-        ``page._services`` rather than ``page.overlay``. The first
-        ``pick_files`` call must happen *after* registration; subsequent
-        calls reuse the same instance for free.
-        """
-        if picker_registered["done"]:
-            return
-        registry = getattr(page, "_services", None)
-        if registry is not None:
-            try:
-                registry.register_service(file_picker)
-            except Exception as exc:
-                logger_service.log_exception(
-                    "ai_career.tab_chat", "register_picker_failed", exc
-                )
-        picker_registered["done"] = True
-        _try_wire_os_drop(page)
-
-    def _try_wire_os_drop(page: ft.Page) -> None:
-        """Hook OS-level drops onto the chat input, mirroring file_drop_zone."""
-        if getattr(page, "_aihub_chat_drop_wired", False):
-            return
-        for attr in ("on_drop", "on_file_drop", "on_files_drop"):
-            handler = getattr(page, attr, "missing")
-            if handler == "missing":
-                continue
-            try:
-                def _on_drop(evt: ft.ControlEvent, _attr: str = attr) -> None:
-                    raw = getattr(evt, "files", None) or getattr(evt, "paths", None) or []
-                    for item in raw:
-                        path = getattr(item, "path", "") or (item if isinstance(item, str) else "")
-                        if path:
-                            _stage_file_from_path(path)
-                            break
-                setattr(page, attr, _on_drop)
-                logger_service.log_event(
-                    "INFO", "ai_career.tab_chat", "os_drop_wired", attr=attr,
-                )
-                break
-            except Exception as exc:
-                logger_service.log_exception(
-                    "ai_career.tab_chat", "os_drop_wire_failed", exc, attr=attr,
-                )
-        try:
-            setattr(page, "_aihub_chat_drop_wired", True)
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_career.tab_chat", "os_drop_marker_failed", exc,
-            )
-
-    async def _open_picker(e: ft.ControlEvent) -> None:
-        page = e.page
-        if page is None:
-            logger_service.log_event(
-                "WARNING", "ai_career.tab_chat", "open_picker_no_page"
-            )
-            return
-        _ensure_picker_registered(page)
-        logger_service.log_event("INFO", "ai_career.tab_chat", "open_picker")
-        try:
-            files = await file_picker.pick_files(
-                dialog_title=txt["chat_mode_input_attach"],
-                file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=list(_RESUME_EXTENSIONS),
-            )
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_career.tab_chat", "open_picker_failed", exc
-            )
-            _set_status(str(exc) or txt["resume_unsupported"], error=True)
-            return
-        if not files:
-            return
-        first = files[0]
-        path = getattr(first, "path", "") or ""
-        if path:
-            _stage_file_from_path(path)
-
-    def _paste_from_clipboard(_e: ft.ControlEvent) -> None:
-        """Append clipboard text to the message field.
-
-        Some users hit a Flutter focus quirk where the embedded
-        ``TextField`` ignores Ctrl+V on the very first interaction with
-        the chat tab. This explicit button always works because it goes
-        straight through :mod:`src.services.clipboard`, a synchronous
-        pyperclip-backed helper that does not touch Flet's session
-        layer (the previous async ``ft.Clipboard().get()`` call could
-        die with ``RuntimeError("Session closed")`` after a navigation).
-        """
-        text = clipboard.paste()
-        if not text:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "paste_empty",
-                backend=clipboard.backend_name(),
-            )
-            _set_status(txt["chat_mode_paste_empty"])
-            return
-        existing = text_field.value or ""
-        text_field.value = (existing + ("\n" if existing else "") + text)
-        logger_service.try_update(text_field)
-        logger_service.log_event(
-            "INFO", "ai_career.tab_chat", "paste_ok",
-            chars=len(text), backend=clipboard.backend_name(),
+    def _open_picker() -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            get_main_window(),
+            txt["chat_attachments_label"],
+            "",
+            "Documents (*.pdf *.docx *.txt *.md *.html *.htm)",
         )
-        _set_status(txt["chat_mode_paste_done"].format(chars=len(text)))
+        if path:
+            _stage_file(path)
 
-    def _send(_e: Optional[ft.ControlEvent] = None) -> None:
+    attach_btn.clicked.connect(_open_picker)
+
+    def _send() -> None:
         if STATE.chat_running:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "send_ignored_running"
-            )
             return
-        text_value = (text_field.value or "").strip()
+        text_value = field.text().strip()
         attachment = pending_attachment["file"]
         if not text_value and attachment is None:
-            logger_service.log_event(
-                "DEBUG", "ai_career.tab_chat", "send_ignored_empty"
-            )
             return
-
+        attachment_label = ""
         if attachment is not None:
             STATE.chat_attachments[attachment.name] = attachment.text
             attachment_label = attachment.name
-        else:
-            attachment_label = ""
-
-        logger_service.log_event(
-            "INFO",
-            "ai_career.tab_chat",
-            "send_start",
-            chars=len(text_value),
-            attachment=attachment_label,
-            demo_mode=STATE.demo_mode,
-        )
-
-        pipeline.append_chat_message(
-            "user",
-            text_value,
-            attachment_name=attachment_label,
-        )
-        text_field.value = ""
+        pipeline.append_chat_message("user", text_value, attachment_name=attachment_label)
+        field.clear()
         pending_attachment["file"] = None
-        _refresh_attachment_visuals()
-        logger_service.try_update(text_field)
+        _refresh_chip()
         STATE.chat_running = True
         STATE.chat_last_error = ""
         on_after_send()
@@ -526,139 +350,33 @@ def _input_bar(
                 )
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "send_worker_failed", exc
+                    "ai_career.tab_chat", "send_worker_failed", exc,
                 )
                 assistant_text = ""
                 error = str(exc) or "unexpected error"
             STATE.chat_running = False
             if error:
                 STATE.chat_last_error = error
-                logger_service.log_event(
-                    "ERROR",
-                    "ai_career.tab_chat",
-                    "send_done_error",
-                    error=error,
-                )
-                pipeline.append_chat_message(
-                    "assistant",
-                    txt["chat_mode_error_template"].format(error=error),
-                )
+                pipeline.append_chat_message("assistant", f"_Error_: {error}")
             else:
-                logger_service.log_event(
-                    "INFO",
-                    "ai_career.tab_chat",
-                    "send_done_ok",
-                    reply_chars=len(assistant_text or ""),
-                )
                 pipeline.append_chat_message("assistant", assistant_text)
             REFS.request_context_refresh()
             REFS.dispatch(_request_full_refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    attach_btn = ft.IconButton(
-        icon=ft.Icons.ATTACH_FILE,
-        icon_color=theme.text_muted,
-        icon_size=20,
-        tooltip=txt["chat_mode_input_attach"],
-        on_click=_open_picker,
-    )
-    paste_btn = ft.IconButton(
-        icon=ft.Icons.CONTENT_PASTE,
-        icon_color=theme.text_muted,
-        icon_size=18,
-        tooltip=txt["chat_mode_paste_tooltip"],
-        on_click=_paste_from_clipboard,
-    )
-    send_btn = ft.IconButton(
-        icon=ft.Icons.SEND,
-        icon_color=ft.Colors.WHITE,
-        icon_size=18,
-        bgcolor=theme.primary,
-        on_click=_send,
-        tooltip=txt["footer_run_btn"],
-    )
-
-    text_field.on_submit = lambda e: _send(e)
-
-    input_row_holder.content = ft.Row(
-        controls=[attach_btn, paste_btn, text_field, send_btn],
-        spacing=8,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-    input_row_holder.padding = ft.padding.symmetric(horizontal=10, vertical=4)
-    input_row_holder.bgcolor = theme.surface
-    input_row_holder.border_radius = 14
-    # Subtle accent border so the input visually invites a file drop.
-    # See the long comment in ``_refresh_attachment_visuals`` for why
-    # real OS drop is not wired.
-    input_row_holder.border = ft.border.all(
-        1.5, ft.Colors.with_opacity(0.55, theme.border)
-    )
-
-    # Click-anywhere drop zone: Flet pack cannot intercept OS-level
-    # drag-and-drop, so we make this hint a real button-sized affordance
-    # the user can tap (or click) to launch the picker. That way the
-    # paperclip is no longer the only target: the entire hint row is
-    # one big "click me to attach" zone, which is what users actually
-    # try first.
-    drop_hint_holder.content = ft.Row(
-        controls=[
-            ft.Icon(ft.Icons.UPLOAD_FILE_OUTLINED, color=theme.primary, size=14),
-            ft.Text(
-                txt["chat_mode_drop_hint"],
-                color=theme.text_muted,
-                size=11,
-                italic=True,
-            ),
-        ],
-        spacing=6,
-        tight=True,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-    drop_hint_holder.padding = ft.padding.symmetric(horizontal=10, vertical=6)
-    drop_hint_holder.border_radius = 10
-    drop_hint_holder.border = ft.border.all(
-        1, ft.Colors.with_opacity(0.35, theme.primary)
-    )
-    drop_hint_holder.bgcolor = ft.Colors.with_opacity(0.06, theme.primary)
-    drop_hint_holder.ink = True
-    drop_hint_holder.tooltip = txt["chat_mode_input_attach"]
-    drop_hint_holder.on_click = _open_picker
-
-    running_text = ft.Text(
-        txt["chat_mode_running"] if STATE.chat_running else "",
-        color=theme.text_muted,
-        size=11,
-        italic=True,
-    )
-
-    footer_row = ft.Row(
-        controls=[
-            running_text,
-            ft.Container(expand=True),
-            status_text,
-        ],
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                attachment_chip_holder,
-                drop_hint_holder,
-                input_row_holder,
-                footer_row,
-            ],
-            spacing=6,
-            tight=True,
-        ),
-        padding=ft.padding.only(left=24, right=24, top=10, bottom=14),
-    )
+    field.returnPressed.connect(_send)
+    send_btn.clicked.connect(_send)
+    return holder
 
 
-def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[], None]) -> ft.Row:
+def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[], None]) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    holder.setLayout(layout)
+
     def _send_canned(prompt_text: str) -> None:
         if STATE.chat_running:
             return
@@ -667,17 +385,20 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
         on_after_send()
 
         def _worker() -> None:
-            assistant_text, error = pipeline.send_chat_message(
-                output_lang=lang,
-                user_text=prompt_text,
-            )
+            try:
+                assistant_text, error = pipeline.send_chat_message(
+                    output_lang=lang, user_text=prompt_text,
+                )
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_chat", "quick_send_worker_failed", exc,
+                )
+                assistant_text = ""
+                error = str(exc) or "unexpected error"
             STATE.chat_running = False
             if error:
                 STATE.chat_last_error = error
-                pipeline.append_chat_message(
-                    "assistant",
-                    txt["chat_mode_error_template"].format(error=error),
-                )
+                pipeline.append_chat_message("assistant", f"_Error_: {error}")
             else:
                 pipeline.append_chat_message("assistant", assistant_text)
             REFS.request_context_refresh()
@@ -685,37 +406,18 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    return ft.Row(
-        controls=[
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_cv"],
-                ft.Icons.DESCRIPTION_OUTLINED,
-                lambda e: _send_canned(txt["chat_mode_quick_action_cv"]),
-            ),
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_letter"],
-                ft.Icons.MAIL_OUTLINE,
-                lambda e: _send_canned(txt["chat_mode_quick_action_letter"]),
-            ),
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_interview"],
-                ft.Icons.QUESTION_ANSWER_OUTLINED,
-                lambda e: _send_canned(txt["chat_mode_quick_action_interview"]),
-            ),
-            _quick_action_chip(
-                theme,
-                txt["chat_mode_quick_action_gaps"],
-                ft.Icons.QUERY_STATS,
-                lambda e: _send_canned(txt["chat_mode_quick_action_gaps"]),
-            ),
-        ],
-        spacing=8,
-        wrap=True,
-        run_spacing=8,
-    )
+    prompts = [
+        ("chat_qa_review_resume", Icons.SUBJECT),
+        ("chat_qa_interview_prep", Icons.QUIZ_OUTLINED),
+        ("chat_qa_cover_letter", Icons.MAIL_OUTLINE),
+        ("chat_qa_negotiate", Icons.WORK_OUTLINE),
+    ]
+    for key, icon in prompts:
+        if key not in txt:
+            continue
+        layout.addWidget(_quick_action_chip(theme, txt[key], icon, lambda p=txt[key]: _send_canned(p)))
+    layout.addStretch(1)
+    return holder
 
 
 def build_chat_tab(
@@ -725,115 +427,74 @@ def build_chat_tab(
     on_request_rerender: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
     on_switch_to_form: Callable[[], None],
-) -> ft.Control:
+) -> QWidget:
     txt = s(lang)
 
-    # Keep a Ref so we can ``scroll_to`` after the section rebuild lands
-    # in the page tree. ``auto_scroll=True`` only kicks in when controls
-    # are appended after mount; on a full rebuild every bubble is
-    # already in ``controls`` so the freshly-built ListView sits at
-    # offset 0 - which is what was sliding the conversation back to the
-    # start every time the AI replied.
-    list_ref: ft.Ref[ft.ListView] = ft.Ref[ft.ListView]()
-    list_holder = ft.Container(content=_message_list(theme, txt, list_ref), expand=True)
-    quick_actions_holder = ft.Container(
-        content=_quick_actions(theme, lang, txt, on_request_rerender),
-    )
-    input_holder = ft.Container(
-        content=_input_bar(theme, lang, txt, on_after_send=on_request_rerender),
-    )
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
 
-    def _scroll_to_bottom_when_ready() -> None:
-        lv = list_ref.current
-        if lv is None:
-            return
-        try:
-            lv.scroll_to(offset=-1, duration=0)
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_career.tab_chat", "scroll_to_bottom_failed", exc,
-            )
+    header_row = QFrame()
+    header_row.setStyleSheet("background: transparent;")
+    header_layout = hbox(spacing=8, margins=(24, 12, 24, 4))
+    header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    header_row.setLayout(header_layout)
+    header_layout.addStretch(1)
 
-    # Schedule the scroll once the rebuild is on-screen. ``REFS.dispatch``
-    # routes the call through the page's asyncio loop so the ListView
-    # has been mounted by the time we ask it to scroll.
-    REFS.dispatch(_scroll_to_bottom_when_ready)
+    def _clear_chat() -> None:
+        STATE.reset_chat()
+        on_request_rerender()
 
-    def _open_form_mode(_e: ft.ControlEvent) -> None:
+    def _open_form() -> None:
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
         on_switch_to_form()
 
-    def _clear_chat(_e: ft.ControlEvent) -> None:
-        STATE.reset_chat()
-        on_request_rerender()
+    new_btn = GhostButton(txt["menu_new_run"], theme=theme, icon=Icons.RESTART_ALT)
+    new_btn.clicked.connect(_clear_chat)
+    header_layout.addWidget(new_btn)
+    form_btn = GhostButton(txt["mode_form"], theme=theme, icon=Icons.GRID_VIEW_OUTLINED)
+    form_btn.clicked.connect(_open_form)
+    header_layout.addWidget(form_btn)
+    layout.addWidget(header_row)
 
-    header_row = ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Container(expand=True),
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Icon(ft.Icons.RESTART_ALT, color=theme.text_muted, size=14),
-                            ft.Text(
-                                txt["chat_mode_clear_btn"],
-                                color=theme.text,
-                                size=12,
-                                weight=ft.FontWeight.W_500,
-                            ),
-                        ],
-                        spacing=6,
-                        tight=True,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.symmetric(horizontal=10, vertical=6),
-                    bgcolor=theme.surface,
-                    border_radius=8,
-                    border=ft.border.all(1, theme.border),
-                    ink=True,
-                    on_click=_clear_chat,
-                ),
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Icon(ft.Icons.GRID_VIEW_OUTLINED, color=theme.primary, size=14),
-                            ft.Text(
-                                txt["chat_mode_open_form_btn"],
-                                color=theme.text,
-                                size=12,
-                                weight=ft.FontWeight.W_600,
-                            ),
-                        ],
-                        spacing=6,
-                        tight=True,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.symmetric(horizontal=10, vertical=6),
-                    bgcolor=theme.surface,
-                    border_radius=8,
-                    border=ft.border.all(1, theme.border),
-                    ink=True,
-                    on_click=_open_form_mode,
-                ),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.only(left=24, right=24, top=12, bottom=4),
-    )
+    messages_holder = QWidget()
+    messages_holder.setStyleSheet(f"background-color: {theme.bg};")
+    msgs_layout = vbox(spacing=18, margins=(24, 20, 24, 20))
+    messages_holder.setLayout(msgs_layout)
+    if not STATE.chat_messages:
+        msgs_layout.addWidget(_intro_bubble(theme, txt))
+    else:
+        for msg in STATE.chat_messages:
+            if msg.role == "user":
+                msgs_layout.addWidget(_user_bubble(theme, text=msg.text, time_label=msg.time, attachment_name=msg.attachment_name))
+            else:
+                msgs_layout.addWidget(_assistant_bubble(theme, text=msg.text, time_label=msg.time))
+    msgs_layout.addStretch(1)
 
-    return ft.Column(
-        controls=[
-            header_row,
-            ft.Container(content=list_holder, expand=True),
-            ft.Container(
-                content=quick_actions_holder,
-                padding=ft.padding.only(left=24, right=24, top=4, bottom=4),
-            ),
-            input_holder,
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(messages_holder)
+    layout.addWidget(scroll, 1)
+
+    qa_holder = QFrame()
+    qa_holder.setStyleSheet("background: transparent;")
+    qa_layout = hbox(spacing=0, margins=(24, 4, 24, 4))
+    qa_holder.setLayout(qa_layout)
+    qa_layout.addWidget(_quick_actions(theme, lang, txt, on_request_rerender))
+    layout.addWidget(qa_holder)
+
+    layout.addWidget(_build_input_bar(theme, lang, txt, on_request_rerender))
+
+    def _scroll_to_bottom() -> None:
+        bar = scroll.verticalScrollBar()
+        if bar is not None:
+            bar.setValue(bar.maximum())
+
+    runtime_dispatch(_scroll_to_bottom)
+    return container

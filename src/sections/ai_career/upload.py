@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Callable, Sequence
 
-import flet as ft
+from PySide6.QtWidgets import QWidget
 
 from src.components.file_drop_zone import file_drop_zone
 from src.services.file_parser import ParsedFile
@@ -30,7 +30,7 @@ def upload_zone(
     paste_path_label: str | None = None,
     paste_path_tooltip: str | None = None,
     cta_label: str | None = None,
-) -> ft.Control:
+) -> QWidget:
     """Section-local alias preserved for backwards compatibility.
 
     Adds optional kwargs so callers can pass localised paste-path /

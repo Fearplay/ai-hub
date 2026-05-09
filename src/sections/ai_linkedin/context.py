@@ -1,33 +1,31 @@
-"""Right-hand context panel for AI LinkedIn.
-
-Five cards stack here, in order:
-
-* **Brand profile** - one-glance summary of who the LinkedIn assistant
-  is writing for (name, role, industry, audience, tone).
-* **Activity** - one-line status reflecting the pipeline stage (ready,
-  scraping, parsing, extracting, analyzing, generating, scoring, saving,
-  error). Mirrors the Activity card from AI Career so users get a
-  consistent feedback channel across sections.
-* **Attachments** (Chat mode only) - the parsed documents the user has
-  pasted into the chat input.
-* **Quick actions** - shortcuts to start a fresh build, open History,
-  or reopen the how-to dialog.
-* **Recent profile builds** - last few runs the user saved on disk.
-* **Run cost** - calls / tokens / dollar estimate from the cost
-  tracker. Hidden in Demo mode.
-
-The view subscribes a re-render callback on :data:`COST` so each LLM
-call updates the panel without an explicit page repaint, and exposes a
-``REFS.rerender_context`` hook so worker threads in ``pipeline.py`` can
-ask for a refresh after every activity-state change.
-"""
+"""Right-hand context panel for AI LinkedIn (PySide6 port)."""
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    IconOnlyButton,
+    MutedLabel,
+    SubtleLabel,
+    TitleLabel,
+    custom_label,
+    hbox,
+    vbox,
+)
 from src.services import logger as logger_service
 from src.services import settings_store, store
 from src.services.cost_tracker import COST
@@ -72,152 +70,98 @@ _ACTIVITY_KEYS = {
 }
 
 
-def _brief_field(theme: Theme, *, label: str, value: str, chip: bool = False) -> ft.Column:
-    if chip:
-        value_control: ft.Control = ft.Container(
-            content=ft.Text(
-                value,
-                color=theme.text,
-                size=12,
-                weight=ft.FontWeight.W_500,
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=4),
-            bgcolor=ft.Colors.with_opacity(0.18, theme.primary),
-            border_radius=12,
-            alignment=ft.Alignment.CENTER_LEFT,
-        )
-    else:
-        value_control = ft.Text(
-            value,
-            color=theme.text,
-            size=13,
-            weight=ft.FontWeight.W_500,
-        )
-
-    label_text = ft.Text(
-        label,
-        color=theme.text_muted,
-        size=11,
-        weight=ft.FontWeight.W_500,
-    )
+def _brief_field(theme: Theme, *, label: str, value: str, chip: bool = False) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    layout.addWidget(MutedLabel(label, theme=theme, size=11, weight=QFont.Weight.Medium))
 
     if chip:
-        body: ft.Control = ft.Row(controls=[value_control], alignment=ft.MainAxisAlignment.START)
+        chip_w = QFrame()
+        chip_w.setStyleSheet(
+            f"background-color: {rgba(theme.primary, 0.18)}; border-radius: 12px;"
+        )
+        cl = hbox(spacing=0, margins=(10, 4, 10, 4))
+        chip_w.setLayout(cl)
+        chip_w.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        cl.addWidget(BodyLabel(value, theme=theme, size=12, weight=QFont.Weight.Medium))
+        chip_row = QFrame()
+        chip_row.setStyleSheet("background: transparent;")
+        crl = hbox(spacing=0, margins=(0, 0, 0, 0))
+        crl.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        chip_row.setLayout(crl)
+        crl.addWidget(chip_w)
+        crl.addStretch(1)
+        layout.addWidget(chip_row)
     else:
-        body = value_control
-
-    return ft.Column(controls=[label_text, body], spacing=4, tight=True)
-
-
-def _brief_content(theme: Theme, lang: str) -> ft.Column:
-    return ft.Column(
-        controls=[
-            _brief_field(
-                theme,
-                label=field["label"],
-                value=field["value"],
-                chip=field.get("chip", False),
-            )
-            for field in brand_profile_fields(lang)
-        ],
-        spacing=12,
-        tight=True,
-    )
+        layout.addWidget(BodyLabel(value, theme=theme, size=13, weight=QFont.Weight.Medium))
+    return holder
 
 
-def _brand_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
-    return section_card(
-        theme,
-        ft.Icons.PERSON_OUTLINE,
-        txt["ctx_brand_title"],
-        _brief_content(theme, lang),
-    )
+def _brief_content(theme: Theme, lang: str) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=12, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for field in brand_profile_fields(lang):
+        layout.addWidget(_brief_field(theme, label=field["label"], value=field["value"], chip=field.get("chip", False)))
+    return holder
 
 
-def _activity_card(theme: Theme, txt: dict) -> ft.Control:
+def _activity_body(theme: Theme, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
     key = _ACTIVITY_KEYS.get(STATE.activity, "ctx_activity_ready")
     label = txt.get(key) or txt["ctx_activity_ready"]
     color = "#22C55E" if STATE.activity == "ready" else (
         "#EF4444" if STATE.activity == "error" else theme.primary
     )
-    body_controls: list[ft.Control] = [
-        ft.Row(
-            controls=[
-                ft.Container(
-                    width=10,
-                    height=10,
-                    bgcolor=color,
-                    border_radius=5,
-                ),
-                ft.Text(
-                    label,
-                    color=theme.text,
-                    size=13,
-                    weight=ft.FontWeight.W_600,
-                    expand=True,
-                ),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-    ]
+
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    rl = hbox(spacing=8, margins=(0, 0, 0, 0))
+    rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(rl)
+
+    dot = QFrame()
+    dot.setFixedSize(10, 10)
+    dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+    rl.addWidget(dot)
+    rl.addWidget(BodyLabel(label, theme=theme, size=13, weight=QFont.Weight.DemiBold), 1)
+    layout.addWidget(row)
+
     if STATE.last_error and STATE.activity == "error":
-        body_controls.append(
-            ft.Text(STATE.last_error, color="#EF4444", size=11)
-        )
-    return section_card(
-        theme,
-        ft.Icons.RADIO_BUTTON_CHECKED,
-        txt["ctx_activity_title"],
-        ft.Column(controls=body_controls, spacing=6, tight=True),
-    )
+        layout.addWidget(custom_label(STATE.last_error, color="#EF4444", size=11))
+    return holder
 
 
-def _attachments_card(theme: Theme, txt: dict) -> ft.Control:
+def _attachments_body(theme: Theme, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
     if not STATE.chat_attachments:
-        body: ft.Control = ft.Text(
-            "—",
-            color=theme.text_muted,
-            size=12,
-        )
-    else:
-        rows: list[ft.Control] = []
-        for name in list(STATE.chat_attachments.keys()):
-            rows.append(
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=16),
-                            ft.Text(
-                                name,
-                                color=theme.text,
-                                size=12,
-                                expand=True,
-                                max_lines=1,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.CLOSE,
-                                icon_color=theme.text_muted,
-                                icon_size=14,
-                                on_click=lambda e, n=name: _remove_attachment(n),
-                            ),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
-                    bgcolor=theme.surface_2,
-                    border_radius=8,
-                )
-            )
-        body = ft.Column(controls=rows, spacing=6, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.ATTACH_FILE,
-        txt["ctx_attachments_title"],
-        body,
-    )
+        layout.addWidget(MutedLabel("—", theme=theme, size=12))
+        return holder
+
+    for name in list(STATE.chat_attachments.keys()):
+        row = QFrame()
+        row.setStyleSheet(f"background-color: {theme.surface_2}; border-radius: 8px;")
+        rl = hbox(spacing=8, margins=(8, 4, 4, 4))
+        rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.setLayout(rl)
+        rl.addWidget(IconLabel(Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=16))
+        rl.addWidget(BodyLabel(name, theme=theme, size=12), 1)
+        close = IconOnlyButton(Icons.CLOSE, color=theme.text_muted, size=14, bg_hover=theme.surface)
+        close.clicked.connect(lambda _checked=False, n=name: _remove_attachment(n))
+        rl.addWidget(close)
+        layout.addWidget(row)
+    return holder
 
 
 def _remove_attachment(name: str) -> None:
@@ -231,55 +175,63 @@ def _remove_attachment(name: str) -> None:
             )
 
 
-def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
-    def _row(icon: str, label: str, on_click) -> ft.Container:
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(icon, color=theme.text_muted, size=16),
-                    ft.Text(label, color=theme.text, size=13, expand=True),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16),
-                ],
-                spacing=10,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.padding.symmetric(horizontal=8, vertical=10),
-            border_radius=8,
-            ink=True,
-            on_click=on_click,
-        )
+def _quick_actions_body(theme: Theme, lang: str, txt: dict) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
 
-    def _new_build(_e: ft.ControlEvent) -> None:
+    def _row(icon: str, label: str, on_click) -> ClickFrame:
+        row = ClickFrame()
+        row.setStyleSheet(
+            f"""
+            ClickFrame {{
+                background: transparent;
+                border-radius: 8px;
+            }}
+            ClickFrame:hover {{
+                background-color: {theme.surface_2};
+            }}
+            """
+        )
+        rl = hbox(spacing=10, margins=(8, 10, 8, 10))
+        rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.setLayout(rl)
+        rl.addWidget(IconLabel(icon, color=theme.text_muted, size=16))
+        rl.addWidget(BodyLabel(label, theme=theme, size=13), 1)
+        rl.addWidget(IconLabel(Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16))
+        row.clicked.connect(on_click)
+        return row
+
+    def _new_build() -> None:
         STATE.reset_all()
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_SETUP
         _request_full_refresh()
 
-    def _improve_headline(_e: ft.ControlEvent) -> None:
+    def _improve_headline() -> None:
         from src.sections.ai_linkedin.state import SEC_HEADLINE
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_SETUP
         STATE.selected_sections = {SEC_HEADLINE}
         _request_full_refresh()
 
-    def _write_post(_e: ft.ControlEvent) -> None:
+    def _write_post() -> None:
         from src.sections.ai_linkedin.state import SEC_POSTS
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_SETUP
         STATE.selected_sections = {SEC_POSTS}
         _request_full_refresh()
 
-    def _open_history(_e: ft.ControlEvent) -> None:
+    def _open_history() -> None:
         STATE.mode = MODE_BUILDER
         STATE.active_tab = TAB_HISTORY
         _request_full_refresh()
 
-    def _open_how_to(e: ft.ControlEvent) -> None:
+    def _open_how_to() -> None:
+        from src.qt.runtime import get_main_window
         from src.sections.ai_linkedin.how_to import open_linkedin_how_to
-
-        if e.page is not None:
-            REFS.page = e.page
-            open_linkedin_how_to(e.page, theme, lang)
+        open_linkedin_how_to(get_main_window(), theme, lang)
 
     handlers = {
         "build_full": _new_build,
@@ -289,154 +241,90 @@ def _quick_actions_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
         "how_to": _open_how_to,
     }
 
-    rows: list[ft.Control] = []
     for action in quick_actions(lang):
         handler = handlers.get(action["key"])
         if handler is None:
             continue
-        rows.append(_row(action["icon"], action["label"], handler))
-
-    body = ft.Column(controls=rows, spacing=2, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.BOLT_OUTLINED,
-        txt["ctx_quick_actions_title"],
-        body,
-    )
+        layout.addWidget(_row(action["icon"], action["label"], handler))
+    return holder
 
 
-def _recent_card(theme: Theme, lang: str, txt: dict) -> ft.Control:
+def _recent_body(theme: Theme, lang: str) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
     runs = recent_runs(lang)
-    rows: list[ft.Control] = []
+    if not runs:
+        layout.addWidget(MutedLabel("—", theme=theme, size=12))
+        return holder
     for entry in runs:
-        rows.append(
-            ft.Container(
-                content=ft.Column(
-                    controls=[
-                        ft.Text(
-                            entry["title"],
-                            color=theme.text,
-                            size=12,
-                            weight=ft.FontWeight.W_600,
-                            max_lines=1,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                        ft.Text(
-                            entry.get("time") or "—",
-                            color=theme.text_muted,
-                            size=11,
-                        ),
-                    ],
-                    spacing=2,
-                    tight=True,
-                ),
-                padding=ft.padding.symmetric(horizontal=4, vertical=6),
-                border_radius=6,
-                ink=True,
-                on_click=lambda e: None,
-            )
-        )
-    body = ft.Column(controls=rows, spacing=4, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.HISTORY,
-        txt["ctx_recent_title"],
-        body,
-    )
+        item = QFrame()
+        item.setStyleSheet("background: transparent; border-radius: 6px;")
+        il = vbox(spacing=2, margins=(4, 6, 4, 6))
+        item.setLayout(il)
+        il.addWidget(BodyLabel(entry["title"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
+        il.addWidget(MutedLabel(entry.get("time") or "—", theme=theme, size=11))
+        layout.addWidget(item)
+    return holder
 
 
-def _cost_card(theme: Theme, txt: dict) -> ft.Control:
+def _cost_body(theme: Theme) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
     if STATE.demo_mode:
-        body: ft.Control = ft.Text(
-            "—",
-            color=theme.text_muted,
-            size=12,
-        )
-    else:
-        provider_label = (
-            settings_store.PROVIDER_OPENAI
-            if settings_store.get_provider() == settings_store.PROVIDER_OPENAI
-            else settings_store.PROVIDER_ANTHROPIC
-        )
-        model_label = settings_store.get_model()
-        body = ft.Column(
-            controls=[
-                ft.Text(
-                    f"{COST.calls} calls · {COST.tokens_total} tokens",
-                    color=theme.text,
-                    size=13,
-                ),
-                ft.Text(
-                    f"~ ${COST.cost_usd:.4f}",
-                    color=theme.text,
-                    size=13,
-                    weight=ft.FontWeight.W_700,
-                ),
-                ft.Text(
-                    f"{provider_label.title()} · {model_label}",
-                    color=theme.text_subtle,
-                    size=11,
-                    italic=True,
-                ),
-            ],
-            spacing=2,
-            tight=True,
-        )
-    return section_card(
-        theme,
-        ft.Icons.PAYMENTS_OUTLINED,
-        txt["ctx_cost_title"],
-        body,
+        layout.addWidget(MutedLabel("—", theme=theme, size=12))
+        return holder
+
+    provider_label = (
+        settings_store.PROVIDER_OPENAI
+        if settings_store.get_provider() == settings_store.PROVIDER_OPENAI
+        else settings_store.PROVIDER_ANTHROPIC
     )
+    model_label = settings_store.get_model()
+    layout.addWidget(BodyLabel(f"{COST.calls} calls · {COST.tokens_total} tokens", theme=theme, size=13))
+    layout.addWidget(BodyLabel(f"~ ${COST.cost_usd:.4f}", theme=theme, size=13, weight=QFont.Weight.Bold))
+    layout.addWidget(SubtleLabel(f"{provider_label.title()} · {model_label}", theme=theme, size=11, italic=True))
+    return holder
 
 
 _PREV_UNSUBSCRIBE: dict[str, object] = {"fn": None}
 
 
-def build_context(theme: Theme, lang: str) -> ft.Container:
+def build_context(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    panel_holder = ft.Container()
+    panel_holder = QFrame()
+    panel_holder.setStyleSheet("background: transparent;")
+    panel_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    panel_holder.setLayout(panel_layout)
+
+    def _clear() -> None:
+        while panel_layout.count():
+            item = panel_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _render() -> None:
-        cards: list[ft.Control] = [
-            _brand_card(theme, lang, txt),
-            _activity_card(theme, txt),
+        _clear()
+        cards: list[QWidget] = [
+            section_card(theme, icon=Icons.PERSON_OUTLINE, title=txt["ctx_brand_title"], body=_brief_content(theme, lang)),
+            section_card(theme, icon=Icons.RADIO_BUTTON_CHECKED, title=txt["ctx_activity_title"], body=_activity_body(theme, txt)),
         ]
         if STATE.mode == MODE_CHAT:
-            cards.append(_attachments_card(theme, txt))
-        cards.append(_quick_actions_card(theme, lang, txt))
-        cards.append(_recent_card(theme, lang, txt))
-        cards.append(_cost_card(theme, txt))
-        panel_holder.content = context_panel_shell(theme, *cards)
-        if not logger_service.try_update(panel_holder):
-            logger_service.log_event(
-                "DEBUG", "ai_linkedin.context", "panel_holder_update_skipped",
-            )
-        # Reading ``panel_holder.page`` directly would raise
-        # ``RuntimeError: Control must be added to the page first`` on
-        # the very first render (called synchronously from
-        # ``build_context`` before the panel is mounted). The app keeps
-        # a live ``ft.Page`` reference we can grab without walking the
-        # parent chain, so use that instead and store it on REFS for
-        # later worker threads.
-        try:
-            from src.app import get_active_page
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_linkedin.context", "page_import_failed", exc,
-            )
-            return
-        page = get_active_page()
-        if page is None:
-            return
-        REFS.page = page
-        try:
-            page.update()
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_linkedin.context", "page_update_failed", exc,
-            )
+            cards.append(section_card(theme, icon=Icons.ATTACH_FILE, title=txt["ctx_attachments_title"], body=_attachments_body(theme, txt)))
+        cards.append(section_card(theme, icon=Icons.BOLT_OUTLINED, title=txt["ctx_quick_actions_title"], body=_quick_actions_body(theme, lang, txt)))
+        cards.append(section_card(theme, icon=Icons.HISTORY, title=txt["ctx_recent_title"], body=_recent_body(theme, lang)))
+        cards.append(section_card(theme, icon=Icons.PAYMENTS_OUTLINED, title=txt["ctx_cost_title"], body=_cost_body(theme)))
+        shell = context_panel_shell(theme, *cards)
+        panel_layout.addWidget(shell)
 
     def _on_cost_change() -> None:
         _render()
@@ -452,8 +340,6 @@ def build_context(theme: Theme, lang: str) -> ft.Container:
     _PREV_UNSUBSCRIBE["fn"] = COST.subscribe(_on_cost_change)
     REFS.rerender_context = _render
 
-    # Eagerly load existing runs so the recent card paints something
-    # useful even before the user opens the History tab.
     try:
         store.list_runs()
     except Exception as exc:

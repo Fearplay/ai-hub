@@ -2,19 +2,38 @@
 
 Four cards:
 
-1. Dnešní studijní přehled - 3 stat tiles (Témata, Studováno, Pokrok).
-2. Moje předměty - rows with a gradient progress bar per subject.
-3. Rychlé nástroje - 3x2 grid of small action tiles.
-4. Nadcházející úkoly - checkbox + title + due-date pill rows.
+1. Today's overview - 3 stat tiles (Topics, Studied, Progress).
+2. My subjects - rows with a gradient progress bar per subject.
+3. Quick tools - 3-column grid of small action tiles.
+4. Upcoming tasks - checkbox + title + due-date pill rows.
 """
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
-from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    AccentLabel,
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    TitleLabel,
+    hbox,
+    vbox,
+)
 from src.sections.ai_study.data import (
     quick_tools,
     subjects,
@@ -25,264 +44,233 @@ from src.sections.ai_study.strings import s
 from src.theme import Theme
 
 
-def _stat_tile(theme: Theme, *, icon: str, value: str, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=18),
-                ft.Text(
-                    value,
-                    color=theme.text,
-                    size=18,
-                    weight=ft.FontWeight.W_700,
-                ),
-                ft.Text(
-                    label,
-                    color=theme.text_muted,
-                    size=11,
-                    weight=ft.FontWeight.W_500,
-                ),
-            ],
-            spacing=4,
-            tight=True,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=10, vertical=12),
-        bgcolor=theme.surface_2,
-        border_radius=10,
-        expand=True,
-        alignment=ft.Alignment.CENTER,
+def _stat_tile(theme: Theme, *, icon: str, value: str, label: str) -> QFrame:
+    tile = QFrame()
+    tile.setStyleSheet(
+        f"background-color: {theme.surface_2}; border-radius: 10px;"
     )
+    tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout = vbox(spacing=4, margins=(10, 12, 10, 12))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    tile.setLayout(layout)
+
+    icon_label = IconLabel(icon, color=theme.primary, size=18)
+    icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+    value_label = TitleLabel(value, theme=theme, size=18, weight=QFont.Weight.Bold)
+    value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(value_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+    text_label = MutedLabel(label, theme=theme, size=11)
+    text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(text_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+    return tile
 
 
-def _today_overview_card(theme: Theme, lang: str) -> ft.Container:
+def _today_overview_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    tiles = [
-        _stat_tile(theme, icon=item["icon"], value=item["value"], label=item["label"])
-        for item in today_overview(lang)
-    ]
-    content = ft.Row(controls=tiles, spacing=8)
-    return section_card(
-        theme,
-        ft.Icons.CALENDAR_TODAY,
-        txt["today_title"],
-        content,
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for item in today_overview(lang):
+        layout.addWidget(_stat_tile(theme, icon=item["icon"], value=item["value"], label=item["label"]))
+    return section_card(theme, icon=Icons.CALENDAR_TODAY, title=txt["today_title"], body=holder)
+
+
+class _GradientProgress(QWidget):
+    """Custom progress bar with a gradient fill painted via QPainter."""
+
+    def __init__(
+        self,
+        *,
+        percent: int,
+        color_start: str,
+        color_end: str,
+        track_color: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._percent = max(0, min(100, percent))
+        self._color_start = QColor(color_start)
+        self._color_end = QColor(color_end)
+        self._track_color = QColor(track_color)
+        self.setFixedHeight(6)
+        self.setMinimumWidth(80)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._track_color)
+        painter.drawRoundedRect(rect, 3, 3)
+
+        if self._percent <= 0:
+            return
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QLinearGradient
+
+        fill_w = int(rect.width() * (self._percent / 100.0))
+        if fill_w <= 0:
+            return
+        gradient = QLinearGradient(QPointF(0, 0), QPointF(fill_w, 0))
+        gradient.setColorAt(0.0, self._color_start)
+        gradient.setColorAt(1.0, self._color_end)
+        painter.setBrush(gradient)
+        fill_rect = rect.adjusted(0, 0, fill_w - rect.width(), 0)
+        painter.drawRoundedRect(fill_rect, 3, 3)
+
+
+def _subject_row(theme: Theme, subject: dict) -> QFrame:
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(layout)
+
+    layout.addWidget(IconLabel(subject["icon"], color=subject["color_start"], size=16))
+
+    name_label = BodyLabel(subject["name"], theme=theme, size=13)
+    name_label.setFixedWidth(92)
+    layout.addWidget(name_label)
+
+    bar = _GradientProgress(
+        percent=subject["percent"],
+        color_start=subject["color_start"],
+        color_end=subject["color_end"],
+        track_color=theme.surface_2,
     )
+    layout.addWidget(bar, 1)
+
+    pct_label = BodyLabel(f"{subject['percent']}%", theme=theme, size=12, weight=QFont.Weight.DemiBold)
+    pct_label.setFixedWidth(36)
+    pct_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+    layout.addWidget(pct_label)
+
+    return row
 
 
-def _gradient_progress_bar(
-    *,
-    percent: int,
-    color_start: str,
-    color_end: str,
-    track_color: str,
-    width: float = 170,
-) -> ft.Stack:
-    track = ft.Container(
-        width=width,
-        height=6,
-        bgcolor=track_color,
-        border_radius=3,
+def _add_pill(theme: Theme, label: str) -> ClickFrame:
+    pill = ClickFrame()
+    pill.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {rgba(theme.primary, 0.10)};
+            border: 1px solid {rgba(theme.primary, 0.20)};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {rgba(theme.primary, 0.16)};
+        }}
+        """
     )
-    fill_width = max(0.0, min(100.0, percent)) / 100.0 * width
-    fill = ft.Container(
-        width=fill_width,
-        height=6,
-        border_radius=3,
-        gradient=ft.LinearGradient(
-            begin=ft.Alignment.CENTER_LEFT,
-            end=ft.Alignment.CENTER_RIGHT,
-            colors=[color_start, color_end],
-        ),
-    )
-    return ft.Stack(controls=[track, fill], width=width, height=6)
+    layout = hbox(spacing=6, margins=(10, 8, 10, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    pill.setLayout(layout)
+    layout.addWidget(IconLabel(Icons.ADD, color=theme.primary, size=14))
+    layout.addWidget(AccentLabel(label, theme=theme, size=12))
+    return pill
 
 
-def _subject_row(theme: Theme, subject: dict) -> ft.Row:
-    return ft.Row(
-        controls=[
-            ft.Icon(subject["icon"], color=subject["color_start"], size=16),
-            ft.Text(
-                subject["name"],
-                color=theme.text,
-                size=13,
-                weight=ft.FontWeight.W_500,
-                width=92,
-                overflow=ft.TextOverflow.ELLIPSIS,
-                max_lines=1,
-            ),
-            ft.Container(
-                content=_gradient_progress_bar(
-                    percent=subject["percent"],
-                    color_start=subject["color_start"],
-                    color_end=subject["color_end"],
-                    track_color=theme.surface_2,
-                    width=110,
-                ),
-                expand=True,
-            ),
-            ft.Text(
-                f"{subject['percent']}%",
-                color=theme.text,
-                size=12,
-                weight=ft.FontWeight.W_600,
-                width=36,
-                text_align=ft.TextAlign.RIGHT,
-            ),
-        ],
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-
-def _add_pill(theme: Theme, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.ADD, color=theme.primary, size=14),
-                ft.Text(label, color=theme.primary, size=12, weight=ft.FontWeight.W_600),
-            ],
-            spacing=6,
-            alignment=ft.MainAxisAlignment.CENTER,
-            tight=True,
-        ),
-        padding=ft.padding.symmetric(horizontal=10, vertical=8),
-        bgcolor=ft.Colors.with_opacity(0.10, theme.primary),
-        border_radius=10,
-        border=ft.border.all(1, ft.Colors.with_opacity(0.20, theme.primary)),
-        ink=True,
-        on_click=lambda e: None,
-        alignment=ft.Alignment.CENTER,
-    )
-
-
-def _subjects_card(theme: Theme, lang: str) -> ft.Container:
+def _subjects_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    rows = [_subject_row(theme, subj) for subj in subjects(lang)]
-    content = ft.Column(
-        controls=[
-            *rows,
-            _add_pill(theme, txt["add_subject"]),
-        ],
-        spacing=12,
-        tight=True,
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=12, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for subj in subjects(lang):
+        layout.addWidget(_subject_row(theme, subj))
+    layout.addWidget(_add_pill(theme, txt["add_subject"]))
+    return section_card(theme, icon=Icons.BOOKMARK_OUTLINE, title=txt["subjects_title"], body=holder)
+
+
+def _tool_tile(theme: Theme, *, icon: str, label: str) -> ClickFrame:
+    tile = ClickFrame()
+    tile.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface_2};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface};
+        }}
+        """
     )
-    return section_card(
-        theme,
-        ft.Icons.BOOKMARK_OUTLINE,
-        txt["subjects_title"],
-        content,
-        action_label=t("edit", lang),
-    )
+    tile.setFixedHeight(72)
+    layout = vbox(spacing=6, margins=(6, 10, 6, 10))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    tile.setLayout(layout)
+    icon_label = IconLabel(icon, color=theme.primary, size=18)
+    icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+    text_label = QLabel(label)
+    text_font = QFont()
+    text_font.setPixelSize(11)
+    text_label.setFont(text_font)
+    text_label.setStyleSheet(f"color: {theme.text}; background: transparent;")
+    text_label.setWordWrap(True)
+    text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(text_label)
+    return tile
 
 
-def _tool_tile(theme: Theme, *, icon: str, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=18),
-                ft.Text(
-                    label,
-                    color=theme.text,
-                    size=11,
-                    weight=ft.FontWeight.W_500,
-                    text_align=ft.TextAlign.CENTER,
-                    max_lines=2,
-                ),
-            ],
-            spacing=6,
-            tight=True,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            alignment=ft.MainAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=6, vertical=10),
-        bgcolor=theme.surface_2,
-        border_radius=10,
-        height=72,
-        expand=True,
-        alignment=ft.Alignment.CENTER,
-        ink=True,
-        on_click=lambda e: None,
-    )
-
-
-def _tools_card(theme: Theme, lang: str) -> ft.Container:
+def _tools_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     items = quick_tools(lang)
 
-    rows: list[ft.Control] = []
-    for i in range(0, len(items), 3):
-        chunk = items[i : i + 3]
-        rows.append(
-            ft.Row(
-                controls=[
-                    _tool_tile(theme, icon=item["icon"], label=item["label"])
-                    for item in chunk
-                ],
-                spacing=8,
-            )
-        )
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    grid = QGridLayout(holder)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setHorizontalSpacing(8)
+    grid.setVerticalSpacing(8)
 
-    content = ft.Column(controls=rows, spacing=8, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.AUTO_AWESOME,
-        txt["tools_title"],
-        content,
-    )
+    cols = 3
+    for i, item in enumerate(items):
+        grid.addWidget(_tool_tile(theme, icon=item["icon"], label=item["label"]), i // cols, i % cols)
+
+    return section_card(theme, icon=Icons.AUTO_AWESOME, title=txt["tools_title"], body=holder)
 
 
-def _task_row(theme: Theme, task: dict) -> ft.Row:
-    checkbox = ft.Container(
-        width=18,
-        height=18,
-        border=ft.border.all(1.5, theme.text_muted),
-        border_radius=9,
-        bgcolor="transparent",
+def _task_row(theme: Theme, task: dict) -> QFrame:
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(layout)
+
+    checkbox = QFrame()
+    checkbox.setFixedSize(18, 18)
+    checkbox.setStyleSheet(
+        f"background-color: transparent; border: 1.5px solid {theme.text_muted}; border-radius: 9px;"
     )
-    title = ft.Text(
-        task["title"],
-        color=theme.text,
-        size=13,
-        weight=ft.FontWeight.W_500,
-        expand=True,
-        overflow=ft.TextOverflow.ELLIPSIS,
-        max_lines=1,
-    )
-    due = ft.Text(
-        task["due"],
-        color=theme.text_muted,
-        size=11,
-        weight=ft.FontWeight.W_500,
-    )
-    return ft.Row(
-        controls=[checkbox, title, due],
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+    layout.addWidget(checkbox)
+
+    title = BodyLabel(task["title"], theme=theme, size=13)
+    title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout.addWidget(title, 1)
+
+    layout.addWidget(MutedLabel(task["due"], theme=theme, size=11))
+    return row
 
 
-def _tasks_card(theme: Theme, lang: str) -> ft.Container:
+def _tasks_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    rows = [_task_row(theme, task) for task in upcoming_tasks(lang)]
-    content = ft.Column(
-        controls=[
-            *rows,
-            _add_pill(theme, txt["add_task"]),
-        ],
-        spacing=12,
-        tight=True,
-    )
-    return section_card(
-        theme,
-        ft.Icons.EVENT_NOTE,
-        txt["tasks_title"],
-        content,
-        action_label=txt["task_show_all"],
-    )
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=12, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for task in upcoming_tasks(lang):
+        layout.addWidget(_task_row(theme, task))
+    layout.addWidget(_add_pill(theme, txt["add_task"]))
+    return section_card(theme, icon=Icons.EVENT_NOTE, title=txt["tasks_title"], body=holder)
 
 
-def build_context(theme: Theme, lang: str) -> ft.Container:
+def build_context(theme: Theme, lang: str) -> QWidget:
     return context_panel_shell(
         theme,
         _today_overview_card(theme, lang),

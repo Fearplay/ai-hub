@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import flet as ft
-
+from src.qt.icons import Icons
 from src.sections.ai_finance.strings import s
 
 
-SECTION_ICON = ft.Icons.SAVINGS_OUTLINED
+SECTION_ICON = Icons.SAVINGS_OUTLINED
 
 ACCENT = "#22C55E"
 NEEDS_COLOR = "#22C55E"
@@ -63,7 +62,7 @@ def budget_table(lang: str) -> list[dict]:
     txt = s(lang)
     return [
         {
-            "icon": ft.Icons.HOME_OUTLINED,
+            "icon": Icons.HOME_OUTLINED,
             "category": txt["row_housing"],
             "recommended": "30%",
             "amount": "13 500 Kč",
@@ -71,7 +70,7 @@ def budget_table(lang: str) -> list[dict]:
             "color": NEEDS_COLOR,
         },
         {
-            "icon": ft.Icons.RESTAURANT_OUTLINED,
+            "icon": Icons.RESTAURANT_OUTLINED,
             "category": txt["row_food"],
             "recommended": "10%",
             "amount": "4 500 Kč",
@@ -79,7 +78,7 @@ def budget_table(lang: str) -> list[dict]:
             "color": NEEDS_COLOR,
         },
         {
-            "icon": ft.Icons.DIRECTIONS_CAR_OUTLINED,
+            "icon": Icons.DIRECTIONS_CAR_OUTLINED,
             "category": txt["row_transport"],
             "recommended": "5%",
             "amount": "2 250 Kč",
@@ -87,7 +86,7 @@ def budget_table(lang: str) -> list[dict]:
             "color": NEEDS_COLOR,
         },
         {
-            "icon": ft.Icons.FAVORITE_BORDER,
+            "icon": Icons.FAVORITE_BORDER,
             "category": txt["row_other_needs"],
             "recommended": "5%",
             "amount": "2 250 Kč",
@@ -95,7 +94,7 @@ def budget_table(lang: str) -> list[dict]:
             "color": NEEDS_COLOR,
         },
         {
-            "icon": ft.Icons.LOCAL_MALL_OUTLINED,
+            "icon": Icons.LOCAL_MALL_OUTLINED,
             "category": txt["row_wants"],
             "recommended": "30%",
             "amount": "13 500 Kč",
@@ -103,7 +102,7 @@ def budget_table(lang: str) -> list[dict]:
             "color": WANTS_COLOR,
         },
         {
-            "icon": ft.Icons.TRENDING_UP,
+            "icon": Icons.TRENDING_UP,
             "category": txt["row_saving"],
             "recommended": "20%",
             "amount": "9 000 Kč",
@@ -116,22 +115,22 @@ def budget_table(lang: str) -> list[dict]:
 def assistant_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.EDIT_OUTLINED, "label": txt["action_edit_budget"]},
-        {"icon": ft.Icons.BAR_CHART, "label": txt["action_create_chart"]},
-        {"icon": ft.Icons.SAVINGS_OUTLINED, "label": txt["action_save_plan"]},
-        {"icon": ft.Icons.TRENDING_UP, "label": txt["action_invest_plan"]},
-        {"icon": ft.Icons.IOS_SHARE, "label": txt["action_export"]},
+        {"icon": Icons.EDIT_OUTLINED, "label": txt["action_edit_budget"]},
+        {"icon": Icons.BAR_CHART, "label": txt["action_create_chart"]},
+        {"icon": Icons.SAVINGS_OUTLINED, "label": txt["action_save_plan"]},
+        {"icon": Icons.TRENDING_UP, "label": txt["action_invest_plan"]},
+        {"icon": Icons.IOS_SHARE, "label": txt["action_export"]},
     ]
 
 
 def quick_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.ACCOUNT_BALANCE_WALLET_OUTLINED, "label": txt["quick_create_budget"]},
-        {"icon": ft.Icons.QUERY_STATS, "label": txt["quick_analyze_expenses"]},
-        {"icon": ft.Icons.TRENDING_UP, "label": txt["quick_invest_advice"]},
-        {"icon": ft.Icons.RECEIPT_LONG_OUTLINED, "label": txt["quick_tax_guide"]},
-        {"icon": ft.Icons.CALCULATE_OUTLINED, "label": txt["quick_calculators"]},
+        {"icon": Icons.ACCOUNT_BALANCE_WALLET_OUTLINED, "label": txt["quick_create_budget"]},
+        {"icon": Icons.QUERY_STATS, "label": txt["quick_analyze_expenses"]},
+        {"icon": Icons.TRENDING_UP, "label": txt["quick_invest_advice"]},
+        {"icon": Icons.RECEIPT_LONG_OUTLINED, "label": txt["quick_tax_guide"]},
+        {"icon": Icons.CALCULATE_OUTLINED, "label": txt["quick_calculators"]},
     ]
 
 
@@ -140,7 +139,7 @@ def market_tickers(lang: str) -> list[dict]:
     return [
         {
             "symbol": txt["ticker_sp500"],
-            "icon": ft.Icons.PUBLIC,
+            "icon": Icons.PUBLIC,
             "icon_color": "#3B82F6",
             "value": "5 278,40",
             "change": "+0,65%",
@@ -149,7 +148,7 @@ def market_tickers(lang: str) -> list[dict]:
         },
         {
             "symbol": txt["ticker_nasdaq"],
-            "icon": ft.Icons.MEMORY,
+            "icon": Icons.MEMORY,
             "icon_color": "#0EA5E9",
             "value": "16 735,02",
             "change": "+0,84%",
@@ -158,7 +157,7 @@ def market_tickers(lang: str) -> list[dict]:
         },
         {
             "symbol": txt["ticker_dow"],
-            "icon": ft.Icons.ACCOUNT_BALANCE_OUTLINED,
+            "icon": Icons.ACCOUNT_BALANCE_OUTLINED,
             "icon_color": "#6366F1",
             "value": "38 885,10",
             "change": "-0,12%",
@@ -167,7 +166,7 @@ def market_tickers(lang: str) -> list[dict]:
         },
         {
             "symbol": txt["ticker_btc"],
-            "icon": ft.Icons.CURRENCY_BITCOIN,
+            "icon": Icons.CURRENCY_BITCOIN,
             "icon_color": "#F59E0B",
             "value": "67 845,21",
             "change": "+2,35%",
@@ -176,7 +175,7 @@ def market_tickers(lang: str) -> list[dict]:
         },
         {
             "symbol": txt["ticker_eur"],
-            "icon": ft.Icons.EURO,
+            "icon": Icons.EURO,
             "icon_color": "#94A3B8",
             "value": "24,85",
             "change": "-0,08%",

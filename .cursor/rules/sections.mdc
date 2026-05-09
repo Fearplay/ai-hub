@@ -34,13 +34,14 @@ The left-sidebar items are auto-discovered from `src/sections/<key>/`.
 
 ```python
 # src/sections/<key>/section.py
+from src.qt.icons import Icons
 from src.sections._base import Section
 from src.sections.<key>.view import build_view
 from src.sections.<key>.strings import STRINGS
 
 SECTION = Section(
     key="<key>",
-    icon=ft.Icons.<SOMETHING>_OUTLINED,
+    icon=Icons.<SOMETHING>_OUTLINED,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     order=<int>,
@@ -48,7 +49,9 @@ SECTION = Section(
 ```
 
 `build_view(theme, lang)` and (optional) `build_context(theme, lang)`
-must return `ft.Control`. Both receive `lang` as `"en"` or `"cs"`.
+must return a ``QWidget`` (typically a ``QFrame`` / ``QWidget`` whose
+layout you compose with the helpers in ``src.qt.widgets``). Both
+receive ``lang`` as ``"en"`` or ``"cs"``.
 
 ## Error logging (mandatory - the #1 priority)
 
@@ -99,16 +102,18 @@ tabs), skip it.
            logger_service.log_exception("<key>.view", "tab_change_failed", exc)
    ```
 
-3. **Control update failures** - use `logger_service.try_update(control)`
-   instead of bare `control.update()`. On first mount `try_update`
-   silently returns `False` (expected); on a genuine error it also
-   returns `False` so you can log:
+3. **Layout swap failures** - PySide6 widgets repaint themselves
+   automatically when you mutate their layouts, so you do not need a
+   manual ``update()`` call. When you swap a panel inside a holder
+   (``while body_layout.count(): body_layout.takeAt(0).widget().deleteLater()``
+   then ``addWidget``) and that swap can raise (e.g. because a child
+   builder fails), wrap it in try/except and log the failure:
 
    ```python
-   if not logger_service.try_update(holder):
-       logger_service.log_event(
-           "ERROR", "<key>.view", "holder_update_failed",
-       )
+   try:
+       _refresh_body()
+   except Exception as exc:
+       logger_service.log_exception("<key>.view", "refresh_body_failed", exc)
    ```
 
 4. **Worker / pipeline failures** - every background thread must catch
@@ -127,9 +132,11 @@ tabs), skip it.
 
 - **NEVER** write `except ...: pass` without `log_exception`. Every
   bare `pass` is a silent failure that hides bugs from the user.
-- **NEVER** write bare `control.update()` in an event handler. Use
-  `logger_service.try_update(control)` or wrap in try/except +
-  `log_exception`.
+- **NEVER** call ``QWidget.update()`` from a worker thread. Always
+  schedule UI mutations on the GUI thread via
+  ``src.qt.runtime.dispatch(...)`` (or ``REFS.request_context_refresh()``
+  / ``REFS.dispatch(...)``). Direct cross-thread widget access is a Qt
+  error and may crash the process.
 - **Do not** log API keys, full prompts, full document bodies or any
   other PII / secret. Lengths and identifiers only (`chars=`, `kind=`,
   `provider=`, …).
@@ -175,25 +182,30 @@ def run_full_build(*, output_lang: str) -> PipelineResult:
 
 ### Cross-thread UI refresh (mandatory for worker threads)
 
-Worker threads (anything spawned via `threading.Thread`,
-`page.run_thread`, etc.) must NOT call `safe(REFS.rerender_context)`
-directly: the refresh runs on the worker thread, only schedules a Flet
-patch on the page loop, and the user sees the update only after the
-next window event. Use the dispatch helpers instead:
+Worker threads (anything spawned via `threading.Thread`) must NOT
+mutate widgets directly: Qt widgets are not thread-safe and the GUI
+thread will at best see stale state, at worst the process will crash.
+Use the dispatch helpers instead:
 
+* **Generic GUI-thread call**: ``src.qt.runtime.dispatch(callable)``.
+  Routes the callable through a queued ``QObject`` signal so it runs
+  on the main thread on the next event-loop tick.
 * **Right-hand context panel** (activity badge, cost, attachments,
-  recent runs): `REFS.request_context_refresh()`. It is thread-safe -
-  no-ops on the very first render, otherwise routes through
-  `loop.call_soon_threadsafe` so the Activity pill repaints
-  immediately.
-* **Full section rebuild**: `REFS.dispatch(_request_full_refresh)`.
-  Same threading semantics, but rebuilds the entire `build_view` tree.
+  recent runs): ``REFS.request_context_refresh()``. Thread-safe - it
+  forwards to ``runtime.dispatch`` internally so the Activity pill
+  repaints immediately.
+* **Full section rebuild**: ``REFS.dispatch(_request_full_refresh)``.
+  Same threading semantics, but rebuilds the entire ``build_view``
+  tree.
 
 ```python
+from src.qt.runtime import dispatch as runtime_dispatch
+
 def _worker() -> None:
     STATE.activity = "analyzing"
-    REFS.request_context_refresh()  # not safe(REFS.rerender_context)!
+    REFS.request_context_refresh()  # GUI-thread safe
     result = pipeline.do_step(...)
+    runtime_dispatch(lambda: status_label.setText("done"))
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)

@@ -13,12 +13,12 @@ See ``src/sections/ai_career/view.py`` for a chat-style example or
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtWidgets import QWidget
 
 from src.components.placeholder import placeholder_view
 from src.sections.SECTION_TEMPLATE.strings import s
 from src.theme import Theme
 
 
-def build_view(theme: Theme, lang: str) -> ft.Control:
+def build_view(theme: Theme, lang: str) -> QWidget:
     return placeholder_view(theme, lang, title=s(lang)["title"])

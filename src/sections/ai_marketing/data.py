@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import flet as ft
+from src.qt.icons import Icons
 
 from src.sections.ai_marketing.strings import s
 
 
-SECTION_ICON = ft.Icons.CAMPAIGN_OUTLINED
+SECTION_ICON = Icons.CAMPAIGN_OUTLINED
 
 
 def tabs(lang: str) -> list[str]:
@@ -26,11 +26,11 @@ def tabs(lang: str) -> list[str]:
 def assistant_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.CONTENT_COPY, "label": txt["action_copy"]},
-        {"icon": ft.Icons.IMAGE_OUTLINED, "label": txt["action_image"]},
-        {"icon": ft.Icons.UNFOLD_LESS, "label": txt["action_shorten"]},
-        {"icon": ft.Icons.MOOD_OUTLINED, "label": txt["action_tone"]},
-        {"icon": ft.Icons.TRANSLATE, "label": txt["action_translate"]},
+        {"icon": Icons.CONTENT_COPY, "label": txt["action_copy"]},
+        {"icon": Icons.IMAGE_OUTLINED, "label": txt["action_image"]},
+        {"icon": Icons.UNFOLD_LESS, "label": txt["action_shorten"]},
+        {"icon": Icons.MOOD_OUTLINED, "label": txt["action_tone"]},
+        {"icon": Icons.TRANSLATE, "label": txt["action_translate"]},
     ]
 
 
@@ -48,11 +48,11 @@ def brief_fields(lang: str) -> list[dict]:
 def quick_actions(lang: str) -> list[dict]:
     txt = s(lang)
     return [
-        {"icon": ft.Icons.PHOTO_LIBRARY_OUTLINED, "label": txt["qa_social"]},
-        {"icon": ft.Icons.CAMPAIGN_OUTLINED, "label": txt["qa_ad"]},
-        {"icon": ft.Icons.MAIL_OUTLINE, "label": txt["qa_email"]},
-        {"icon": ft.Icons.ARTICLE_OUTLINED, "label": txt["qa_landing"]},
-        {"icon": ft.Icons.INSIGHTS_OUTLINED, "label": txt["qa_strategy"]},
+        {"icon": Icons.PHOTO_LIBRARY_OUTLINED, "label": txt["qa_social"]},
+        {"icon": Icons.CAMPAIGN_OUTLINED, "label": txt["qa_ad"]},
+        {"icon": Icons.MAIL_OUTLINE, "label": txt["qa_email"]},
+        {"icon": Icons.ARTICLE_OUTLINED, "label": txt["qa_landing"]},
+        {"icon": Icons.INSIGHTS_OUTLINED, "label": txt["qa_strategy"]},
     ]
 
 

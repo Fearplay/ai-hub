@@ -8,10 +8,10 @@ call. Real runs replace these with structured outputs from the pipeline.
 
 from __future__ import annotations
 
-import flet as ft
+from src.qt.icons import Icons
 
 
-SECTION_ICON = ft.Icons.WORK_OUTLINE
+SECTION_ICON = Icons.WORK_OUTLINE
 
 
 DEMO_RESUME_TEXT = """\

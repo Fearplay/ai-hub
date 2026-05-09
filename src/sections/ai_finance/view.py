@@ -7,10 +7,20 @@ before any AI is wired up.
 
 from __future__ import annotations
 
-import math
+from typing import Sequence
 
-import flet as ft
-from flet import canvas as cv
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from src.components.chat_input import chat_input
 from src.components.chat_message import chat_message
@@ -18,6 +28,17 @@ from src.components.header import header
 from src.components.mock_panel import mock_card_grid_panel, mock_form_panel
 from src.components.tabbed_panel import tabbed_panel
 from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.widgets import (
+    AccentLabel,
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    TitleLabel,
+    hbox,
+    vbox,
+)
 from src.sections.ai_finance.data import (
     SECTION_ICON,
     assistant_actions,
@@ -34,349 +55,304 @@ DONUT_SIZE = 180
 DONUT_STROKE = 22
 
 
-def _donut_arc(*, color: str, start: float, sweep: float) -> cv.Arc:
-    inset = DONUT_STROKE / 2 + 2
-    bound = DONUT_SIZE - 2 * inset
-    return cv.Arc(
-        x=inset,
-        y=inset,
-        width=bound,
-        height=bound,
-        start_angle=start,
-        sweep_angle=sweep,
-        paint=ft.Paint(
-            color=color,
-            style=ft.PaintingStyle.STROKE,
-            stroke_width=DONUT_STROKE,
-            stroke_cap=ft.StrokeCap.BUTT,
-        ),
-    )
+class _DonutChart(QWidget):
+    """Pie/donut painted via ``QPainter`` so the colours match the design.
+
+    Slices come in as ``[{"color": "#xx", "percent": int}, ...]``. The
+    track behind them sits in the theme's ``surface_2`` colour so the
+    chart still reads on light backgrounds.
+    """
+
+    def __init__(self, slices: Sequence[dict], *, theme: Theme, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._slices = list(slices)
+        self._track_color = QColor(theme.surface_2)
+        self.setFixedSize(DONUT_SIZE, DONUT_SIZE)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        inset = DONUT_STROKE / 2 + 2
+        rect = QRectF(inset, inset, DONUT_SIZE - 2 * inset, DONUT_SIZE - 2 * inset)
+
+        # track
+        track_pen = QPen(self._track_color, DONUT_STROKE)
+        track_pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(track_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(rect, 0, 360 * 16)
+
+        total = sum(s["percent"] for s in self._slices) or 1
+        # Qt arc start angles are 1/16th degree, with 0 = right axis
+        # going counter-clockwise. We want to start at the top and go
+        # clockwise like the Flet original, so begin at 90 deg.
+        start = 90 * 16
+        for slc in self._slices:
+            sweep_deg = (slc["percent"] / total) * 360
+            sweep = -int(sweep_deg * 16) + 6  # tiny gap between slices
+            pen = QPen(QColor(slc["color"]), DONUT_STROKE)
+            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+            painter.setPen(pen)
+            painter.drawArc(rect, start, sweep)
+            start += int(-sweep_deg * 16)
 
 
-def _donut_chart(theme: Theme, slices: list[dict]) -> ft.Stack:
-    track = cv.Arc(
-        x=DONUT_STROKE / 2 + 2,
-        y=DONUT_STROKE / 2 + 2,
-        width=DONUT_SIZE - 2 * (DONUT_STROKE / 2 + 2),
-        height=DONUT_SIZE - 2 * (DONUT_STROKE / 2 + 2),
-        start_angle=0,
-        sweep_angle=2 * math.pi,
-        paint=ft.Paint(
-            color=theme.surface_2,
-            style=ft.PaintingStyle.STROKE,
-            stroke_width=DONUT_STROKE,
-        ),
-    )
-
-    arcs: list[cv.Shape] = [track]
-    angle = -math.pi / 2  # start at the top
-    total = sum(slc["percent"] for slc in slices) or 1
-    for slc in slices:
-        sweep = (slc["percent"] / total) * 2 * math.pi
-        arcs.append(_donut_arc(color=slc["color"], start=angle, sweep=sweep - 0.012))
-        angle += sweep
-
-    canvas = cv.Canvas(shapes=arcs, width=DONUT_SIZE, height=DONUT_SIZE)
-    return canvas
-
-
-def _donut_with_caption(theme: Theme, lang: str, slices: list[dict]) -> ft.Stack:
+def _donut_with_caption(theme: Theme, lang: str, slices: Sequence[dict]) -> QWidget:
     txt = s(lang)
-    caption = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["donut_caption_top"],
-                    color=theme.text,
-                    size=18,
-                    weight=ft.FontWeight.W_700,
-                    text_align=ft.TextAlign.CENTER,
-                ),
-                ft.Text(
-                    txt["donut_caption_bottom"],
-                    color=theme.text_muted,
-                    size=11,
-                    text_align=ft.TextAlign.CENTER,
-                ),
-            ],
-            spacing=2,
-            tight=True,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        width=DONUT_SIZE,
-        height=DONUT_SIZE,
-        alignment=ft.Alignment.CENTER,
-    )
+    holder = QFrame()
+    holder.setFixedSize(DONUT_SIZE, DONUT_SIZE)
+    holder.setStyleSheet("background: transparent;")
+    layout = QVBoxLayout(holder)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    return ft.Stack(
-        controls=[_donut_chart(theme, slices), caption],
-        width=DONUT_SIZE,
-        height=DONUT_SIZE,
-    )
+    chart = _DonutChart(slices, theme=theme, parent=holder)
+    chart.setParent(holder)
+    chart.move(0, 0)
+
+    caption_top = QLabel(txt["donut_caption_top"], holder)
+    caption_top.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    caption_top.setStyleSheet(f"color: {theme.text}; background: transparent; font-size: 18px; font-weight: 700;")
+    caption_top.setGeometry(0, DONUT_SIZE // 2 - 22, DONUT_SIZE, 26)
+
+    caption_bottom = QLabel(txt["donut_caption_bottom"], holder)
+    caption_bottom.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    caption_bottom.setStyleSheet(f"color: {theme.text_muted}; background: transparent; font-size: 11px;")
+    caption_bottom.setGeometry(0, DONUT_SIZE // 2 + 6, DONUT_SIZE, 16)
+
+    return holder
 
 
-def _legend_row(theme: Theme, slc: dict) -> ft.Row:
-    dot = ft.Container(
-        width=10,
-        height=10,
-        bgcolor=slc["color"],
-        border_radius=5,
-    )
-    label_col = ft.Column(
-        controls=[
-            ft.Text(
-                slc["label"],
-                color=theme.text,
-                size=13,
-                weight=ft.FontWeight.W_600,
-            ),
-            ft.Text(
-                slc["note"],
-                color=theme.text_muted,
-                size=11,
-                overflow=ft.TextOverflow.ELLIPSIS,
-                max_lines=1,
-            ),
-        ],
-        spacing=2,
-        tight=True,
-        expand=True,
-    )
-    value = ft.Text(
-        slc["value"],
-        color=theme.text,
-        size=13,
-        weight=ft.FontWeight.W_600,
-    )
-    return ft.Row(
-        controls=[dot, label_col, value],
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+def _legend_row(theme: Theme, slc: dict) -> QFrame:
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    row.setLayout(layout)
+
+    dot = QFrame()
+    dot.setFixedSize(10, 10)
+    dot.setStyleSheet(f"background-color: {slc['color']}; border-radius: 5px;")
+    layout.addWidget(dot)
+
+    text_holder = QFrame()
+    text_holder.setStyleSheet("background: transparent;")
+    text_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    text_holder.setLayout(text_layout)
+    text_layout.addWidget(BodyLabel(slc["label"], theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    text_layout.addWidget(MutedLabel(slc["note"], theme=theme, size=11))
+    layout.addWidget(text_holder, 1)
+
+    layout.addWidget(BodyLabel(slc["value"], theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    return row
 
 
-def _legend(theme: Theme, slices: list[dict]) -> ft.Column:
-    return ft.Column(
-        controls=[_legend_row(theme, slc) for slc in slices],
-        spacing=14,
-        tight=True,
-        expand=True,
-    )
+def _legend(theme: Theme, slices: Sequence[dict]) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=14, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for slc in slices:
+        layout.addWidget(_legend_row(theme, slc))
+    return holder
 
 
-def _budget_block(theme: Theme, lang: str) -> ft.Column:
+def _budget_block(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     slices = budget_donut(lang)
 
-    heading = ft.Row(
-        controls=[
-            ft.Icon(ft.Icons.PIE_CHART_OUTLINE, color=theme.primary, size=16),
-            ft.Text(
-                txt["budget_title"],
-                color=theme.primary,
-                size=14,
-                weight=ft.FontWeight.W_700,
-            ),
-        ],
-        spacing=6,
-        tight=True,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+    block = QFrame()
+    block.setStyleSheet("background: transparent;")
+    block_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    block.setLayout(block_layout)
 
-    subtitle = ft.Text(txt["budget_subtitle"], color=theme.text_muted, size=12)
+    head_row = hbox(spacing=6, margins=(0, 0, 0, 0))
+    head_row.addWidget(IconLabel(Icons.PIE_CHART_OUTLINE, color=theme.primary, size=16))
+    head_row.addWidget(AccentLabel(txt["budget_title"], theme=theme, size=14))
+    head_row.addStretch(1)
+    head_holder = QFrame()
+    head_holder.setStyleSheet("background: transparent;")
+    head_holder.setLayout(head_row)
+    block_layout.addWidget(head_holder)
 
-    body = ft.Row(
-        controls=[
-            _donut_with_caption(theme, lang, slices),
-            ft.Container(content=_legend(theme, slices), expand=True),
-        ],
-        spacing=18,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+    block_layout.addWidget(MutedLabel(txt["budget_subtitle"], theme=theme, size=12))
 
-    return ft.Column(
-        controls=[heading, subtitle, body],
-        spacing=10,
-        tight=True,
-    )
+    body = hbox(spacing=18, margins=(0, 0, 0, 0))
+    body.addWidget(_donut_with_caption(theme, lang, slices))
+    body.addWidget(_legend(theme, slices), 1)
+    body_holder = QFrame()
+    body_holder.setStyleSheet("background: transparent;")
+    body_holder.setLayout(body)
+    block_layout.addWidget(body_holder)
+
+    return block
 
 
-def _table_cell(text: str, *, color: str, weight: ft.FontWeight, size: int = 12, expand: int = 1) -> ft.Container:
-    return ft.Container(
-        content=ft.Text(
-            text,
-            color=color,
-            size=size,
-            weight=weight,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            max_lines=1,
-        ),
-        expand=expand,
-        padding=ft.padding.symmetric(horizontal=2, vertical=2),
-    )
-
-
-def _table_header(theme: Theme, lang: str) -> ft.Container:
+def _table_header(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                _table_cell(txt["col_category"], color=theme.text_muted, weight=ft.FontWeight.W_600, expand=4),
-                _table_cell(txt["col_recommended"], color=theme.text_muted, weight=ft.FontWeight.W_600, expand=2),
-                _table_cell(txt["col_amount"], color=theme.text_muted, weight=ft.FontWeight.W_600, expand=3),
-                _table_cell(txt["col_note"], color=theme.text_muted, weight=ft.FontWeight.W_600, expand=4),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.only(left=4, right=4, top=8, bottom=8),
-        border=ft.border.only(bottom=ft.BorderSide(1, theme.border)),
+    header_box = QFrame()
+    header_box.setStyleSheet(
+        f"background: transparent; border-bottom: 1px solid {theme.border};"
     )
+    grid = QGridLayout(header_box)
+    grid.setContentsMargins(4, 8, 4, 8)
+    grid.setHorizontalSpacing(8)
+    grid.setColumnStretch(0, 4)
+    grid.setColumnStretch(1, 2)
+    grid.setColumnStretch(2, 3)
+    grid.setColumnStretch(3, 4)
+    cells = [txt["col_category"], txt["col_recommended"], txt["col_amount"], txt["col_note"]]
+    for i, c in enumerate(cells):
+        cell = MutedLabel(c, theme=theme, size=12)
+        font = cell.font()
+        font.setWeight(QFont.Weight.DemiBold)
+        cell.setFont(font)
+        grid.addWidget(cell, 0, i)
+    return header_box
 
 
-def _table_row(theme: Theme, row: dict) -> ft.Container:
-    category_cell = ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(row["icon"], color=row["color"], size=14),
-                ft.Text(
-                    row["category"],
-                    color=row["color"],
-                    size=12,
-                    weight=ft.FontWeight.W_600,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                    max_lines=1,
-                ),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        expand=4,
-        padding=ft.padding.symmetric(horizontal=2, vertical=2),
+def _table_row(theme: Theme, row: dict) -> QWidget:
+    row_box = QFrame()
+    row_box.setStyleSheet(
+        f"background: transparent; border-bottom: 1px solid {theme.border};"
     )
+    grid = QGridLayout(row_box)
+    grid.setContentsMargins(4, 10, 4, 10)
+    grid.setHorizontalSpacing(8)
+    grid.setColumnStretch(0, 4)
+    grid.setColumnStretch(1, 2)
+    grid.setColumnStretch(2, 3)
+    grid.setColumnStretch(3, 4)
 
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                category_cell,
-                _table_cell(row["recommended"], color=theme.text, weight=ft.FontWeight.W_500, expand=2),
-                _table_cell(row["amount"], color=theme.text, weight=ft.FontWeight.W_500, expand=3),
-                _table_cell(row["note"], color=theme.text_muted, weight=ft.FontWeight.W_400, expand=4),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.only(left=4, right=4, top=10, bottom=10),
-        border=ft.border.only(bottom=ft.BorderSide(1, theme.border)),
-    )
+    cat_holder = QFrame()
+    cat_holder.setStyleSheet("background: transparent;")
+    cat_layout = hbox(spacing=6, margins=(0, 0, 0, 0))
+    cat_holder.setLayout(cat_layout)
+    cat_layout.addWidget(IconLabel(row["icon"], color=row["color"], size=14))
+    cat_label = QLabel(row["category"])
+    cat_font = QFont()
+    cat_font.setPixelSize(12)
+    cat_font.setWeight(QFont.Weight.DemiBold)
+    cat_label.setFont(cat_font)
+    cat_label.setStyleSheet(f"color: {row['color']}; background: transparent;")
+    cat_layout.addWidget(cat_label, 1)
+    grid.addWidget(cat_holder, 0, 0)
 
-
-def _breakdown_block(theme: Theme, lang: str) -> ft.Column:
-    txt = s(lang)
-    rows = [_table_row(theme, row) for row in budget_table(lang)]
-
-    return ft.Column(
-        controls=[
-            ft.Text(
-                txt["breakdown_title"],
-                color=theme.primary,
-                size=13,
-                weight=ft.FontWeight.W_700,
-            ),
-            ft.Container(
-                content=ft.Column(
-                    controls=[_table_header(theme, lang), *rows],
-                    spacing=0,
-                    tight=True,
-                ),
-                bgcolor=theme.surface,
-                border_radius=10,
-                border=ft.border.all(1, theme.border),
-                padding=ft.padding.symmetric(horizontal=10, vertical=2),
-            ),
-        ],
-        spacing=10,
-        tight=True,
-    )
+    grid.addWidget(BodyLabel(row["recommended"], theme=theme, size=12), 0, 1)
+    grid.addWidget(BodyLabel(row["amount"], theme=theme, size=12), 0, 2)
+    grid.addWidget(MutedLabel(row["note"], theme=theme, size=12), 0, 3)
+    return row_box
 
 
-def _action_chip(theme: Theme, icon: str, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=14),
-                ft.Text(label, color=theme.text, size=12, weight=ft.FontWeight.W_500),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=theme.surface,
-        border_radius=20,
-        border=ft.border.all(1, theme.border),
-        ink=True,
-        on_click=lambda e: None,
-    )
-
-
-def _assistant_message(theme: Theme, lang: str) -> ft.Row:
+def _breakdown_block(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    bubble = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(txt["msg2_intro"], color=theme.text, size=14, selectable=True),
-                _budget_block(theme, lang),
-                _breakdown_block(theme, lang),
-            ],
-            spacing=18,
-            tight=True,
-        ),
-        padding=18,
-        bgcolor=theme.assistant_bubble,
-        border_radius=14,
+    block = QFrame()
+    block.setStyleSheet("background: transparent;")
+    block_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    block.setLayout(block_layout)
+
+    title = QLabel(txt["breakdown_title"])
+    title_font = QFont()
+    title_font.setPixelSize(13)
+    title_font.setWeight(QFont.Weight.Bold)
+    title.setFont(title_font)
+    title.setStyleSheet(f"color: {theme.primary}; background: transparent;")
+    block_layout.addWidget(title)
+
+    table = QFrame()
+    table.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        """
     )
+    table_layout = vbox(spacing=0, margins=(10, 2, 10, 2))
+    table.setLayout(table_layout)
+    table_layout.addWidget(_table_header(theme, lang))
+    for row in budget_table(lang):
+        table_layout.addWidget(_table_row(theme, row))
+    block_layout.addWidget(table)
 
-    actions_row = ft.Row(
-        controls=[_action_chip(theme, a["icon"], a["label"]) for a in assistant_actions(lang)],
-        spacing=8,
-        wrap=True,
-        run_spacing=8,
+    return block
+
+
+def _action_chip(theme: Theme, icon: str, label: str) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 20px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    layout = hbox(spacing=6, margins=(12, 8, 12, 8))
+    chip.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.primary, size=14))
+    layout.addWidget(BodyLabel(label, theme=theme, size=12))
+    return chip
 
-    avatar = ft.Container(
-        content=ft.Icon(SECTION_ICON, color=ft.Colors.WHITE, size=18),
-        width=36,
-        height=36,
-        bgcolor=theme.primary,
-        border_radius=10,
-        alignment=ft.Alignment.CENTER,
+
+def _assistant_message(theme: Theme, lang: str) -> QWidget:
+    txt = s(lang)
+
+    avatar = QFrame()
+    avatar.setFixedSize(36, 36)
+    avatar.setStyleSheet(f"background-color: {theme.primary}; border-radius: 10px;")
+    avatar_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    avatar_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(avatar_layout)
+    avatar_layout.addWidget(IconLabel(SECTION_ICON, color="#FFFFFF", size=18),
+                            alignment=Qt.AlignmentFlag.AlignCenter)
+
+    bubble = QFrame()
+    bubble.setStyleSheet(
+        f"background-color: {theme.assistant_bubble}; border-radius: 14px;"
     )
+    bubble_layout = vbox(spacing=18, margins=(18, 18, 18, 18))
+    bubble.setLayout(bubble_layout)
+    bubble_layout.addWidget(BodyLabel(txt["msg2_intro"], theme=theme, size=14, selectable=True))
+    bubble_layout.addWidget(_budget_block(theme, lang))
+    bubble_layout.addWidget(_breakdown_block(theme, lang))
 
-    body = ft.Column(
-        controls=[
-            ft.Container(
-                content=ft.Text("10:28", color=theme.text_muted, size=11),
-                padding=ft.padding.only(left=4),
-            ),
-            bubble,
-            actions_row,
-        ],
-        spacing=10,
-        expand=True,
-        tight=True,
-    )
+    actions_holder = QFrame()
+    actions_holder.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    actions_holder.setLayout(actions_layout)
+    for a in assistant_actions(lang):
+        actions_layout.addWidget(_action_chip(theme, a["icon"], a["label"]))
+    actions_layout.addStretch(1)
 
-    return ft.Row(
-        controls=[avatar, body],
-        spacing=12,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
+    body_holder = QFrame()
+    body_holder.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    body_holder.setLayout(body_layout)
+    body_layout.addWidget(MutedLabel("10:28", theme=theme, size=11))
+    body_layout.addWidget(bubble)
+    body_layout.addWidget(actions_holder)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wrap_layout = QHBoxLayout(wrapper)
+    wrap_layout.setContentsMargins(0, 0, 0, 0)
+    wrap_layout.setSpacing(12)
+    wrap_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    wrap_layout.addWidget(avatar)
+    wrap_layout.addWidget(body_holder, 1)
+    return wrapper
 
 
-def _chat_panel(theme: Theme, lang: str) -> ft.Control:
+def _chat_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     user_msg = chat_message(
         theme,
@@ -387,21 +363,29 @@ def _chat_panel(theme: Theme, lang: str) -> ft.Control:
         text=txt["msg1_user"],
     )
 
-    return ft.ListView(
-        controls=[user_msg, _assistant_message(theme, lang)],
-        spacing=22,
-        padding=ft.padding.symmetric(horizontal=24, vertical=20),
-        expand=True,
-        auto_scroll=False,
-    )
+    page = QWidget()
+    page_layout = vbox(spacing=22, margins=(24, 20, 24, 20))
+    page.setLayout(page_layout)
+    page_layout.addWidget(user_msg)
+    page_layout.addWidget(_assistant_message(theme, lang))
+    page_layout.addStretch(1)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(page)
+    return scroll
 
 
-def _budget_panel(theme: Theme, lang: str) -> ft.Control:
+def _budget_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.ACCOUNT_BALANCE_WALLET_OUTLINED,
+        icon=Icons.ACCOUNT_BALANCE_WALLET_OUTLINED,
         title=txt["budget_mock_title"],
         description=txt["budget_mock_desc"],
         fields=[
@@ -414,12 +398,12 @@ def _budget_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _invest_panel(theme: Theme, lang: str) -> ft.Control:
+def _invest_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.TRENDING_UP,
+        icon=Icons.TRENDING_UP,
         title=txt["invest_title"],
         description=txt["invest_desc"],
         fields=[
@@ -432,12 +416,12 @@ def _invest_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _analysis_panel(theme: Theme, lang: str) -> ft.Control:
+def _analysis_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.QUERY_STATS,
+        icon=Icons.QUERY_STATS,
         title=txt["analysis_title"],
         description=txt["analysis_desc"],
         fields=[
@@ -449,12 +433,12 @@ def _analysis_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _taxes_panel(theme: Theme, lang: str) -> ft.Control:
+def _taxes_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.RECEIPT_LONG_OUTLINED,
+        icon=Icons.RECEIPT_LONG_OUTLINED,
         title=txt["taxes_title"],
         description=txt["taxes_desc"],
         fields=[
@@ -467,12 +451,12 @@ def _taxes_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _insurance_panel(theme: Theme, lang: str) -> ft.Control:
+def _insurance_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.SHIELD_OUTLINED,
+        icon=Icons.SHIELD_OUTLINED,
         title=txt["insurance_title"],
         description=txt["insurance_desc"],
         fields=[
@@ -485,107 +469,32 @@ def _insurance_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _calculators_panel(theme: Theme, lang: str) -> ft.Control:
+def _calculators_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     cards = [
-        {
-            "icon": ft.Icons.TIMELINE,
-            "title": txt["calc_compound_title"],
-            "description": txt["calc_compound_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#22C55E",
-        },
-        {
-            "icon": ft.Icons.HOME_OUTLINED,
-            "title": txt["calc_mortgage_title"],
-            "description": txt["calc_mortgage_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#3B82F6",
-        },
-        {
-            "icon": ft.Icons.PAYMENTS_OUTLINED,
-            "title": txt["calc_loan_title"],
-            "description": txt["calc_loan_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#F59E0B",
-        },
-        {
-            "icon": ft.Icons.ELDERLY,
-            "title": txt["calc_retirement_title"],
-            "description": txt["calc_retirement_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#EF4444",
-        },
-        {
-            "icon": ft.Icons.CURRENCY_EXCHANGE,
-            "title": txt["calc_currency_title"],
-            "description": txt["calc_currency_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#0EA5E9",
-        },
-        {
-            "icon": ft.Icons.SAVINGS_OUTLINED,
-            "title": txt["calc_savings_title"],
-            "description": txt["calc_savings_desc"],
-            "action_label": t("show_all", lang),
-            "color": "#A78BFA",
-        },
+        {"icon": Icons.TIMELINE, "title": txt["calc_compound_title"], "description": txt["calc_compound_desc"], "action_label": t("show_all", lang), "color": "#22C55E"},
+        {"icon": Icons.HOME_OUTLINED, "title": txt["calc_mortgage_title"], "description": txt["calc_mortgage_desc"], "action_label": t("show_all", lang), "color": "#3B82F6"},
+        {"icon": Icons.PAYMENTS_OUTLINED, "title": txt["calc_loan_title"], "description": txt["calc_loan_desc"], "action_label": t("show_all", lang), "color": "#F59E0B"},
+        {"icon": Icons.ELDERLY, "title": txt["calc_retirement_title"], "description": txt["calc_retirement_desc"], "action_label": t("show_all", lang), "color": "#EF4444"},
+        {"icon": Icons.CURRENCY_EXCHANGE, "title": txt["calc_currency_title"], "description": txt["calc_currency_desc"], "action_label": t("show_all", lang), "color": "#0EA5E9"},
+        {"icon": Icons.SAVINGS_OUTLINED, "title": txt["calc_savings_title"], "description": txt["calc_savings_desc"], "action_label": t("show_all", lang), "color": "#A78BFA"},
     ]
-    return mock_card_grid_panel(
-        theme,
-        lang,
-        icon=ft.Icons.CALCULATE_OUTLINED,
-        title=txt["calc_title"],
-        description=txt["calc_desc"],
-        cards=cards,
-    )
+    return mock_card_grid_panel(theme, lang, icon=Icons.CALCULATE_OUTLINED, title=txt["calc_title"], description=txt["calc_desc"], cards=cards)
 
 
-def _templates_panel(theme: Theme, lang: str) -> ft.Control:
+def _templates_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     cards = [
-        {
-            "icon": ft.Icons.PIE_CHART_OUTLINE,
-            "title": txt["fin_tpl_budget_title"],
-            "description": txt["fin_tpl_budget_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#22C55E",
-        },
-        {
-            "icon": ft.Icons.SHOW_CHART,
-            "title": txt["fin_tpl_invest_title"],
-            "description": txt["fin_tpl_invest_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#3B82F6",
-        },
-        {
-            "icon": ft.Icons.CREDIT_CARD,
-            "title": txt["fin_tpl_debt_title"],
-            "description": txt["fin_tpl_debt_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#F59E0B",
-        },
-        {
-            "icon": ft.Icons.HEALTH_AND_SAFETY,
-            "title": txt["fin_tpl_emergency_title"],
-            "description": txt["fin_tpl_emergency_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#EF4444",
-        },
+        {"icon": Icons.PIE_CHART_OUTLINE, "title": txt["fin_tpl_budget_title"], "description": txt["fin_tpl_budget_desc"], "action_label": txt["fin_tpl_use"], "color": "#22C55E"},
+        {"icon": Icons.SHOW_CHART, "title": txt["fin_tpl_invest_title"], "description": txt["fin_tpl_invest_desc"], "action_label": txt["fin_tpl_use"], "color": "#3B82F6"},
+        {"icon": Icons.CREDIT_CARD, "title": txt["fin_tpl_debt_title"], "description": txt["fin_tpl_debt_desc"], "action_label": txt["fin_tpl_use"], "color": "#F59E0B"},
+        {"icon": Icons.HEALTH_AND_SAFETY, "title": txt["fin_tpl_emergency_title"], "description": txt["fin_tpl_emergency_desc"], "action_label": txt["fin_tpl_use"], "color": "#EF4444"},
     ]
-    return mock_card_grid_panel(
-        theme,
-        lang,
-        icon=ft.Icons.GRID_VIEW_OUTLINED,
-        title=txt["fin_tpl_title"],
-        description=txt["fin_tpl_desc"],
-        cards=cards,
-    )
+    return mock_card_grid_panel(theme, lang, icon=Icons.GRID_VIEW_OUTLINED, title=txt["fin_tpl_title"], description=txt["fin_tpl_desc"], cards=cards)
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-
     try:
         panels = [
             _chat_panel(theme, lang),
@@ -598,24 +507,16 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
             _templates_panel(theme, lang),
         ]
     except Exception as exc:
-        logger_service.log_exception(
-            "ai_finance.view", "build_panels_failed", exc,
-        )
+        logger_service.log_exception("ai_finance.view", "build_panels_failed", exc)
         raise
 
-    return ft.Column(
-        controls=[
-            header(
-                theme,
-                lang,
-                icon=SECTION_ICON,
-                title=txt["title"],
-                subtitle=txt["subtitle"],
-            ),
-            tabbed_panel(theme, tabs=tabs(lang), panels=panels),
-            chat_input(theme, lang),
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
+
+    layout.addWidget(header(theme, lang, icon=SECTION_ICON, title=txt["title"], subtitle=txt["subtitle"]))
+    layout.addWidget(tabbed_panel(theme, tabs=tabs(lang), panels=panels), 1)
+    layout.addWidget(chat_input(theme, lang))
+
+    return container

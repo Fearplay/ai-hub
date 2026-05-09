@@ -8,13 +8,13 @@ creating a folder under ``src/sections/`` - this file does not need editing.
 Layout has three vertical zones so the content scrolls cleanly even on
 short windows:
 
-* **header** — logo + "+ New chat" button, fixed height at the top.
-* **middle** — primary nav, divider, secondary nav. Wrapped in a scrolling
-  ``Column`` so long section lists never push the footer off-screen.
-* **footer** — user card, language toggle, theme toggle, fixed at the
+* **header** - logo + "+ New chat" button, fixed height at the top.
+* **middle** - primary nav, divider, secondary nav. Wrapped in a scrolling
+  ``QScrollArea`` so long section lists never push the footer off-screen.
+* **footer** - user card, language toggle, theme toggle, fixed at the
   bottom.
 
-Returns a tuple ``(container, set_active)``. The ``set_active`` callback
+Returns a tuple ``(QFrame, set_active)``. The ``set_active`` callback
 mutates the active row in place (icon color, text color/weight, background)
 so changing sections does not rebuild the whole sidebar - that is what made
 clicks feel sluggish before.
@@ -24,13 +24,29 @@ from __future__ import annotations
 
 from typing import Callable
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+)
 
 from src.components.language_toggle import language_toggle
 from src.components.nav_item import NavItemHandle, nav_item_handle
 from src.components.theme_toggle import theme_toggle
 from src.components.user_card import user_card
 from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.widgets import (
+    ClickFrame,
+    HSeparator,
+    IconLabel,
+    hbox,
+    vbox,
+)
 from src.sections import PRIMARY_SECTIONS, SECONDARY_SECTIONS
 from src.theme import Theme
 
@@ -38,57 +54,80 @@ from src.theme import Theme
 SetActive = Callable[[str], None]
 
 
-def _logo(theme: Theme, lang: str) -> ft.Row:
-    icon_box = ft.Container(
-        content=ft.Icon(ft.Icons.PSYCHOLOGY_ALT_OUTLINED, color=ft.Colors.WHITE, size=22),
-        width=38,
-        height=38,
-        bgcolor=theme.primary,
-        border_radius=10,
-        alignment=ft.Alignment.CENTER,
+def _logo(theme: Theme, lang: str) -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=12, margins=(0, 0, 0, 0))
+    frame.setLayout(layout)
+
+    icon_box = QFrame()
+    icon_box.setFixedSize(38, 38)
+    icon_box.setStyleSheet(
+        f"background-color: {theme.primary}; border-radius: 10px;"
     )
-    title = ft.Row(
-        controls=[
-            ft.Text(t("app_name", lang), color=theme.text, size=18, weight=ft.FontWeight.W_700),
-            ft.Text("+", color=theme.primary, size=18, weight=ft.FontWeight.W_700),
-        ],
-        spacing=2,
-        tight=True,
-    )
-    return ft.Row(
-        controls=[icon_box, title],
-        spacing=12,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+    icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    icon_box.setLayout(icon_layout)
+    icon = IconLabel(Icons.PSYCHOLOGY_ALT_OUTLINED, color="#FFFFFF", size=22)
+    icon_layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_box)
+
+    name = QLabel(t("app_name", lang))
+    name_font = QFont()
+    name_font.setPixelSize(17)
+    name_font.setWeight(QFont.Weight.Bold)
+    name.setFont(name_font)
+    name.setStyleSheet(f"color: {theme.text}; background: transparent;")
+    layout.addWidget(name)
+
+    plus = QLabel("+")
+    plus_font = QFont()
+    plus_font.setPixelSize(17)
+    plus_font.setWeight(QFont.Weight.Bold)
+    plus.setFont(plus_font)
+    plus.setStyleSheet(f"color: {theme.primary}; background: transparent;")
+    layout.addWidget(plus)
+    layout.addStretch(1)
+
+    return frame
 
 
-def _new_chat_button(theme: Theme, lang: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.ADD, color=ft.Colors.WHITE, size=18),
-                ft.Text(
-                    t("new_chat", lang),
-                    color=ft.Colors.WHITE,
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                    expand=True,
-                ),
-                ft.Text(
-                    t("new_chat_shortcut", lang),
-                    color=ft.Colors.with_opacity(0.7, ft.Colors.WHITE),
-                    size=11,
-                ),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        bgcolor=theme.primary,
-        padding=ft.padding.symmetric(horizontal=14, vertical=12),
-        border_radius=10,
-        ink=True,
-        on_click=lambda e: None,
+def _new_chat_button(theme: Theme, lang: str) -> ClickFrame:
+    btn = ClickFrame()
+    btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    btn.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.primary};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.primary_hover};
+        }}
+        """
     )
+    layout = hbox(spacing=8, margins=(14, 12, 14, 12))
+    btn.setLayout(layout)
+
+    icon = IconLabel(Icons.ADD, color="#FFFFFF", size=18)
+    layout.addWidget(icon)
+
+    label = QLabel(t("new_chat", lang))
+    font = QFont()
+    font.setPixelSize(13)
+    font.setWeight(QFont.Weight.DemiBold)
+    label.setFont(font)
+    label.setStyleSheet("color: #FFFFFF; background: transparent;")
+    layout.addWidget(label, 1)
+
+    shortcut = QLabel(t("new_chat_shortcut", lang))
+    shortcut_font = QFont()
+    shortcut_font.setPixelSize(11)
+    shortcut.setFont(shortcut_font)
+    shortcut.setStyleSheet("color: rgba(255,255,255,0.7); background: transparent;")
+    layout.addWidget(shortcut)
+
+    return btn
 
 
 def sidebar(
@@ -100,10 +139,10 @@ def sidebar(
     theme_mode: str,
     on_theme_toggle: Callable[[], None],
     on_lang_toggle: Callable[[], None],
-) -> tuple[ft.Container, SetActive]:
+) -> tuple[QFrame, SetActive]:
     handles: dict[str, NavItemHandle] = {}
 
-    def _build_handles(sections, into: list[ft.Control]) -> None:
+    def _build_handles(sections, into_layout: QVBoxLayout) -> None:
         for section in sections:
             handle = nav_item_handle(
                 theme,
@@ -111,100 +150,103 @@ def sidebar(
                 section.label(lang),
                 active=section.key == active_section,
                 badge=section.badge,
-                on_click=lambda e, k=section.key: on_section_change(k),
+                on_click=lambda k=section.key: on_section_change(k),
             )
             handles[section.key] = handle
-            into.append(handle.container)
+            into_layout.addWidget(handle.container)
 
-    primary_controls: list[ft.Control] = []
-    _build_handles(PRIMARY_SECTIONS, primary_controls)
-
-    secondary_controls: list[ft.Control] = []
-    _build_handles(SECONDARY_SECTIONS, secondary_controls)
-
-    middle_children: list[ft.Control] = [
-        ft.Container(
-            content=ft.Column(controls=primary_controls, spacing=2, tight=True),
-            padding=ft.padding.only(left=12, right=12, top=18, bottom=4),
-        ),
-    ]
-
-    if secondary_controls:
-        middle_children.extend(
-            [
-                ft.Container(
-                    content=ft.Divider(color=theme.border, height=1, thickness=1),
-                    padding=ft.padding.symmetric(horizontal=16, vertical=8),
-                ),
-                ft.Container(
-                    content=ft.Column(controls=secondary_controls, spacing=2, tight=True),
-                    padding=ft.padding.symmetric(horizontal=12, vertical=4),
-                ),
-            ]
-        )
-
-    middle = ft.Column(
-        controls=middle_children,
-        spacing=0,
-        scroll=ft.ScrollMode.HIDDEN,
-        expand=True,
+    container = QFrame()
+    container.setObjectName("Sidebar")
+    container.setFixedWidth(280)
+    container.setStyleSheet(
+        f"""
+        QFrame#Sidebar {{
+            background-color: {theme.sidebar_bg};
+            border-right: 1px solid {theme.border};
+        }}
+        """
     )
+    root = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(root)
 
-    header = ft.Column(
-        controls=[
-            ft.Container(
-                content=_logo(theme, lang),
-                padding=ft.padding.symmetric(horizontal=20, vertical=20),
-            ),
-            ft.Container(
-                content=_new_chat_button(theme, lang),
-                padding=ft.padding.symmetric(horizontal=16),
-            ),
-        ],
-        spacing=0,
-        tight=True,
-    )
+    # header ----------------------------------------------------------------
+    header = QFrame()
+    header.setStyleSheet("background: transparent;")
+    header_layout = vbox(spacing=14, margins=(20, 18, 20, 8))
+    header.setLayout(header_layout)
+    header_layout.addWidget(_logo(theme, lang))
+    new_btn = _new_chat_button(theme, lang)
+    header_layout.addWidget(new_btn)
+    root.addWidget(header)
 
-    footer = ft.Column(
-        controls=[
-            ft.Container(
-                content=user_card(theme),
-                padding=ft.padding.only(left=12, right=12, top=8, bottom=8),
-            ),
-            language_toggle(theme, lang, on_toggle=on_lang_toggle),
-            theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle),
-            ft.Container(height=12),
-        ],
-        spacing=0,
-        tight=True,
-    )
+    # middle (scrollable) ---------------------------------------------------
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet("QScrollArea { background: transparent; }")
 
-    container = ft.Container(
-        content=ft.Column(
-            controls=[header, middle, footer],
-            spacing=0,
-            expand=True,
-        ),
-        width=280,
-        bgcolor=theme.sidebar_bg,
-        border=ft.border.only(right=ft.BorderSide(1, theme.border)),
+    middle = QFrame()
+    middle.setStyleSheet("background: transparent;")
+    middle_layout = vbox(spacing=4, margins=(12, 10, 12, 8))
+    middle.setLayout(middle_layout)
+
+    primary_holder = QFrame()
+    primary_holder.setStyleSheet("background: transparent;")
+    primary_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    primary_holder.setLayout(primary_layout)
+    _build_handles(PRIMARY_SECTIONS, primary_layout)
+    middle_layout.addWidget(primary_holder)
+
+    if SECONDARY_SECTIONS:
+        sep_holder = QFrame()
+        sep_holder.setStyleSheet("background: transparent;")
+        sep_layout = vbox(spacing=0, margins=(4, 6, 4, 4))
+        sep_holder.setLayout(sep_layout)
+        sep_layout.addWidget(HSeparator(theme))
+        middle_layout.addWidget(sep_holder)
+
+        secondary_holder = QFrame()
+        secondary_holder.setStyleSheet("background: transparent;")
+        secondary_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+        secondary_holder.setLayout(secondary_layout)
+        _build_handles(SECONDARY_SECTIONS, secondary_layout)
+        middle_layout.addWidget(secondary_holder)
+
+    middle_layout.addStretch(1)
+    scroll.setWidget(middle)
+    root.addWidget(scroll, 1)
+
+    # footer ----------------------------------------------------------------
+    footer = QFrame()
+    footer.setStyleSheet("background: transparent;")
+    footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
+    footer.setLayout(footer_layout)
+
+    user_holder = QFrame()
+    user_holder.setStyleSheet("background: transparent;")
+    user_holder_layout = vbox(spacing=0, margins=(12, 4, 12, 6))
+    user_holder.setLayout(user_holder_layout)
+    user_holder_layout.addWidget(user_card(theme))
+    footer_layout.addWidget(user_holder)
+
+    footer_layout.addWidget(language_toggle(theme, lang, on_toggle=on_lang_toggle))
+    footer_layout.addWidget(
+        theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle)
     )
+    root.addWidget(footer)
 
     current = {"key": active_section}
 
     def set_active(key: str) -> None:
         if key == current["key"]:
             return
-
         prev = current["key"]
         if prev in handles:
             handles[prev].set_active(theme, active=False)
-            handles[prev].container.update()
-
         if key in handles:
             handles[key].set_active(theme, active=True)
-            handles[key].container.update()
-
         current["key"] = key
 
     return container, set_active

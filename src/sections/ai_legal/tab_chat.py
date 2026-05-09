@@ -9,9 +9,30 @@ similar to ``ai_marketing.view._assistant_message``.
 
 from __future__ import annotations
 
-import flet as ft
+from typing import Optional
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QScrollArea,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.chat_input import chat_input
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    custom_label,
+    hbox,
+    vbox,
+)
 from src.sections.ai_legal.data import (
     SECTION_ICON,
     chat_quick_actions,
@@ -21,85 +42,105 @@ from src.sections.ai_legal.strings import s
 from src.theme import Theme
 
 
-def _user_attachment_chip(theme: Theme, lang: str) -> ft.Container:
+def _user_attachment_chip(theme: Theme, lang: str) -> QFrame:
     txt = s(lang)
     file_info = STATE.uploaded_file or {"name": "smlouva_o_dilo.pdf", "type": "PDF"}
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(
-                    ft.Icons.ATTACH_FILE,
-                    color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE),
-                    size=14,
-                ),
-                ft.Text(
-                    f"{txt['chat_user_attachment_label']} {file_info['name']}",
-                    color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE),
-                    size=12,
-                ),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=8, vertical=4),
-        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.WHITE),
-        border_radius=6,
+    chip = QFrame()
+    chip.setStyleSheet(
+        f"background-color: rgba(255, 255, 255, 0.18); border-radius: 6px;"
     )
+    layout = hbox(spacing=6, margins=(8, 4, 8, 4))
+    chip.setLayout(layout)
+    layout.addWidget(IconLabel(Icons.ATTACH_FILE, color="rgba(255, 255, 255, 0.85)", size=14))
+    layout.addWidget(custom_label(
+        f"{txt['chat_user_attachment_label']} {file_info['name']}",
+        color="rgba(255, 255, 255, 0.85)",
+        size=12,
+    ))
+    return chip
 
 
-def _user_bubble(theme: Theme, lang: str) -> ft.Row:
+def _user_bubble(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    bubble_body = ft.Column(
-        controls=[
-            ft.Text(
-                txt["chat_user_question"],
-                color=theme.user_bubble_text,
-                size=14,
-                selectable=True,
-            ),
-            _user_attachment_chip(theme, lang),
-        ],
-        spacing=8,
-        tight=True,
+
+    bubble = QFrame()
+    bubble.setStyleSheet(f"background-color: {theme.user_bubble}; border-radius: 14px;")
+    bubble.setFixedWidth(380)
+    bubble_layout = vbox(spacing=8, margins=(14, 10, 14, 10))
+    bubble.setLayout(bubble_layout)
+    bubble_layout.addWidget(custom_label(
+        txt["chat_user_question"],
+        color=theme.user_bubble_text,
+        size=14,
+        selectable=True,
+    ))
+    bubble_layout.addWidget(_user_attachment_chip(theme, lang))
+
+    avatar = QFrame()
+    avatar.setFixedSize(28, 28)
+    avatar.setStyleSheet(f"background-color: {theme.primary_soft}; border-radius: 14px;")
+    al = hbox(spacing=0, margins=(0, 0, 0, 0))
+    al.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(al)
+    al.addWidget(IconLabel(Icons.PERSON, color="#FFFFFF", size=16),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+
+    bubble_row = QFrame()
+    bubble_row.setStyleSheet("background: transparent;")
+    bl = hbox(spacing=10, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignBottom)
+    bubble_row.setLayout(bl)
+    bl.addWidget(bubble)
+    bl.addWidget(avatar)
+
+    inner = QFrame()
+    inner.setStyleSheet("background: transparent;")
+    inner_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    inner_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+    inner.setLayout(inner_layout)
+    time_holder = QFrame()
+    time_holder.setStyleSheet("background: transparent;")
+    tl = hbox(spacing=0, margins=(0, 0, 4, 0))
+    tl.setAlignment(Qt.AlignmentFlag.AlignRight)
+    time_holder.setLayout(tl)
+    tl.addWidget(MutedLabel(txt["chat_user_time"], theme=theme, size=11))
+    inner_layout.addWidget(time_holder)
+    inner_layout.addWidget(bubble_row, 0, Qt.AlignmentFlag.AlignRight)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wl = QHBoxLayout(wrapper)
+    wl.setContentsMargins(0, 0, 0, 0)
+    wl.setSpacing(0)
+    wl.addStretch(1)
+    wl.addWidget(inner)
+    return wrapper
+
+
+def _callout_box(theme: Theme, *, label: str, text: str) -> QFrame:
+    accent = "#F59E0B"
+    box = QFrame()
+    box.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {rgba(accent, 0.10)};
+            border: 1px solid {rgba(accent, 0.22)};
+            border-radius: 10px;
+        }}
+        """
     )
-    bubble = ft.Container(
-        content=bubble_body,
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
-        bgcolor=theme.user_bubble,
-        border_radius=14,
-        width=380,
-    )
-    avatar = ft.Container(
-        content=ft.Icon(ft.Icons.PERSON, color=ft.Colors.WHITE, size=16),
-        width=28,
-        height=28,
-        bgcolor=theme.primary_soft,
-        border_radius=14,
-        alignment=ft.Alignment.CENTER,
-    )
-    return ft.Row(
-        controls=[
-            ft.Column(
-                controls=[
-                    ft.Container(
-                        content=ft.Text(txt["chat_user_time"], color=theme.text_muted, size=11),
-                        padding=ft.padding.only(right=4),
-                    ),
-                    ft.Row(
-                        controls=[bubble, avatar],
-                        spacing=10,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
-                        tight=True,
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.END,
-                spacing=4,
-                tight=True,
-            ),
-        ],
-        alignment=ft.MainAxisAlignment.END,
-    )
+    layout = hbox(spacing=10, margins=(12, 12, 12, 12))
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    box.setLayout(layout)
+    layout.addWidget(IconLabel(Icons.INFO_OUTLINE, color=accent, size=16))
+    info = QFrame()
+    info.setStyleSheet("background: transparent; border: none;")
+    info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(info_layout)
+    info_layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.Bold))
+    info_layout.addWidget(MutedLabel(text, theme=theme, size=12))
+    layout.addWidget(info, 1)
+    return box
 
 
 def _section_block(
@@ -107,211 +148,149 @@ def _section_block(
     *,
     title: str,
     text: str,
-    callout: tuple[str, str] | None = None,
-    bullets: list[str] | None = None,
-) -> ft.Column:
-    children: list[ft.Control] = [
-        ft.Text(
-            title,
-            color=theme.text,
-            size=14,
-            weight=ft.FontWeight.W_700,
-            selectable=True,
-        ),
-        ft.Text(text, color=theme.text, size=14, selectable=True),
-    ]
+    callout: Optional[tuple[str, str]] = None,
+    bullets: Optional[list[str]] = None,
+) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    layout.addWidget(BodyLabel(title, theme=theme, size=14, weight=QFont.Weight.Bold, selectable=True))
+    layout.addWidget(BodyLabel(text, theme=theme, size=14, selectable=True))
     if callout is not None:
-        callout_label, callout_text = callout
-        children.append(_callout_box(theme, label=callout_label, text=callout_text))
+        layout.addWidget(_callout_box(theme, label=callout[0], text=callout[1]))
     if bullets:
-        children.append(
-            ft.Column(
-                controls=[
-                    ft.Row(
-                        controls=[
-                            ft.Container(
-                                width=6,
-                                height=6,
-                                bgcolor=theme.primary,
-                                border_radius=3,
-                                margin=ft.margin.only(top=8, right=8, left=4),
-                            ),
-                            ft.Text(
-                                bullet,
-                                color=theme.text,
-                                size=14,
-                                expand=True,
-                                selectable=True,
-                            ),
-                        ],
-                        spacing=0,
-                        vertical_alignment=ft.CrossAxisAlignment.START,
-                    )
-                    for bullet in bullets
-                ],
-                spacing=4,
-                tight=True,
-            )
-        )
-    return ft.Column(controls=children, spacing=8, tight=True)
+        bullet_holder = QFrame()
+        bullet_holder.setStyleSheet("background: transparent;")
+        bullet_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+        bullet_holder.setLayout(bullet_layout)
+        for bullet in bullets:
+            row = QFrame()
+            row.setStyleSheet("background: transparent;")
+            row_layout = hbox(spacing=0, margins=(4, 0, 0, 0))
+            row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+            row.setLayout(row_layout)
+            dot = QFrame()
+            dot.setFixedSize(6, 6)
+            dot.setStyleSheet(f"background-color: {theme.primary}; border-radius: 3px;")
+            dot_holder = QFrame()
+            dot_holder.setStyleSheet("background: transparent;")
+            dh = vbox(spacing=0, margins=(0, 8, 8, 0))
+            dot_holder.setLayout(dh)
+            dh.addWidget(dot)
+            row_layout.addWidget(dot_holder)
+            text_label = BodyLabel(bullet, theme=theme, size=14, selectable=True)
+            text_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            row_layout.addWidget(text_label, 1)
+            bullet_layout.addWidget(row)
+        layout.addWidget(bullet_holder)
+    return holder
 
 
-def _callout_box(theme: Theme, *, label: str, text: str) -> ft.Container:
-    accent = "#F59E0B"
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.INFO_OUTLINE, color=accent, size=16),
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            label,
-                            color=theme.text,
-                            size=12,
-                            weight=ft.FontWeight.W_700,
-                        ),
-                        ft.Text(
-                            text,
-                            color=theme.text_muted,
-                            size=12,
-                            selectable=True,
-                        ),
-                    ],
-                    spacing=2,
-                    expand=True,
-                    tight=True,
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.START,
-        ),
-        padding=12,
-        bgcolor=ft.Colors.with_opacity(0.10, accent),
-        border=ft.border.all(1, ft.Colors.with_opacity(0.22, accent)),
-        border_radius=10,
+def _action_chip(theme: Theme, icon: str, label: str) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 8px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    layout = hbox(spacing=6, margins=(10, 6, 10, 6))
+    chip.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.primary, size=14))
+    layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.Medium))
+    return chip
 
 
-def _action_chip(theme: Theme, icon: str, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=14),
-                ft.Text(
-                    label,
-                    color=theme.text,
-                    size=12,
-                    weight=ft.FontWeight.W_500,
-                ),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=10, vertical=6),
-        bgcolor=theme.surface,
-        border_radius=8,
-        border=ft.border.all(1, theme.border),
-        ink=True,
-        on_click=lambda e: None,
-    )
-
-
-def _assistant_bubble(theme: Theme, lang: str) -> ft.Row:
+def _assistant_bubble(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    bubble = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["chat_assistant_intro"],
-                    color=theme.text,
-                    size=14,
-                    selectable=True,
-                ),
-                _section_block(
-                    theme,
-                    title=txt["chat_section1_title"],
-                    text=txt["chat_section1_text"],
-                    callout=(txt["chat_callout_label"], txt["chat_callout_text"]),
-                ),
-                _section_block(
-                    theme,
-                    title=txt["chat_section2_title"],
-                    text=txt["chat_section2_text"],
-                    bullets=[
-                        txt["chat_section2_bullet1"],
-                        txt["chat_section2_bullet2"],
-                        txt["chat_section2_bullet3"],
-                    ],
-                ),
-            ],
-            spacing=14,
-            tight=True,
-        ),
-        padding=16,
-        bgcolor=theme.assistant_bubble,
-        border_radius=14,
-    )
-
-    actions = ft.Row(
-        controls=[
-            _action_chip(theme, a["icon"], a["label"])
-            for a in chat_quick_actions(lang)
+    bubble = QFrame()
+    bubble.setStyleSheet(f"background-color: {theme.assistant_bubble}; border-radius: 14px;")
+    bubble_layout = vbox(spacing=14, margins=(16, 16, 16, 16))
+    bubble.setLayout(bubble_layout)
+    bubble_layout.addWidget(BodyLabel(txt["chat_assistant_intro"], theme=theme, size=14, selectable=True))
+    bubble_layout.addWidget(_section_block(
+        theme,
+        title=txt["chat_section1_title"],
+        text=txt["chat_section1_text"],
+        callout=(txt["chat_callout_label"], txt["chat_callout_text"]),
+    ))
+    bubble_layout.addWidget(_section_block(
+        theme,
+        title=txt["chat_section2_title"],
+        text=txt["chat_section2_text"],
+        bullets=[
+            txt["chat_section2_bullet1"],
+            txt["chat_section2_bullet2"],
+            txt["chat_section2_bullet3"],
         ],
-        spacing=8,
-        wrap=True,
-        run_spacing=8,
-    )
+    ))
 
-    avatar = ft.Container(
-        content=ft.Icon(SECTION_ICON, color=ft.Colors.WHITE, size=18),
-        width=36,
-        height=36,
-        bgcolor=theme.primary,
-        border_radius=10,
-        alignment=ft.Alignment.CENTER,
-    )
+    actions = QFrame()
+    actions.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    actions.setLayout(actions_layout)
+    for action in chat_quick_actions(lang):
+        actions_layout.addWidget(_action_chip(theme, action["icon"], action["label"]))
+    actions_layout.addStretch(1)
 
-    body = ft.Column(
-        controls=[
-            ft.Container(
-                content=ft.Text(txt["chat_assistant_time"], color=theme.text_muted, size=11),
-                padding=ft.padding.only(left=4),
-            ),
-            bubble,
-            actions,
-        ],
-        spacing=10,
-        expand=True,
-        tight=True,
-    )
+    avatar = QFrame()
+    avatar.setFixedSize(36, 36)
+    avatar.setStyleSheet(f"background-color: {theme.primary}; border-radius: 10px;")
+    al = hbox(spacing=0, margins=(0, 0, 0, 0))
+    al.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(al)
+    al.addWidget(IconLabel(SECTION_ICON, color="#FFFFFF", size=18),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
 
-    return ft.Row(
-        controls=[avatar, body],
-        spacing=12,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
+    body = QFrame()
+    body.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+    body_layout.addWidget(MutedLabel(txt["chat_assistant_time"], theme=theme, size=11))
+    body_layout.addWidget(bubble)
+    body_layout.addWidget(actions)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wl = QHBoxLayout(wrapper)
+    wl.setContentsMargins(0, 0, 0, 0)
+    wl.setSpacing(12)
+    wl.setAlignment(Qt.AlignmentFlag.AlignTop)
+    wl.addWidget(avatar)
+    wl.addWidget(body, 1)
+    return wrapper
 
 
-def build_chat_tab(theme: Theme, lang: str) -> ft.Column:
-    messages_list = ft.ListView(
-        controls=[
-            _user_bubble(theme, lang),
-            _assistant_bubble(theme, lang),
-        ],
-        spacing=22,
-        padding=ft.padding.symmetric(horizontal=24, vertical=20),
-        expand=True,
-        auto_scroll=False,
-    )
+def build_chat_tab(theme: Theme, lang: str) -> QWidget:
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
 
-    return ft.Column(
-        controls=[
-            messages_list,
-            chat_input(theme, lang),
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    messages_holder = QWidget()
+    messages_holder.setStyleSheet(f"background-color: {theme.bg};")
+    msgs_layout = vbox(spacing=22, margins=(24, 20, 24, 20))
+    messages_holder.setLayout(msgs_layout)
+    msgs_layout.addWidget(_user_bubble(theme, lang))
+    msgs_layout.addWidget(_assistant_bubble(theme, lang))
+    msgs_layout.addStretch(1)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(messages_holder)
+
+    layout.addWidget(scroll, 1)
+    layout.addWidget(chat_input(theme, lang))
+    return container

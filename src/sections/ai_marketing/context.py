@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QSizePolicy, QWidget
 
 from src.components.context_panel import (
     context_panel_shell,
@@ -11,94 +12,69 @@ from src.components.context_panel import (
 )
 from src.components.section_card import section_card
 from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import BodyLabel, MutedLabel, hbox, vbox
 from src.sections.ai_marketing.data import brief_fields, history, quick_actions
 from src.sections.ai_marketing.strings import s
 from src.theme import Theme
 
 
-def _brief_field(theme: Theme, *, label: str, value: str, chip: bool = False) -> ft.Column:
-    if chip:
-        value_control = ft.Container(
-            content=ft.Text(
-                value,
-                color=theme.text,
-                size=12,
-                weight=ft.FontWeight.W_500,
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=4),
-            bgcolor=ft.Colors.with_opacity(0.18, theme.primary),
-            border_radius=12,
-            alignment=ft.Alignment.CENTER_LEFT,
-        )
-    else:
-        value_control = ft.Text(
-            value,
-            color=theme.text,
-            size=13,
-            weight=ft.FontWeight.W_500,
-        )
+def _brief_field(theme: Theme, *, label: str, value: str, chip: bool = False) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
 
-    label_text = ft.Text(
-        label,
-        color=theme.text_muted,
-        size=11,
-        weight=ft.FontWeight.W_500,
-    )
+    layout.addWidget(MutedLabel(label, theme=theme, size=11))
 
     if chip:
-        body = ft.Row(
-            controls=[value_control],
-            alignment=ft.MainAxisAlignment.START,
+        chip_holder = QFrame()
+        chip_holder.setStyleSheet("background: transparent;")
+        chip_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        chip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        chip_holder.setLayout(chip_layout)
+        chip_widget = QFrame()
+        chip_widget.setStyleSheet(
+            f"background-color: {rgba(theme.primary, 0.18)}; border-radius: 12px;"
         )
+        chip_widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+        cw_layout = hbox(spacing=0, margins=(10, 4, 10, 4))
+        chip_widget.setLayout(cw_layout)
+        cw_layout.addWidget(BodyLabel(value, theme=theme, size=12))
+        chip_layout.addWidget(chip_widget)
+        layout.addWidget(chip_holder)
     else:
-        body = value_control
+        layout.addWidget(BodyLabel(value, theme=theme, size=13))
 
-    return ft.Column(
-        controls=[label_text, body],
-        spacing=4,
-        tight=True,
-    )
+    return holder
 
 
-def _brief_content(theme: Theme, lang: str) -> ft.Column:
-    return ft.Column(
-        controls=[
+def _brief_content(theme: Theme, lang: str) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=12, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    for field in brief_fields(lang):
+        layout.addWidget(
             _brief_field(
                 theme,
                 label=field["label"],
                 value=field["value"],
                 chip=field.get("chip", False),
             )
-            for field in brief_fields(lang)
-        ],
-        spacing=12,
-        tight=True,
-    )
+        )
+    return holder
 
 
-def build_context(theme: Theme, lang: str) -> ft.Container:
+def build_context(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
     return context_panel_shell(
         theme,
-        section_card(
-            theme,
-            ft.Icons.DESCRIPTION_OUTLINED,
-            txt["brief_title"],
-            _brief_content(theme, lang),
-            action_label=t("edit", lang),
-        ),
-        section_card(
-            theme,
-            ft.Icons.BOLT_OUTLINED,
-            t("quick_actions", lang),
-            quick_actions_column(theme, quick_actions(lang)),
-        ),
-        section_card(
-            theme,
-            ft.Icons.HISTORY,
-            t("recent_conversations", lang),
-            history_column(theme, history(lang)),
-            action_label=t("show_all", lang),
-        ),
+        section_card(theme, icon=Icons.DESCRIPTION_OUTLINED, title=txt["brief_title"], body=_brief_content(theme, lang)),
+        section_card(theme, icon=Icons.BOLT_OUTLINED, title=t("quick_actions", lang),
+                     body=quick_actions_column(theme, quick_actions(lang))),
+        section_card(theme, icon=Icons.HISTORY, title=t("recent_conversations", lang),
+                     body=history_column(theme, history(lang))),
     )

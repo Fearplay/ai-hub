@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM AI Hub - one-click Windows build script
+REM AI Hub - one-click Windows build script (PySide6 + PyInstaller)
 REM ============================================================
 REM Builds a single-file dist\AIHub.exe with no prerequisites.
 REM
@@ -10,7 +10,8 @@ REM      - tries winget if missing
 REM      - falls back to a clear message + python.org link
 REM   2. Create / activate a project-local .venv\
 REM   3. Upgrade pip and install requirements.txt + pyinstaller
-REM   4. Run "flet pack" to bundle main.py into one .exe
+REM   4. Run "pyinstaller" to bundle main.py into one .exe (with the
+REM      Material Icons font baked into ``assets\fonts\``)
 REM   5. Print the output path
 REM
 REM Skips the rebuild when dist\AIHub.exe is newer than every .py
@@ -28,7 +29,7 @@ set "EXIT_CODE=0"
 
 echo.
 echo ============================================================
-echo  AI Hub - Windows build
+echo  AI Hub - Windows build (PySide6)
 echo ============================================================
 
 REM ---------- 1. Python ----------
@@ -110,7 +111,7 @@ echo       ^(use "build_exe.bat --force" to rebuild anyway^)
 goto :done
 
 :do_build
-echo [4/5] Bundling with flet pack ...
+echo [4/5] Bundling with PyInstaller ...
 if exist "build\" rmdir /S /Q "build" >nul 2>nul
 if exist "dist\AIHub.exe" del /Q "dist\AIHub.exe" >nul 2>nul
 if exist "AIHub.spec" del /Q "AIHub.spec" >nul 2>nul
@@ -118,13 +119,25 @@ if exist "AIHub.spec" del /Q "AIHub.spec" >nul 2>nul
 set "ICON_ARG="
 if exist "assets\icon.ico" set "ICON_ARG=--icon assets\icon.ico"
 
-REM ``--hidden-import pyperclip`` is defensive: PyInstaller's static
-REM scanner already picks up the top-level ``pyperclip`` import we have
-REM in src/services/clipboard.py, but the explicit flag protects us if
-REM that import ever moves into a lazy ``try / except`` block.
-flet pack main.py --name AIHub --product-name "AI Hub" --product-version 0.1.0 --copyright "MIT" --hidden-import pyperclip %ICON_ARG%
+REM PyInstaller flags:
+REM   --onefile --windowed                 -> single-file GUI app, no console
+REM   --name AIHub                         -> output name
+REM   --add-data "src;dst"                 -> bundle the Material Icons font
+REM                                            (Windows uses ; as path separator)
+REM   --hidden-import pyperclip             -> defensive; pyperclip is sometimes
+REM                                            picked up via lazy try/except
+REM   --collect-submodules PySide6         -> bring all of PySide6's dynamic
+REM                                            submodules into the bundle so
+REM                                            QSyntaxHighlighter, QtSvg etc.
+REM                                            don't fail at runtime.
+pyinstaller --noconfirm --onefile --windowed --name AIHub ^
+    --add-data "assets\fonts;assets\fonts" ^
+    --hidden-import pyperclip ^
+    --collect-submodules PySide6 ^
+    %ICON_ARG% ^
+    main.py
 if errorlevel 1 (
-    echo  ^> flet pack failed.
+    echo  ^> pyinstaller failed.
     set "EXIT_CODE=1"
     goto :done
 )

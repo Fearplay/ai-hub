@@ -1,4 +1,4 @@
-"""AI Doc Assistant - center column view.
+"""AI Doc Assistant - center column view (PySide6 port).
 
 Header (with the help dialog button) + 3 tabs:
 
@@ -17,10 +17,42 @@ from __future__ import annotations
 import threading
 from typing import Callable, Optional
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QStackedLayout,
+    QVBoxLayout,
+    QWidget,
+)
 
 from src.components.header import header
 from src.components.tab_bar import tab_bar
+from src.qt.icons import Icons
+from src.qt.runtime import dispatch
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    AccentLabel,
+    BodyLabel,
+    ClickFrame,
+    GhostButton,
+    IconLabel,
+    IconOnlyButton,
+    MutedLabel,
+    Pill,
+    PrimaryButton,
+    SubtleLabel,
+    TitleLabel,
+    custom_label,
+    hbox,
+    themed_line_edit,
+    themed_text_edit,
+    vbox,
+)
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
@@ -47,198 +79,143 @@ _DOC_EXTENSIONS = ("pdf", "docx", "txt", "md", "html", "htm")
 _PREVIEW_CHARS = 800
 
 
-# ---------------------------------------------------------------------------
-# Small visual helpers (kept local so we don't fight ai_career patterns)
-# ---------------------------------------------------------------------------
-
-
-def _step_card(
-    theme: Theme, *, label: str, title: str, desc: str, body: ft.Control
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    label,
-                    color=theme.primary,
-                    size=11,
-                    weight=ft.FontWeight.W_700,
-                    style=ft.TextStyle(letter_spacing=1.4),
-                ),
-                ft.Text(title, color=theme.text, size=15, weight=ft.FontWeight.W_700),
-                ft.Text(desc, color=theme.text_muted, size=12),
-                ft.Container(height=8),
-                body,
-            ],
-            spacing=4,
-            tight=True,
-        ),
-        padding=18,
-        bgcolor=theme.surface,
-        border_radius=14,
-        border=ft.border.all(1, theme.border),
+def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget) -> QFrame:
+    card = QFrame()
+    card.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 14px;
+        }}
+        """
     )
+    layout = vbox(spacing=4, margins=(18, 18, 18, 18))
+    card.setLayout(layout)
+
+    step_label = QLabel(label)
+    step_label_font = QFont()
+    step_label_font.setPixelSize(11)
+    step_label_font.setWeight(QFont.Weight.Bold)
+    step_label_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.4)
+    step_label.setFont(step_label_font)
+    step_label.setStyleSheet(f"color: {theme.primary}; background: transparent;")
+    layout.addWidget(step_label)
+    layout.addWidget(TitleLabel(title, theme=theme, size=15, weight=QFont.Weight.Bold))
+    layout.addWidget(MutedLabel(desc, theme=theme, size=12))
+    layout.addSpacing(8)
+    layout.addWidget(body)
+    return card
 
 
-def _flat_button(
-    theme: Theme,
-    label: str,
-    *,
-    icon: Optional[str] = None,
-    primary: bool = False,
-    enabled: bool = True,
-    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    color = (
-        ft.Colors.WHITE
-        if (primary and enabled)
-        else (theme.text if enabled else theme.text_subtle)
+def _file_chip(theme: Theme, txt: dict, doc: UploadedDoc, on_clear: Callable[[], None]) -> QFrame:
+    chip = QFrame()
+    chip.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface_2};
+            border: 1px solid {theme.border};
+            border-radius: 12px;
+        }}
+        """
     )
-    bg = theme.primary if (primary and enabled) else theme.surface_2
-    border = None if (primary and enabled) else ft.border.all(1, theme.border)
-    children: list[ft.Control] = []
-    if icon:
-        children.append(ft.Icon(icon, color=color, size=14))
-    children.append(
-        ft.Text(label, color=color, size=12, weight=ft.FontWeight.W_600)
+    layout = hbox(spacing=10, margins=(12, 10, 12, 10))
+    chip.setLayout(layout)
+
+    badge = QFrame()
+    badge.setFixedSize(32, 32)
+    badge.setStyleSheet(
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 8px;"
     )
-    return ft.Container(
-        content=ft.Row(
-            controls=children,
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
-        bgcolor=bg,
-        border=border,
-        border_radius=10,
-        ink=enabled,
-        on_click=(on_click if enabled else None),
-        opacity=1.0 if enabled else 0.55,
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(IconLabel(Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=18),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(badge)
+
+    info = QFrame()
+    info.setStyleSheet("background: transparent;")
+    info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(info_layout)
+    info_layout.addWidget(BodyLabel(doc.name, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    info_layout.addWidget(MutedLabel(f"{doc.ext.upper()} \u00b7 {human_size(doc.size_bytes)}", theme=theme, size=11))
+    layout.addWidget(info, 1)
+
+    close_btn = IconOnlyButton(
+        Icons.CLOSE,
+        color=theme.text_muted,
+        size=16,
+        bg_hover=theme.surface,
+        tooltip=txt["clear_btn"],
     )
+    close_btn.clicked.connect(lambda: on_clear())
+    layout.addWidget(close_btn)
+
+    return chip
 
 
-def _file_chip(
-    theme: Theme, txt: dict, doc: UploadedDoc, on_clear: Callable[[], None]
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Container(
-                    content=ft.Icon(
-                        ft.Icons.DESCRIPTION_OUTLINED, color=theme.primary, size=18
-                    ),
-                    width=32,
-                    height=32,
-                    bgcolor=ft.Colors.with_opacity(0.14, theme.primary),
-                    border_radius=8,
-                    alignment=ft.Alignment.CENTER,
-                ),
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            doc.name,
-                            color=theme.text,
-                            size=13,
-                            weight=ft.FontWeight.W_600,
-                        ),
-                        ft.Text(
-                            f"{doc.ext.upper()} - {human_size(doc.size_bytes)}",
-                            color=theme.text_muted,
-                            size=11,
-                        ),
-                    ],
-                    spacing=2,
-                    expand=True,
-                    tight=True,
-                ),
-                ft.IconButton(
-                    icon=ft.Icons.CLOSE,
-                    icon_color=theme.text_muted,
-                    icon_size=16,
-                    tooltip=txt["clear_btn"],
-                    on_click=lambda e: on_clear(),
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=10),
-        bgcolor=theme.surface_2,
-        border_radius=12,
-        border=ft.border.all(1, theme.border),
-    )
-
-
-def _preview_block(theme: Theme, txt: dict, doc: UploadedDoc) -> ft.Control:
+def _preview_block(theme: Theme, txt: dict, doc: UploadedDoc) -> QWidget:
     preview = (doc.text or "")[:_PREVIEW_CHARS]
     if len(doc.text or "") > _PREVIEW_CHARS:
         preview += "\n\n..."
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["preview_label"],
-                    color=theme.text_subtle,
-                    size=11,
-                    weight=ft.FontWeight.W_600,
-                    style=ft.TextStyle(letter_spacing=0.6),
-                ),
-                ft.Container(
-                    content=ft.Text(
-                        preview or "(empty)",
-                        color=theme.text_muted,
-                        size=12,
-                        selectable=True,
-                    ),
-                    bgcolor=theme.surface_2,
-                    border=ft.border.all(1, theme.border),
-                    border_radius=10,
-                    padding=ft.padding.symmetric(horizontal=12, vertical=10),
-                ),
-            ],
-            spacing=8,
-            tight=True,
-        ),
-        padding=ft.padding.only(top=8),
+
+    holder = QWidget()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 8, 0, 0))
+    holder.setLayout(layout)
+
+    label = QLabel(txt["preview_label"])
+    label_font = QFont()
+    label_font.setPixelSize(11)
+    label_font.setWeight(QFont.Weight.DemiBold)
+    label_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.6)
+    label.setFont(label_font)
+    label.setStyleSheet(f"color: {theme.text_subtle}; background: transparent;")
+    layout.addWidget(label)
+
+    body = QFrame()
+    body.setStyleSheet(
+        f"background-color: {theme.surface_2}; border: 1px solid {theme.border}; border-radius: 10px;"
     )
-
-
-# ---------------------------------------------------------------------------
-# Tab content
-# ---------------------------------------------------------------------------
+    body_layout = vbox(spacing=0, margins=(12, 10, 12, 10))
+    body.setLayout(body_layout)
+    text = MutedLabel(preview or "(empty)", theme=theme, size=12)
+    text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    body_layout.addWidget(text)
+    layout.addWidget(body)
+    return holder
 
 
 def _build_upload_tab(
     theme: Theme,
     txt: dict,
     on_state_change: Callable[[], None],
-) -> ft.Control:
-    holder = ft.Container()
+) -> QWidget:
+    holder = QWidget()
+    holder.setStyleSheet("background: transparent;")
+    holder_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(holder_layout)
+
+    def _clear_layout() -> None:
+        while holder_layout.count():
+            item = holder_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _render() -> None:
+        _clear_layout()
         if STATE.document:
-            children: list[ft.Control] = [
-                _file_chip(
-                    theme, txt, STATE.document, on_clear=_clear_doc
-                ),
-                _preview_block(theme, txt, STATE.document),
-            ]
+            holder_layout.addWidget(_file_chip(theme, txt, STATE.document, _clear_doc))
+            holder_layout.addWidget(_preview_block(theme, txt, STATE.document))
         else:
-            children = [
-                ft.Container(
-                    content=ft.Text(
-                        txt["no_file"], color=theme.text_muted, size=12
-                    ),
-                    padding=ft.padding.symmetric(horizontal=4, vertical=8),
-                )
-            ]
-        holder.content = ft.Column(controls=children, spacing=8, tight=True)
-        if not logger_service.try_update(holder):
-            logger_service.log_event(
-                "ERROR", "ai_doc_assistant.view", "upload_render_update_failed",
-            )
+            empty = QFrame()
+            empty.setStyleSheet("background: transparent;")
+            empty_layout = vbox(spacing=0, margins=(4, 8, 4, 8))
+            empty.setLayout(empty_layout)
+            empty_layout.addWidget(MutedLabel(txt["no_file"], theme=theme, size=12))
+            holder_layout.addWidget(empty)
 
     def _clear_doc() -> None:
         STATE.document = None
@@ -260,24 +237,25 @@ def _build_upload_tab(
 
     _render()
 
-    body = ft.Column(
-        controls=[
-            upload_zone(
-                theme,
-                title=txt["drop_title"],
-                hint=txt["drop_hint"],
-                extensions=_DOC_EXTENSIONS,
-                unsupported_message=txt["unsupported"],
-                on_file_resolved=_on_doc,
-                paste_path_label=txt["upload_paste_path_btn"],
-                paste_path_tooltip=txt["upload_paste_path_tooltip"],
-                cta_label=txt["upload_cta_label"],
-            ),
-            holder,
-        ],
-        spacing=8,
-        tight=True,
+    body = QWidget()
+    body.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+
+    body_layout.addWidget(
+        upload_zone(
+            theme,
+            title=txt["drop_title"],
+            hint=txt["drop_hint"],
+            extensions=_DOC_EXTENSIONS,
+            unsupported_message=txt["unsupported"],
+            on_file_resolved=_on_doc,
+            paste_path_label=txt["upload_paste_path_btn"],
+            paste_path_tooltip=txt["upload_paste_path_tooltip"],
+            cta_label=txt["upload_cta_label"],
+        )
     )
+    body_layout.addWidget(holder)
 
     return _step_card(
         theme,
@@ -294,66 +272,79 @@ def _action_radio(
     title: str,
     desc: str,
     selected: bool,
-    on_click: Callable[[ft.ControlEvent], None],
-) -> ft.Container:
-    indicator = ft.Container(
-        width=18,
-        height=18,
-        border_radius=9,
-        border=ft.border.all(2, theme.primary if selected else theme.border),
-        bgcolor=theme.primary if selected else "transparent",
-        alignment=ft.Alignment.CENTER,
-        content=(
-            ft.Container(
-                width=8, height=8, border_radius=4, bgcolor=ft.Colors.WHITE
-            )
-            if selected
-            else None
-        ),
+    on_click: Callable[[], None],
+) -> ClickFrame:
+    border_color = theme.primary if selected else theme.border
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface_2};
+            border: 1px solid {border_color};
+            border-radius: 12px;
+        }}
+        ClickFrame:hover {{
+            border: 1px solid {theme.primary};
+        }}
+        """
     )
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                indicator,
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            title,
-                            color=theme.text,
-                            size=13,
-                            weight=ft.FontWeight.W_600,
-                        ),
-                        ft.Text(desc, color=theme.text_muted, size=11),
-                    ],
-                    spacing=2,
-                    tight=True,
-                    expand=True,
-                ),
-            ],
-            spacing=12,
-            vertical_alignment=ft.CrossAxisAlignment.START,
-        ),
-        padding=12,
-        bgcolor=theme.surface_2,
-        border=ft.border.all(
-            1, theme.primary if selected else theme.border
-        ),
-        border_radius=12,
-        ink=True,
-        on_click=on_click,
-    )
+    layout = hbox(spacing=12, margins=(12, 12, 12, 12))
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    chip.setLayout(layout)
+
+    indicator = QFrame()
+    indicator.setFixedSize(18, 18)
+    if selected:
+        indicator.setStyleSheet(
+            f"background-color: {theme.primary}; border: 2px solid {theme.primary}; border-radius: 9px;"
+        )
+        ind_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        ind_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        indicator.setLayout(ind_layout)
+        dot = QFrame()
+        dot.setFixedSize(8, 8)
+        dot.setStyleSheet("background-color: #FFFFFF; border-radius: 4px;")
+        ind_layout.addWidget(dot, alignment=Qt.AlignmentFlag.AlignCenter)
+    else:
+        indicator.setStyleSheet(
+            f"background-color: transparent; border: 2px solid {theme.border}; border-radius: 9px;"
+        )
+    layout.addWidget(indicator)
+
+    info = QFrame()
+    info.setStyleSheet("background: transparent;")
+    info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(info_layout)
+    info_layout.addWidget(BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    info_layout.addWidget(MutedLabel(desc, theme=theme, size=11))
+    layout.addWidget(info, 1)
+
+    chip.clicked.connect(on_click)
+    return chip
 
 
 def _build_analyze_tab(
     theme: Theme,
     txt: dict,
     on_state_change: Callable[[], None],
-) -> ft.Control:
-    actions_holder = ft.Container()
-    inputs_holder = ft.Container()
+) -> QWidget:
+    actions_holder = QWidget()
+    actions_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    actions_holder.setLayout(actions_layout)
+
+    inputs_holder = QWidget()
+    inputs_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+    inputs_holder.setLayout(inputs_layout)
+
+    def _clear_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _render_actions() -> None:
-        action_cards: list[ft.Control] = []
+        _clear_layout(actions_layout)
         labels = {
             ACTION_SUMMARY: (txt["action_summary"], txt["action_summary_desc"]),
             ACTION_QA: (txt["action_qa"], txt["action_qa_desc"]),
@@ -362,111 +353,37 @@ def _build_analyze_tab(
         }
         for key in ACTIONS:
             title, desc = labels[key]
-            action_cards.append(
+            actions_layout.addWidget(
                 _action_radio(
                     theme,
                     title=title,
                     desc=desc,
                     selected=STATE.action == key,
-                    on_click=lambda e, k=key: _set_action(k),
+                    on_click=lambda k=key: _set_action(k),
                 )
-            )
-        actions_holder.content = ft.Column(
-            controls=action_cards, spacing=8, tight=True
-        )
-        if not logger_service.try_update(actions_holder):
-            logger_service.log_event(
-                "ERROR", "ai_doc_assistant.view", "actions_render_update_failed",
             )
 
     def _render_inputs() -> None:
+        _clear_layout(inputs_layout)
         if STATE.action == ACTION_QA:
-            inputs_holder.content = ft.Column(
-                controls=[
-                    ft.Text(
-                        txt["qa_question_label"],
-                        color=theme.text,
-                        size=12,
-                        weight=ft.FontWeight.W_600,
-                    ),
-                    ft.TextField(
-                        value=STATE.qa_question,
-                        hint_text=txt["qa_question_hint"],
-                        text_style=ft.TextStyle(color=theme.text, size=13),
-                        hint_style=ft.TextStyle(color=theme.text_subtle, size=12),
-                        bgcolor=theme.surface_2,
-                        border=ft.InputBorder.NONE,
-                        filled=True,
-                        cursor_color=theme.primary,
-                        content_padding=ft.padding.symmetric(
-                            horizontal=12, vertical=10
-                        ),
-                        border_radius=10,
-                        on_change=lambda e: _set_question(e.control.value or ""),
-                    ),
-                ],
-                spacing=6,
-                tight=True,
-            )
+            label = BodyLabel(txt["qa_question_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold)
+            edit = themed_line_edit(theme, placeholder=txt["qa_question_hint"])
+            edit.setText(STATE.qa_question)
+            edit.textChanged.connect(_set_question)
+            inputs_layout.addWidget(label)
+            inputs_layout.addWidget(edit)
         elif STATE.action == ACTION_REWRITE:
-            inputs_holder.content = ft.Column(
-                controls=[
-                    ft.Text(
-                        txt["rewrite_passage_label"],
-                        color=theme.text,
-                        size=12,
-                        weight=ft.FontWeight.W_600,
-                    ),
-                    ft.TextField(
-                        value=STATE.rewrite_passage,
-                        hint_text=txt["rewrite_passage_hint"],
-                        multiline=True,
-                        min_lines=4,
-                        max_lines=10,
-                        text_style=ft.TextStyle(color=theme.text, size=12),
-                        hint_style=ft.TextStyle(color=theme.text_subtle, size=12),
-                        bgcolor=theme.surface_2,
-                        border=ft.InputBorder.NONE,
-                        filled=True,
-                        cursor_color=theme.primary,
-                        content_padding=ft.padding.symmetric(
-                            horizontal=12, vertical=10
-                        ),
-                        border_radius=10,
-                        on_change=lambda e: _set_passage(e.control.value or ""),
-                    ),
-                    ft.Container(height=6),
-                    ft.Text(
-                        txt["rewrite_tone_label"],
-                        color=theme.text,
-                        size=12,
-                        weight=ft.FontWeight.W_600,
-                    ),
-                    ft.TextField(
-                        value=STATE.rewrite_tone,
-                        hint_text=txt["rewrite_tone_options"],
-                        text_style=ft.TextStyle(color=theme.text, size=13),
-                        hint_style=ft.TextStyle(color=theme.text_subtle, size=12),
-                        bgcolor=theme.surface_2,
-                        border=ft.InputBorder.NONE,
-                        filled=True,
-                        cursor_color=theme.primary,
-                        content_padding=ft.padding.symmetric(
-                            horizontal=12, vertical=10
-                        ),
-                        border_radius=10,
-                        on_change=lambda e: _set_tone(e.control.value or ""),
-                    ),
-                ],
-                spacing=6,
-                tight=True,
-            )
-        else:
-            inputs_holder.content = ft.Container()
-        if not logger_service.try_update(inputs_holder):
-            logger_service.log_event(
-                "ERROR", "ai_doc_assistant.view", "inputs_render_update_failed",
-            )
+            inputs_layout.addWidget(BodyLabel(txt["rewrite_passage_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
+            passage_edit = themed_text_edit(theme, placeholder=txt["rewrite_passage_hint"], min_height=110)
+            passage_edit.setPlainText(STATE.rewrite_passage)
+            passage_edit.textChanged.connect(lambda: _set_passage(passage_edit.toPlainText()))
+            inputs_layout.addWidget(passage_edit)
+            inputs_layout.addSpacing(6)
+            inputs_layout.addWidget(BodyLabel(txt["rewrite_tone_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
+            tone_edit = themed_line_edit(theme, placeholder=txt["rewrite_tone_options"])
+            tone_edit.setText(STATE.rewrite_tone)
+            tone_edit.textChanged.connect(_set_tone)
+            inputs_layout.addWidget(tone_edit)
 
     def _set_action(key: str) -> None:
         STATE.action = key
@@ -489,15 +406,13 @@ def _build_analyze_tab(
     _render_actions()
     _render_inputs()
 
-    body = ft.Column(
-        controls=[
-            actions_holder,
-            ft.Container(height=4),
-            inputs_holder,
-        ],
-        spacing=8,
-        tight=True,
-    )
+    body = QWidget()
+    body.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+    body_layout.addWidget(actions_holder)
+    body_layout.addSpacing(4)
+    body_layout.addWidget(inputs_holder)
 
     return _step_card(
         theme,
@@ -508,297 +423,169 @@ def _build_analyze_tab(
     )
 
 
-def _result_section(
-    theme: Theme, *, title: str, body: ft.Control
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    title,
-                    color=theme.primary,
-                    size=11,
-                    weight=ft.FontWeight.W_700,
-                    style=ft.TextStyle(letter_spacing=1.2),
-                ),
-                ft.Container(height=4),
-                body,
-            ],
-            spacing=2,
-            tight=True,
-        ),
-        padding=14,
-        bgcolor=theme.surface,
-        border_radius=12,
-        border=ft.border.all(1, theme.border),
+def _result_section(theme: Theme, *, title: str, body: QWidget) -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet(
+        f"background-color: {theme.surface}; border: 1px solid {theme.border}; border-radius: 12px;"
     )
+    layout = vbox(spacing=2, margins=(14, 14, 14, 14))
+    frame.setLayout(layout)
+
+    label = QLabel(title)
+    label_font = QFont()
+    label_font.setPixelSize(11)
+    label_font.setWeight(QFont.Weight.Bold)
+    label_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+    label.setFont(label_font)
+    label.setStyleSheet(f"color: {theme.primary}; background: transparent;")
+    layout.addWidget(label)
+    layout.addSpacing(4)
+    layout.addWidget(body)
+    return frame
 
 
-def _bullet_list(
-    theme: Theme, items: list[str]
-) -> ft.Control:
+def _bullet_list(theme: Theme, items: list[str]) -> QWidget:
     if not items:
-        return ft.Text("-", color=theme.text_muted, size=12)
-    rows = [
-        ft.Row(
-            controls=[
-                ft.Container(
-                    width=6,
-                    height=6,
-                    border_radius=3,
-                    bgcolor=theme.primary,
-                    margin=ft.margin.only(top=6),
-                ),
-                ft.Text(
-                    item,
-                    color=theme.text,
-                    size=12,
-                    selectable=True,
-                    expand=True,
-                ),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.START,
-        )
-        for item in items
-    ]
-    return ft.Column(controls=rows, spacing=6, tight=True)
+        return MutedLabel("-", theme=theme, size=12)
+
+    holder = QWidget()
+    holder.setStyleSheet("background: transparent;")
+    holder_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+    holder.setLayout(holder_layout)
+    for item in items:
+        row = QFrame()
+        row.setStyleSheet("background: transparent;")
+        row_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+        row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        row.setLayout(row_layout)
+        dot = QFrame()
+        dot.setFixedSize(6, 6)
+        dot.setStyleSheet(f"background-color: {theme.primary}; border-radius: 3px;")
+        dot_holder = QFrame()
+        dot_holder.setStyleSheet("background: transparent;")
+        dh_layout = vbox(spacing=0, margins=(0, 6, 0, 0))
+        dot_holder.setLayout(dh_layout)
+        dh_layout.addWidget(dot)
+        row_layout.addWidget(dot_holder)
+        text = BodyLabel(item, theme=theme, size=12, selectable=True)
+        text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        row_layout.addWidget(text, 1)
+        holder_layout.addWidget(row)
+    return holder
 
 
 def _build_output_tab(
     theme: Theme,
     txt: dict,
     on_navigate_tab: Callable[[int], None],
-) -> ft.Control:
+) -> QWidget:
     if STATE.last_error:
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Icon(
-                        ft.Icons.ERROR_OUTLINE, color="#EF4444", size=24
-                    ),
-                    ft.Text(
-                        STATE.last_error,
-                        color="#EF4444",
-                        size=13,
-                        weight=ft.FontWeight.W_500,
-                        selectable=True,
-                    ),
-                    ft.Container(height=6),
-                    _flat_button(
-                        theme,
-                        txt["output_back_btn"],
-                        icon=ft.Icons.ARROW_BACK,
-                        on_click=lambda e: on_navigate_tab(TAB_ANALYZE),
-                    ),
-                ],
-                spacing=8,
-                tight=True,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            padding=24,
-        )
+        holder = QWidget()
+        holder.setStyleSheet("background: transparent;")
+        layout = vbox(spacing=8, margins=(24, 24, 24, 24))
+        holder.setLayout(layout)
+        layout.addWidget(IconLabel(Icons.ERROR_OUTLINE, color="#EF4444", size=24))
+        err_label = custom_label(STATE.last_error, color="#EF4444", size=13, weight=QFont.Weight.DemiBold, selectable=True)
+        layout.addWidget(err_label)
+        layout.addSpacing(6)
+        back = GhostButton(txt["output_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+        back.clicked.connect(lambda: on_navigate_tab(TAB_ANALYZE))
+        layout.addWidget(back)
+        layout.addStretch(1)
+        return holder
 
     if not STATE.last_result:
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text(
-                        txt["output_empty"],
-                        color=theme.text_muted,
-                        size=13,
-                    ),
-                    ft.Container(height=6),
-                    _flat_button(
-                        theme,
-                        txt["output_back_btn"],
-                        icon=ft.Icons.ARROW_BACK,
-                        on_click=lambda e: on_navigate_tab(TAB_ANALYZE),
-                    ),
-                ],
-                spacing=8,
-                tight=True,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            padding=24,
-        )
+        holder = QWidget()
+        holder.setStyleSheet("background: transparent;")
+        layout = vbox(spacing=8, margins=(24, 24, 24, 24))
+        holder.setLayout(layout)
+        layout.addWidget(MutedLabel(txt["output_empty"], theme=theme, size=13))
+        layout.addSpacing(6)
+        back = GhostButton(txt["output_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+        back.clicked.connect(lambda: on_navigate_tab(TAB_ANALYZE))
+        layout.addWidget(back)
+        layout.addStretch(1)
+        return holder
 
     data = STATE.last_result
     action = STATE.last_action
-    blocks: list[ft.Control] = []
+
+    inner = QWidget()
+    inner.setStyleSheet(f"background-color: {theme.bg};")
+    inner_layout = vbox(spacing=10, margins=(24, 18, 24, 18))
+    inner.setLayout(inner_layout)
 
     if action == ACTION_SUMMARY:
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_summary_title"],
-                body=ft.Text(
-                    data.get("tldr") or "-",
-                    color=theme.text,
-                    size=13,
-                    selectable=True,
-                ),
-            )
-        )
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_bullets_title"],
-                body=_bullet_list(theme, list(data.get("key_points") or [])),
-            )
-        )
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_actions_title"],
-                body=_bullet_list(theme, list(data.get("action_items") or [])),
-            )
-        )
+        inner_layout.addWidget(_result_section(theme, title=txt["output_summary_title"],
+                                               body=BodyLabel(data.get("tldr") or "-", theme=theme, size=13, selectable=True)))
+        inner_layout.addWidget(_result_section(theme, title=txt["output_bullets_title"],
+                                               body=_bullet_list(theme, list(data.get("key_points") or []))))
+        inner_layout.addWidget(_result_section(theme, title=txt["output_actions_title"],
+                                               body=_bullet_list(theme, list(data.get("action_items") or []))))
     elif action == ACTION_QA:
         confidence = (data.get("confidence") or "").upper()
-        confidence_pill = ft.Container(
-            content=ft.Text(
-                confidence or "-",
-                color=ft.Colors.WHITE,
-                size=10,
-                weight=ft.FontWeight.W_700,
-            ),
-            padding=ft.padding.symmetric(horizontal=8, vertical=2),
-            bgcolor=theme.primary,
-            border_radius=8,
-        )
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_answer_title"],
-                body=ft.Column(
-                    controls=[
-                        ft.Row(
-                            controls=[confidence_pill],
-                            spacing=0,
-                            tight=True,
-                        ),
-                        ft.Text(
-                            data.get("answer") or "-",
-                            color=theme.text,
-                            size=13,
-                            selectable=True,
-                        ),
-                    ],
-                    spacing=6,
-                    tight=True,
-                ),
-            )
-        )
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_evidence_title"],
-                body=_bullet_list(theme, list(data.get("evidence") or [])),
-            )
-        )
+
+        ans_body = QWidget()
+        ans_body.setStyleSheet("background: transparent;")
+        ab_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+        ans_body.setLayout(ab_layout)
+        ab_layout.addWidget(Pill(text=confidence or "-", bg=theme.primary, fg="#FFFFFF"))
+        ab_layout.addWidget(BodyLabel(data.get("answer") or "-", theme=theme, size=13, selectable=True))
+        inner_layout.addWidget(_result_section(theme, title=txt["output_answer_title"], body=ans_body))
+        inner_layout.addWidget(_result_section(theme, title=txt["output_evidence_title"],
+                                               body=_bullet_list(theme, list(data.get("evidence") or []))))
     elif action == ACTION_REWRITE:
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_rewrite_title"],
-                body=ft.Text(
-                    data.get("rewritten") or "-",
-                    color=theme.text,
-                    size=13,
-                    selectable=True,
-                ),
-            )
-        )
-        blocks.append(
-            _result_section(
-                theme,
-                title=txt["output_actions_title"],
-                body=_bullet_list(theme, list(data.get("changes") or [])),
-            )
-        )
+        inner_layout.addWidget(_result_section(theme, title=txt["output_rewrite_title"],
+                                               body=BodyLabel(data.get("rewritten") or "-", theme=theme, size=13, selectable=True)))
+        inner_layout.addWidget(_result_section(theme, title=txt["output_actions_title"],
+                                               body=_bullet_list(theme, list(data.get("changes") or []))))
     elif action == ACTION_EXTRACT:
         facts = list(data.get("facts") or [])
         if not facts:
-            blocks.append(
-                _result_section(
-                    theme,
-                    title=txt["output_extract_title"],
-                    body=ft.Text("-", color=theme.text_muted, size=12),
-                )
-            )
+            inner_layout.addWidget(_result_section(theme, title=txt["output_extract_title"],
+                                                   body=MutedLabel("-", theme=theme, size=12)))
         else:
-            rows: list[ft.Control] = []
+            facts_holder = QWidget()
+            facts_holder.setStyleSheet("background: transparent;")
+            fh_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
+            facts_holder.setLayout(fh_layout)
             for fact in facts:
                 label = (fact.get("label") or "").strip() or "-"
                 value = (fact.get("value") or "").strip() or "-"
                 evidence = (fact.get("evidence") or "").strip()
-                rows.append(
-                    ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                ft.Text(
-                                    label,
-                                    color=theme.text_subtle,
-                                    size=10,
-                                    weight=ft.FontWeight.W_700,
-                                    style=ft.TextStyle(letter_spacing=0.6),
-                                ),
-                                ft.Text(
-                                    value,
-                                    color=theme.text,
-                                    size=13,
-                                    weight=ft.FontWeight.W_600,
-                                    selectable=True,
-                                ),
-                                ft.Text(
-                                    evidence,
-                                    color=theme.text_muted,
-                                    size=11,
-                                    italic=True,
-                                    selectable=True,
-                                )
-                                if evidence
-                                else ft.Container(),
-                            ],
-                            spacing=2,
-                            tight=True,
-                        ),
-                        padding=10,
-                        bgcolor=theme.surface_2,
-                        border=ft.border.all(1, theme.border),
-                        border_radius=10,
-                    )
+                row = QFrame()
+                row.setStyleSheet(
+                    f"background-color: {theme.surface_2}; border: 1px solid {theme.border}; border-radius: 10px;"
                 )
-            blocks.append(
-                _result_section(
-                    theme,
-                    title=txt["output_extract_title"],
-                    body=ft.Column(controls=rows, spacing=6, tight=True),
-                )
-            )
+                row_layout = vbox(spacing=2, margins=(10, 10, 10, 10))
+                row.setLayout(row_layout)
+                row_layout.addWidget(SubtleLabel(label, theme=theme, size=10))
+                row_layout.addWidget(BodyLabel(value, theme=theme, size=13, weight=QFont.Weight.DemiBold, selectable=True))
+                if evidence:
+                    row_layout.addWidget(SubtleLabel(evidence, theme=theme, size=11, italic=True))
+                fh_layout.addWidget(row)
+            inner_layout.addWidget(_result_section(theme, title=txt["output_extract_title"], body=facts_holder))
 
-    blocks.append(ft.Container(height=4))
-    blocks.append(
-        _flat_button(
-            theme,
-            txt["output_back_btn"],
-            icon=ft.Icons.ARROW_BACK,
-            on_click=lambda e: on_navigate_tab(TAB_ANALYZE),
-        )
-    )
+    inner_layout.addSpacing(4)
+    back = GhostButton(txt["output_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+    back.clicked.connect(lambda: on_navigate_tab(TAB_ANALYZE))
+    back_holder = QFrame()
+    back_holder.setStyleSheet("background: transparent;")
+    back_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    back_holder.setLayout(back_layout)
+    back_layout.addWidget(back)
+    back_layout.addStretch(1)
+    inner_layout.addWidget(back_holder)
+    inner_layout.addStretch(1)
 
-    return ft.ListView(
-        controls=blocks,
-        spacing=10,
-        padding=ft.padding.symmetric(horizontal=24, vertical=18),
-        expand=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Run footer + tab body wiring
-# ---------------------------------------------------------------------------
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(inner)
+    return scroll
 
 
 def _build_footer(
@@ -807,29 +594,52 @@ def _build_footer(
     txt: dict,
     on_state_change: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
-) -> ft.Control:
-    run_status = ft.Text("", color=theme.text_muted, size=11)
-    run_button_holder = ft.Container()
-    run_state: dict[str, str] = {"stage": ""}
+) -> tuple[QWidget, Callable[[], None]]:
+    container = QFrame()
+    container.setStyleSheet(
+        f"background-color: {theme.bg}; border-top: 1px solid {theme.border};"
+    )
+    layout = hbox(spacing=10, margins=(24, 12, 24, 12))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    container.setLayout(layout)
+
+    demo_btn = GhostButton(txt["footer_demo_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
+    layout.addWidget(demo_btn)
+    layout.addStretch(1)
+
+    status_label = MutedLabel("", theme=theme, size=11)
+    layout.addWidget(status_label)
+
+    run_holder = QWidget()
+    run_holder.setStyleSheet("background: transparent;")
+    run_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    run_holder.setLayout(run_layout)
+    layout.addWidget(run_holder)
+
+    state_box: dict[str, str] = {"stage": ""}
 
     def _set_status(msg: str, *, error: bool = False) -> None:
-        run_status.value = msg
-        run_status.color = "#EF4444" if error else theme.text_muted
-        logger_service.try_update(run_status)
+        status_label.setText(msg)
+        status_label.setStyleSheet(
+            f"color: {'#EF4444' if error else theme.text_muted}; background: transparent;"
+        )
 
     def _render_run_button() -> None:
-        running = bool(run_state["stage"])
+        while run_layout.count():
+            item = run_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        running = bool(state_box["stage"])
         enabled = STATE.can_run() and not running
         label = txt["footer_run_running"] if running else txt["footer_run_btn"]
-        run_button_holder.content = _flat_button(
-            theme,
-            label,
-            icon=ft.Icons.PLAY_ARROW_ROUNDED,
-            primary=True,
-            enabled=enabled,
-            on_click=lambda e: _on_run(),
-        )
-        logger_service.try_update(run_button_holder)
+        button = PrimaryButton(label, theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
+        button.setEnabled(enabled)
+        button.clicked.connect(_on_run)
+        run_layout.addWidget(button)
+
+    def _refresh() -> None:
+        _render_run_button()
 
     def _on_demo() -> None:
         STATE.demo_mode = True
@@ -849,13 +659,11 @@ def _build_footer(
                 else secrets.OPENAI_API_KEY
             )
             if not secrets.has_secret(key_name):
-                _set_status(
-                    txt["no_key_template"].format(provider=provider), error=True
-                )
+                _set_status(txt["no_key_template"].format(provider=provider), error=True)
                 return
 
         _set_status("")
-        run_state["stage"] = "running"
+        state_box["stage"] = "running"
         _render_run_button()
 
         def _worker() -> None:
@@ -867,118 +675,149 @@ def _build_footer(
                     action=STATE.action,
                 )
                 STATE.last_error = str(exc)
-                run_state["stage"] = ""
-                _set_status(str(exc), error=True)
-                _render_run_button()
+                state_box["stage"] = ""
+                dispatch(lambda: (_set_status(str(exc), error=True), _render_run_button()))
                 return
-            run_state["stage"] = ""
+            state_box["stage"] = ""
             if not result.ok:
-                _set_status(result.error or "Run failed.", error=True)
-                _render_run_button()
+                dispatch(lambda: (_set_status(result.error or "Run failed.", error=True), _render_run_button()))
                 return
-            _render_run_button()
-            on_navigate_tab(TAB_OUTPUT)
+            dispatch(lambda: (_render_run_button(), on_navigate_tab(TAB_OUTPUT)))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    demo_btn = _flat_button(
-        theme,
-        txt["footer_demo_btn"],
-        icon=ft.Icons.AUTO_AWESOME,
-        on_click=lambda e: _on_demo(),
-    )
-
+    demo_btn.clicked.connect(_on_demo)
     _render_run_button()
-
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                demo_btn,
-                ft.Container(expand=True),
-                run_status,
-                run_button_holder,
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=24, vertical=12),
-        border=ft.border.only(top=ft.BorderSide(1, theme.border)),
-        bgcolor=theme.bg,
-    )
+    return container, _refresh
 
 
-def _build_tab_body(
-    theme: Theme,
-    txt: dict,
-    on_state_change: Callable[[], None],
-    on_navigate_tab: Callable[[int], None],
-) -> ft.Control:
-    if STATE.active_tab == TAB_ANALYZE:
-        body = _build_analyze_tab(theme, txt, on_state_change)
-    elif STATE.active_tab == TAB_OUTPUT:
-        return _build_output_tab(theme, txt, on_navigate_tab)
-    else:
-        body = _build_upload_tab(theme, txt, on_state_change)
-
-    return ft.ListView(
-        controls=[body],
-        spacing=14,
-        padding=ft.padding.symmetric(horizontal=24, vertical=18),
-        expand=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Public build_view
-# ---------------------------------------------------------------------------
-
-
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    content_holder = ft.Container(expand=True)
-    tab_bar_holder = ft.Container()
-    footer_holder = ft.Container()
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
 
-    def _refresh_tab_body() -> None:
-        try:
-            content_holder.content = _build_tab_body(
-                theme, txt, _on_state_change, _on_navigate_tab
-            )
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_doc_assistant.view", "refresh_tab_body_build_failed", exc,
-                active_tab=STATE.active_tab,
-            )
-        logger_service.try_update(content_holder)
+    demo_pill: Optional[QWidget] = None
+    if STATE.demo_mode:
+        demo_pill = Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+
+    header_widget = header(
+        theme,
+        lang,
+        icon=Icons.AUTO_STORIES_OUTLINED,
+        title=txt["title"],
+        subtitle=txt["subtitle"],
+        on_help_click=lambda: open_doc_assistant_how_to(container, theme, lang),
+        trailing=demo_pill,
+    )
+    layout.addWidget(header_widget)
+
+    tab_holder = QWidget()
+    tab_holder.setStyleSheet(f"background-color: {theme.bg};")
+    tab_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    tab_holder.setLayout(tab_layout)
+    layout.addWidget(tab_holder)
+
+    body_holder = QWidget()
+    body_holder.setStyleSheet(f"background-color: {theme.bg};")
+    body_stack = QStackedLayout(body_holder)
+    body_stack.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(body_holder, 1)
+
+    footer_holder = QWidget()
+    footer_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    footer_holder.setLayout(footer_layout)
+    layout.addWidget(footer_holder)
+
+    state_box: dict[str, Optional[Callable[[], None]]] = {"refresh_footer": None}
+
+    def _clear_widget(widget: QWidget) -> None:
+        layout_obj = widget.layout()
+        if layout_obj is None:
+            return
+        while layout_obj.count():
+            item = layout_obj.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _refresh_tabs() -> None:
+        _clear_widget(tab_holder)
         try:
-            tab_bar_holder.content = tab_bar(
+            tab_widget = tab_bar(
                 theme,
                 tabs=[txt["tab_upload"], txt["tab_analyze"], txt["tab_output"]],
                 active_index=STATE.active_tab,
                 on_change=_on_tab_change,
             )
+            tab_layout.addWidget(tab_widget)
+        except Exception as exc:
+            logger_service.log_exception("ai_doc_assistant.view", "refresh_tabs_build_failed", exc)
+
+    def _refresh_body() -> None:
+        while body_stack.count():
+            w = body_stack.widget(0)
+            body_stack.removeWidget(w)
+            w.deleteLater()
+        try:
+            if STATE.active_tab == TAB_UPLOAD:
+                widget = _build_upload_tab(theme, txt, _on_state_change)
+                wrapper = QWidget()
+                wrapper.setStyleSheet(f"background-color: {theme.bg};")
+                w_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
+                wrapper.setLayout(w_layout)
+                w_layout.addWidget(widget)
+                w_layout.addStretch(1)
+
+                scroll = QScrollArea()
+                scroll.setWidgetResizable(True)
+                scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+                scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+                scroll.setWidget(wrapper)
+                body_stack.addWidget(scroll)
+            elif STATE.active_tab == TAB_ANALYZE:
+                widget = _build_analyze_tab(theme, txt, _on_state_change)
+                wrapper = QWidget()
+                wrapper.setStyleSheet(f"background-color: {theme.bg};")
+                w_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
+                wrapper.setLayout(w_layout)
+                w_layout.addWidget(widget)
+                w_layout.addStretch(1)
+
+                scroll = QScrollArea()
+                scroll.setWidgetResizable(True)
+                scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+                scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+                scroll.setWidget(wrapper)
+                body_stack.addWidget(scroll)
+            else:
+                body_stack.addWidget(_build_output_tab(theme, txt, _on_navigate_tab))
         except Exception as exc:
             logger_service.log_exception(
-                "ai_doc_assistant.view", "refresh_tabs_build_failed", exc,
+                "ai_doc_assistant.view", "refresh_tab_body_build_failed", exc,
+                active_tab=STATE.active_tab,
             )
-        logger_service.try_update(tab_bar_holder)
 
     def _refresh_footer() -> None:
+        _clear_widget(footer_holder)
         try:
-            footer_holder.content = _build_footer(
+            widget, refresh_fn = _build_footer(
                 theme, lang, txt, _on_state_change, _on_navigate_tab
             )
+            footer_layout.addWidget(widget)
+            state_box["refresh_footer"] = refresh_fn
         except Exception as exc:
-            logger_service.log_exception(
-                "ai_doc_assistant.view", "refresh_footer_build_failed", exc,
-            )
-        logger_service.try_update(footer_holder)
+            logger_service.log_exception("ai_doc_assistant.view", "refresh_footer_build_failed", exc)
+            state_box["refresh_footer"] = None
 
     def _on_state_change() -> None:
-        _refresh_footer()
+        fn = state_box.get("refresh_footer")
+        if fn is not None:
+            fn()
 
     def _on_tab_change(index: int) -> None:
         if index == STATE.active_tab:
@@ -989,63 +828,15 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
         )
         STATE.active_tab = index
         _refresh_tabs()
-        _refresh_tab_body()
+        _refresh_body()
 
     def _on_navigate_tab(index: int) -> None:
         STATE.active_tab = index
         _refresh_tabs()
-        _refresh_tab_body()
+        _refresh_body()
 
-    tab_bar_holder.content = tab_bar(
-        theme,
-        tabs=[txt["tab_upload"], txt["tab_analyze"], txt["tab_output"]],
-        active_index=STATE.active_tab,
-        on_change=_on_tab_change,
-    )
-    content_holder.content = _build_tab_body(
-        theme, txt, _on_state_change, _on_navigate_tab
-    )
-    footer_holder.content = _build_footer(
-        theme, lang, txt, _on_state_change, _on_navigate_tab
-    )
+    _refresh_tabs()
+    _refresh_body()
+    _refresh_footer()
 
-    def _on_help(e: ft.ControlEvent) -> None:
-        if e.page is None:
-            return
-        open_doc_assistant_how_to(e.page, theme, lang)
-
-    demo_pill: ft.Control | None = None
-    if STATE.demo_mode:
-        demo_pill = ft.Container(
-            content=ft.Text(
-                txt["demo_pill"],
-                color=ft.Colors.WHITE,
-                size=11,
-                weight=ft.FontWeight.W_700,
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=4),
-            bgcolor="#F59E0B",
-            border_radius=10,
-        )
-
-    header_control = header(
-        theme,
-        lang,
-        icon=ft.Icons.AUTO_STORIES_OUTLINED,
-        title=txt["title"],
-        subtitle=txt["subtitle"],
-        on_help_click=_on_help,
-        trailing=demo_pill,
-    )
-
-    return ft.Column(
-        controls=[
-            header_control,
-            tab_bar_holder,
-            content_holder,
-            footer_holder,
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    return container

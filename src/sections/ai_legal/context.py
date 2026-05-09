@@ -4,19 +4,23 @@ Three cards stacked from top to bottom:
 
 1. **Attached documents** - upload button at the top, currently uploaded
    PDF chip below it (or a placeholder + the drop zone if nothing's
-   uploaded yet). Either way the drop zone stays available so users can
-   replace the file by dropping a new one.
+   uploaded yet).
 2. **Document analysis** - the four stats from the screenshot
    (Summary / Risks / Important clauses / Recommendations) followed by
-   a primary button that jumps the user to the Analýza tab.
+   a primary button that jumps the user to the Analysis tab.
 3. **Quick actions** - same chevron-list pattern other sections use.
 """
 
 from __future__ import annotations
 
-from typing import Callable
-
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QSizePolicy,
+    QStackedLayout,
+    QWidget,
+)
 
 from src.components.context_panel import (
     context_panel_shell,
@@ -24,6 +28,19 @@ from src.components.context_panel import (
 )
 from src.components.document_chip import document_chip
 from src.components.section_card import section_card
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    AccentLabel,
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    PrimaryButton,
+    custom_label,
+    hbox,
+    vbox,
+)
 from src.sections.ai_legal.data import context_quick_actions, context_stats
 from src.sections.ai_legal.drop_zone import drop_zone
 from src.sections.ai_legal.refs import REFS
@@ -38,32 +55,34 @@ _STATUS_COLOR = {
     "info": "#3B82F6",
 }
 
+_STATUS_ICON = {
+    "ok": Icons.CHECK_CIRCLE,
+    "warn": Icons.WARNING_AMBER_ROUNDED,
+    "info": Icons.INFO,
+}
 
-def _upload_button(theme: Theme, lang: str) -> ft.Container:
+
+def _upload_button(theme: Theme, lang: str) -> ClickFrame:
     txt = s(lang)
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.FILE_UPLOAD_OUTLINED, color=theme.primary, size=16),
-                ft.Text(
-                    txt["ctx_upload_btn"],
-                    color=theme.primary,
-                    size=13,
-                    weight=ft.FontWeight.W_600,
-                ),
-            ],
-            spacing=8,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=10),
-        bgcolor=ft.Colors.with_opacity(0.10, theme.primary),
-        border=ft.border.all(1, ft.Colors.with_opacity(0.20, theme.primary)),
-        border_radius=10,
-        ink=True,
-        on_click=lambda e: None,
-        alignment=ft.Alignment.CENTER,
+    btn = ClickFrame()
+    btn.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {rgba(theme.primary, 0.10)};
+            border: 1px solid {rgba(theme.primary, 0.20)};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {rgba(theme.primary, 0.18)};
+        }}
+        """
     )
+    layout = hbox(spacing=8, margins=(12, 10, 12, 10))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    btn.setLayout(layout)
+    layout.addWidget(IconLabel(Icons.FILE_UPLOAD_OUTLINED, color=theme.primary, size=16))
+    layout.addWidget(AccentLabel(txt["ctx_upload_btn"], theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    return btn
 
 
 def _analysis_stat_row(
@@ -73,81 +92,39 @@ def _analysis_stat_row(
     title: str,
     desc: str,
     status: str,
-) -> ft.Container:
+) -> QFrame:
     accent = _STATUS_COLOR.get(status, theme.text_muted)
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Container(
-                    content=ft.Icon(icon, color=accent, size=16),
-                    width=28,
-                    height=28,
-                    bgcolor=ft.Colors.with_opacity(0.15, accent),
-                    border_radius=8,
-                    alignment=ft.Alignment.CENTER,
-                ),
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            title,
-                            color=theme.text,
-                            size=13,
-                            weight=ft.FontWeight.W_600,
-                        ),
-                        ft.Text(
-                            desc,
-                            color=theme.text_muted,
-                            size=11,
-                            max_lines=2,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                    ],
-                    spacing=2,
-                    expand=True,
-                    tight=True,
-                ),
-                ft.Icon(
-                    {
-                        "ok": ft.Icons.CHECK_CIRCLE,
-                        "warn": ft.Icons.WARNING_AMBER_ROUNDED,
-                        "info": ft.Icons.INFO,
-                    }.get(status, ft.Icons.CIRCLE),
-                    color=accent,
-                    size=18,
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=4, vertical=6),
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=10, margins=(4, 6, 4, 6))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(layout)
+
+    badge = QFrame()
+    badge.setFixedSize(28, 28)
+    badge.setStyleSheet(
+        f"background-color: {rgba(accent, 0.15)}; border-radius: 8px;"
     )
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(IconLabel(icon, color=accent, size=16), alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(badge)
+
+    info = QFrame()
+    info.setStyleSheet("background: transparent;")
+    info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(info_layout)
+    info_layout.addWidget(BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+    info_layout.addWidget(MutedLabel(desc, theme=theme, size=11))
+    layout.addWidget(info, 1)
+
+    layout.addWidget(IconLabel(_STATUS_ICON.get(status, Icons.INFO), color=accent, size=18))
+    return row
 
 
-def _show_detail_button(
-    theme: Theme,
-    lang: str,
-    *,
-    on_click: Callable[[ft.ControlEvent], None],
-) -> ft.Container:
-    txt = s(lang)
-    return ft.Container(
-        content=ft.Text(
-            txt["ctx_show_detail_btn"],
-            color=ft.Colors.WHITE,
-            size=13,
-            weight=ft.FontWeight.W_600,
-        ),
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
-        bgcolor=theme.primary,
-        border_radius=10,
-        ink=True,
-        on_click=on_click,
-        alignment=ft.Alignment.CENTER,
-    )
-
-
-def _build_panel(theme: Theme, lang: str) -> ft.Container:
-    """Compose the three context-panel cards from the latest STATE."""
+def _build_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
     def _on_open_analysis() -> None:
@@ -162,91 +139,63 @@ def _build_panel(theme: Theme, lang: str) -> ft.Container:
         if REFS.rerender_tab_body is not None:
             REFS.rerender_tab_body()
 
-    docs_children: list[ft.Control] = [_upload_button(theme, lang)]
+    docs_holder = QFrame()
+    docs_holder.setStyleSheet("background: transparent;")
+    docs_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    docs_holder.setLayout(docs_layout)
+
+    docs_layout.addWidget(_upload_button(theme, lang))
     if STATE.uploaded_file:
         f = STATE.uploaded_file
-        docs_children.append(
-            document_chip(
-                theme,
-                lang,
-                name=f["name"],
-                ext=f["type"],
-                size=f["size"],
-            )
-        )
+        docs_layout.addWidget(document_chip(theme, lang, name=f["name"], ext=f["type"], size=f["size"]))
     else:
-        docs_children.append(
-            ft.Text(txt["ctx_no_doc"], color=theme.text_muted, size=12)
-        )
+        docs_layout.addWidget(MutedLabel(txt["ctx_no_doc"], theme=theme, size=12))
 
-    docs_children.append(
-        drop_zone(
-            theme,
-            lang,
-            on_file_resolved=_on_file_resolved,
-            height=104,
-        )
-    )
+    docs_layout.addWidget(drop_zone(theme, lang, on_file_resolved=_on_file_resolved, height=104))
 
-    documents_card = section_card(
-        theme,
-        ft.Icons.DESCRIPTION_OUTLINED,
-        txt["ctx_attached_title"],
-        ft.Column(controls=docs_children, spacing=10, tight=True),
-    )
+    documents_card = section_card(theme, icon=Icons.DESCRIPTION_OUTLINED, title=txt["ctx_attached_title"], body=docs_holder)
 
-    stat_rows: list[ft.Control] = [
-        _analysis_stat_row(
+    analysis_holder = QFrame()
+    analysis_holder.setStyleSheet("background: transparent;")
+    analysis_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    analysis_holder.setLayout(analysis_layout)
+    for stat in context_stats(lang):
+        analysis_layout.addWidget(_analysis_stat_row(
             theme,
             icon=stat["icon"],
             title=stat["title"],
             desc=stat["desc"],
             status=stat["status"],
-        )
-        for stat in context_stats(lang)
-    ]
-    stat_rows.append(
-        _show_detail_button(
-            theme,
-            lang,
-            on_click=lambda e: _on_open_analysis(),
-        )
-    )
+        ))
+    btn = PrimaryButton(txt["ctx_show_detail_btn"], theme=theme)
+    btn.clicked.connect(_on_open_analysis)
+    analysis_layout.addWidget(btn)
 
-    analysis_card = section_card(
-        theme,
-        ft.Icons.INSIGHTS_OUTLINED,
-        txt["ctx_analysis_title"],
-        ft.Column(controls=stat_rows, spacing=8, tight=True),
-    )
+    analysis_card = section_card(theme, icon=Icons.INSIGHTS_OUTLINED, title=txt["ctx_analysis_title"], body=analysis_holder)
 
     quick_actions_card = section_card(
         theme,
-        ft.Icons.BOLT_OUTLINED,
-        txt["ctx_quick_actions"],
-        quick_actions_column(theme, context_quick_actions(lang)),
+        icon=Icons.BOLT_OUTLINED,
+        title=txt["ctx_quick_actions"],
+        body=quick_actions_column(theme, context_quick_actions(lang)),
     )
 
-    return context_panel_shell(
-        theme,
-        documents_card,
-        analysis_card,
-        quick_actions_card,
-    )
+    return context_panel_shell(theme, documents_card, analysis_card, quick_actions_card)
 
 
-def build_context(theme: Theme, lang: str) -> ft.Control:
-    """Section entry-point. Wraps :func:`_build_panel` so it can swap in
-    place when state changes (file upload, etc.) without going through
-    a global ``AIHubApp.build`` rebuild."""
-    holder = ft.Container(content=_build_panel(theme, lang))
+def build_context(theme: Theme, lang: str) -> QWidget:
+    holder = QWidget()
+    holder.setStyleSheet("background: transparent;")
+    stack = QStackedLayout(holder)
+    stack.setContentsMargins(0, 0, 0, 0)
+    stack.addWidget(_build_panel(theme, lang))
 
     def _rerender_context() -> None:
-        holder.content = _build_panel(theme, lang)
-        try:
-            holder.update()
-        except AssertionError:
-            pass
+        while stack.count():
+            w = stack.widget(0)
+            stack.removeWidget(w)
+            w.deleteLater()
+        stack.addWidget(_build_panel(theme, lang))
 
     REFS.rerender_context = _rerender_context
     return holder
