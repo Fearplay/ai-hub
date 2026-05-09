@@ -23,6 +23,7 @@ from src.sections.ai_marketing.data import (
 )
 from src.sections.ai_marketing.phone_mockup import phone_mockup
 from src.sections.ai_marketing.strings import s
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
@@ -375,15 +376,21 @@ def _templates_panel(theme: Theme, lang: str) -> ft.Control:
 def build_view(theme: Theme, lang: str) -> ft.Column:
     txt = s(lang)
 
-    panels = [
-        _chat_panel(theme, lang),
-        _social_panel(theme, lang),
-        _ads_panel(theme, lang),
-        _email_panel(theme, lang),
-        _landing_panel(theme, lang),
-        _strategy_panel(theme, lang),
-        _templates_panel(theme, lang),
-    ]
+    try:
+        panels = [
+            _chat_panel(theme, lang),
+            _social_panel(theme, lang),
+            _ads_panel(theme, lang),
+            _email_panel(theme, lang),
+            _landing_panel(theme, lang),
+            _strategy_panel(theme, lang),
+            _templates_panel(theme, lang),
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_marketing.view", "build_panels_failed", exc,
+        )
+        raise
 
     return ft.Column(
         controls=[

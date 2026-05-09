@@ -40,3 +40,47 @@ class Section:
 
     def label(self, lang: str) -> str:
         return self.labels.get(lang) or self.labels.get("en") or self.key
+
+    def safe_build_view(self, theme: Theme, lang: str) -> ft.Control:
+        """Wrap ``build_view`` so a crash never leaves the slot blank."""
+        from src.services import logger as logger_service
+
+        try:
+            return self.build_view(theme, lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                f"{self.key}.view", "build_view_crashed", exc, lang=lang,
+            )
+            return ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=28),
+                        ft.Text(
+                            f"[{self.key}] build_view failed: {exc}",
+                            color="#EF4444",
+                            size=12,
+                            selectable=True,
+                        ),
+                    ],
+                    spacing=8,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
+                alignment=ft.Alignment.CENTER,
+                expand=True,
+                padding=20,
+            )
+
+    def safe_build_context(self, theme: Theme, lang: str) -> ft.Control:
+        """Wrap ``build_context`` so a crash never leaves the slot blank."""
+        from src.services import logger as logger_service
+
+        if self.build_context is None:
+            return ft.Container()
+        try:
+            return self.build_context(theme, lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                f"{self.key}.context", "build_context_crashed", exc, lang=lang,
+            )
+            return ft.Container()

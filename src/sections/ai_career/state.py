@@ -92,6 +92,9 @@ class CareerState:
     mode: str = MODE_FORM
     active_tab: int = TAB_SETUP
     active_document: str = DOC_TAILORED_CV
+    # Preferred language for generated/refined documents ("en" | "cs").
+    # Empty means "follow current UI language".
+    document_output_lang: str = ""
 
     # Chat-mode transcript. ``chat_attachments`` keys are file names
     # (matching ``ChatMessage.attachment_name``) and values are the
@@ -121,6 +124,15 @@ class CareerState:
     # ``documents`` because it is a JSON dict, not a markdown blob.
     modern_cv_data: Optional[dict] = None
 
+    # Active palette + layout for the Modern CV / Cover Letter render.
+    # The Documents tab's ``Change colour`` / ``Change layout`` cycle
+    # buttons mutate this in place and re-render the preview without
+    # touching ``modern_cv_data``. Persisted in the saved ``summary.json``
+    # so re-opening a run from History reuses the same theme.
+    modern_cv_theme: dict[str, str] = field(
+        default_factory=lambda: {"palette": "teal", "layout": "two_column_sidebar"}
+    )
+
     # Optional clarifying-question step. Empty when the user did not opt in
     # (Settings -> "Ask follow-up questions before each run") or the AI saw
     # no gaps worth asking about. Each followup_qa entry is
@@ -137,6 +149,12 @@ class CareerState:
     last_run_folder: str = ""
     target_role: str = ""
 
+    # Footer "Run analysis" stage. Lives on STATE so the disabled state
+    # survives the full section rebuild that fires after each pipeline
+    # step (scrape, extract, follow-ups, match). One of:
+    # "" (idle) | "demo" | "running" | "followups" | "match".
+    run_stage: str = ""
+
     demo_mode: bool = False
     runs_history: list[dict] = field(default_factory=list)
 
@@ -146,6 +164,7 @@ class CareerState:
         self.job_spec = None
         self.match = None
         self.modern_cv_data = None
+        self.document_output_lang = ""
         self.followup_questions = []
         self.followup_qa = []
         self.documents.clear()
@@ -153,6 +172,7 @@ class CareerState:
         self.activity = "ready"
         self.last_error = ""
         self.last_run_folder = ""
+        self.run_stage = ""
 
     def reset_chat(self) -> None:
         """Wipe the Chat-mode transcript and attachments."""

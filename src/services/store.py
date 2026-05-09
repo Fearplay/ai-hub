@@ -1,18 +1,18 @@
-"""Persistent run history (filesystem JSON).
+"""Persistent run history + run-output folders.
 
 A "run" is one AI Career analysis: candidate JSON, job spec JSON, match
 analysis, and zero or more generated documents (CV, cover letter, …).
 
-Disk layout under ``~/AI Hub/``::
+Disk layout::
+
+    <repo-root>/outputs/
+        qa-engineer-20260508-204231/
+            summary.json
+            Tailored_CV.pdf
+            ...
 
     ~/AI Hub/
         history.json                    # newest-first list of run summaries
-        runs/
-            2026-05-07_21-15_qa-engineer/
-                summary.json
-                CV.md
-                Cover_Letter.md
-                ...
 
 Sections never construct paths by hand - they call helpers in this module
 so we keep one source of truth for filesystem layout.
@@ -36,8 +36,13 @@ def root_dir() -> Path:
     return Path.home() / "AI Hub"
 
 
+def _project_root_dir() -> Path:
+    # store.py -> services -> src -> repo root
+    return Path(__file__).resolve().parents[2]
+
+
 def runs_dir() -> Path:
-    return root_dir() / "runs"
+    return _project_root_dir() / "outputs"
 
 
 def history_path() -> Path:
@@ -62,12 +67,19 @@ def _slug(text: str, max_length: int = 40) -> str:
 
 def new_run_dir(role: str) -> Path:
     ensure_dirs()
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    folder = runs_dir() / f"{stamp}_{_slug(role)}"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    role_slug = _slug(role, max_length=60)
+    if role_slug:
+        folder = runs_dir() / f"{role_slug}-{stamp}"
+    else:
+        folder = runs_dir() / f"run-{stamp}"
     counter = 1
     while folder.exists():
         counter += 1
-        folder = runs_dir() / f"{stamp}_{_slug(role)}-{counter}"
+        if role_slug:
+            folder = runs_dir() / f"{role_slug}-{stamp}-{counter}"
+        else:
+            folder = runs_dir() / f"run-{stamp}-{counter}"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

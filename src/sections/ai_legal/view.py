@@ -25,19 +25,27 @@ from src.sections.ai_legal.tab_chat import build_chat_tab
 from src.sections.ai_legal.tab_drafts import build_drafts_tab
 from src.sections.ai_legal.tab_templates import build_templates_tab
 from src.sections.ai_legal.warning_pill import warning_pill
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
 def _build_tab_body(theme: Theme, lang: str, on_request_rerender) -> ft.Control:
-    if STATE.active_tab == 0:
+    try:
+        if STATE.active_tab == 0:
+            return build_chat_tab(theme, lang)
+        if STATE.active_tab == 1:
+            return build_analysis_tab(theme, lang, on_request_rerender=on_request_rerender)
+        if STATE.active_tab == 2:
+            return build_drafts_tab(theme, lang, on_request_rerender=on_request_rerender)
+        if STATE.active_tab == 3:
+            return build_templates_tab(theme, lang, on_request_rerender=on_request_rerender)
         return build_chat_tab(theme, lang)
-    if STATE.active_tab == 1:
-        return build_analysis_tab(theme, lang, on_request_rerender=on_request_rerender)
-    if STATE.active_tab == 2:
-        return build_drafts_tab(theme, lang, on_request_rerender=on_request_rerender)
-    if STATE.active_tab == 3:
-        return build_templates_tab(theme, lang, on_request_rerender=on_request_rerender)
-    return build_chat_tab(theme, lang)
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_legal.view", "build_tab_body_failed", exc,
+            active_tab=STATE.active_tab,
+        )
+        return ft.Container()
 
 
 def build_view(theme: Theme, lang: str) -> ft.Column:
@@ -47,28 +55,36 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     tab_bar_holder = ft.Container()
 
     def _rerender_tab_body() -> None:
-        content_holder.content = _build_tab_body(theme, lang, _rerender_tab_body)
         try:
-            content_holder.update()
-        except AssertionError:
-            pass
+            content_holder.content = _build_tab_body(theme, lang, _rerender_tab_body)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_legal.view", "rerender_tab_body_failed", exc,
+            )
+        logger_service.try_update(content_holder)
 
     def _rerender_main() -> None:
-        tab_bar_holder.content = tab_bar(
-            theme,
-            tabs=tabs(lang),
-            active_index=STATE.active_tab,
-            on_change=_on_tab_change,
-        )
         try:
-            tab_bar_holder.update()
-        except AssertionError:
-            pass
+            tab_bar_holder.content = tab_bar(
+                theme,
+                tabs=tabs(lang),
+                active_index=STATE.active_tab,
+                on_change=_on_tab_change,
+            )
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_legal.view", "rerender_main_tab_bar_failed", exc,
+            )
+        logger_service.try_update(tab_bar_holder)
         _rerender_tab_body()
 
     def _on_tab_change(index: int) -> None:
         if index == STATE.active_tab:
             return
+        logger_service.log_event(
+            "INFO", "ai_legal.view", "tab_change",
+            prev_tab=STATE.active_tab, new_tab=index,
+        )
         STATE.active_tab = index
         _rerender_main()
 

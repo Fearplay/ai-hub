@@ -114,11 +114,48 @@ def set_demo_default(value: bool) -> bool:
 
 
 def get_ask_followups() -> bool:
-    return bool(get("ask_followups", False))
+    # Default ON: the clarifying-questions step typically lifts the
+    # match-analysis quality enough to be worth the extra LLM call. Users
+    # who explicitly toggled it off keep their saved choice (the JSON
+    # value wins over the default below).
+    return bool(get("ask_followups", True))
 
 
 def set_ask_followups(value: bool) -> bool:
     return set_value("ask_followups", bool(value))
+
+
+# Theme + UI-language preferences. These survive app restarts so the
+# user doesn't have to flip the toggles every launch. Stored in the
+# same JSON as the provider / model settings.
+_THEME_MODES = ("dark", "light")
+_LANG_CODES = ("en", "cs")
+
+
+def get_theme_mode() -> str:
+    value = get("theme_mode", "dark")
+    if value not in _THEME_MODES:
+        return "dark"
+    return value
+
+
+def set_theme_mode(value: str) -> bool:
+    if value not in _THEME_MODES:
+        return False
+    return set_value("theme_mode", value)
+
+
+def get_lang() -> str:
+    value = get("lang", "en")
+    if value not in _LANG_CODES:
+        return "en"
+    return value
+
+
+def set_lang(value: str) -> bool:
+    if value not in _LANG_CODES:
+        return False
+    return set_value("lang", value)
 
 
 def settings_path_str() -> str:

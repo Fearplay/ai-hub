@@ -19,6 +19,7 @@ from src.components.tabbed_panel import tabbed_panel
 from src.i18n import t
 from src.sections.ai_linkedin.data import SECTION_ICON, assistant_actions, tabs
 from src.sections.ai_linkedin.strings import s
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
@@ -247,15 +248,21 @@ def _templates_panel(theme: Theme, lang: str) -> ft.Control:
 def build_view(theme: Theme, lang: str) -> ft.Column:
     txt = s(lang)
 
-    panels = [
-        _chat_panel(theme, lang),
-        _post_panel(theme, lang),
-        _carousel_panel(theme, lang),
-        _article_panel(theme, lang),
-        _headlines_panel(theme, lang),
-        _comments_panel(theme, lang),
-        _templates_panel(theme, lang),
-    ]
+    try:
+        panels = [
+            _chat_panel(theme, lang),
+            _post_panel(theme, lang),
+            _carousel_panel(theme, lang),
+            _article_panel(theme, lang),
+            _headlines_panel(theme, lang),
+            _comments_panel(theme, lang),
+            _templates_panel(theme, lang),
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_linkedin.view", "build_panels_failed", exc,
+        )
+        raise
 
     return ft.Column(
         controls=[

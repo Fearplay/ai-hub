@@ -555,18 +555,104 @@ MATCH_ANALYSIS_SCHEMA: dict = {
             "type": "array",
             "minItems": 5,
             "maxItems": 12,
-            "items": {"type": "string"},
-        },
-        "skill_gap_plan": {
-            "type": "array",
+            "description": (
+                "Likely questions an interviewer would ask, with the rationale "
+                "they would have for asking and a suggested STAR-style answer "
+                "the candidate can adapt."
+            ),
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["skill", "action", "timeline_weeks"],
+                "required": ["question", "why_asked", "suggested_answer"],
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The interview question itself.",
+                    },
+                    "why_asked": {
+                        "type": "string",
+                        "description": (
+                            "1-2 sentences explaining what the interviewer is "
+                            "trying to learn by asking this. Tied to the job "
+                            "spec, not generic best-practice."
+                        ),
+                    },
+                    "suggested_answer": {
+                        "type": "string",
+                        "description": (
+                            "A 60-120 word draft answer in STAR shape using "
+                            "evidence from the candidate JSON; avoid invented "
+                            "facts."
+                        ),
+                    },
+                },
+            },
+        },
+        "skill_gap_plan": {
+            "type": "array",
+            "description": (
+                "Concrete plan to close gaps the recruiter / interviewer is "
+                "likely to flag, with criticality, rationale, learning path, "
+                "and a portfolio-able project the candidate can build."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "skill",
+                    "action",
+                    "timeline_weeks",
+                    "criticality",
+                    "why_it_matters",
+                    "learning_path",
+                    "suggested_project",
+                ],
                 "properties": {
                     "skill": {"type": "string"},
-                    "action": {"type": "string"},
-                    "timeline_weeks": {"type": "integer", "minimum": 1, "maximum": 52},
+                    "action": {
+                        "type": "string",
+                        "description": "One-line summary of the action.",
+                    },
+                    "timeline_weeks": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 52,
+                    },
+                    "criticality": {
+                        "type": "string",
+                        "enum": ["critical", "important", "nice_to_have"],
+                        "description": (
+                            "How blocking the gap is. ``critical`` = the role "
+                            "explicitly requires it; ``important`` = strongly "
+                            "preferred; ``nice_to_have`` = differentiator."
+                        ),
+                    },
+                    "why_it_matters": {
+                        "type": "string",
+                        "description": (
+                            "1-2 sentences explaining the role-specific "
+                            "consequence of leaving this gap unaddressed."
+                        ),
+                    },
+                    "learning_path": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "items": {"type": "string"},
+                        "description": (
+                            "Ordered concrete steps (course / book / repo / "
+                            "exercise) the candidate should take. Each step "
+                            "is one short imperative line."
+                        ),
+                    },
+                    "suggested_project": {
+                        "type": "string",
+                        "description": (
+                            "A small, portfolio-able project the candidate "
+                            "can build to prove the skill - 1-2 sentences "
+                            "describing scope and visible outcome."
+                        ),
+                    },
                 },
             },
         },

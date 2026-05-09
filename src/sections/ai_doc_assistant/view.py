@@ -21,6 +21,7 @@ import flet as ft
 
 from src.components.header import header
 from src.components.tab_bar import tab_bar
+from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
 from src.sections.ai_career.upload import upload_zone
@@ -234,10 +235,10 @@ def _build_upload_tab(
                 )
             ]
         holder.content = ft.Column(controls=children, spacing=8, tight=True)
-        try:
-            holder.update()
-        except Exception:
-            pass
+        if not logger_service.try_update(holder):
+            logger_service.log_event(
+                "ERROR", "ai_doc_assistant.view", "upload_render_update_failed",
+            )
 
     def _clear_doc() -> None:
         STATE.document = None
@@ -370,10 +371,10 @@ def _build_analyze_tab(
         actions_holder.content = ft.Column(
             controls=action_cards, spacing=8, tight=True
         )
-        try:
-            actions_holder.update()
-        except Exception:
-            pass
+        if not logger_service.try_update(actions_holder):
+            logger_service.log_event(
+                "ERROR", "ai_doc_assistant.view", "actions_render_update_failed",
+            )
 
     def _render_inputs() -> None:
         if STATE.action == ACTION_QA:
@@ -459,10 +460,10 @@ def _build_analyze_tab(
             )
         else:
             inputs_holder.content = ft.Container()
-        try:
-            inputs_holder.update()
-        except Exception:
-            pass
+        if not logger_service.try_update(inputs_holder):
+            logger_service.log_event(
+                "ERROR", "ai_doc_assistant.view", "inputs_render_update_failed",
+            )
 
     def _set_action(key: str) -> None:
         STATE.action = key
@@ -811,10 +812,7 @@ def _build_footer(
     def _set_status(msg: str, *, error: bool = False) -> None:
         run_status.value = msg
         run_status.color = "#EF4444" if error else theme.text_muted
-        try:
-            run_status.update()
-        except Exception:
-            pass
+        logger_service.try_update(run_status)
 
     def _render_run_button() -> None:
         running = bool(run_state["stage"])
@@ -828,10 +826,7 @@ def _build_footer(
             enabled=enabled,
             on_click=lambda e: _on_run(),
         )
-        try:
-            run_button_holder.update()
-        except Exception:
-            pass
+        logger_service.try_update(run_button_holder)
 
     def _on_demo() -> None:
         STATE.demo_mode = True
@@ -864,6 +859,10 @@ def _build_footer(
             try:
                 result = pipeline.run_action(output_lang=lang)
             except Exception as exc:
+                logger_service.log_exception(
+                    "ai_doc_assistant.view", "run_action_worker_failed", exc,
+                    action=STATE.action,
+                )
                 STATE.last_error = str(exc)
                 run_state["stage"] = ""
                 _set_status(str(exc), error=True)
@@ -939,34 +938,41 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     footer_holder = ft.Container()
 
     def _refresh_tab_body() -> None:
-        content_holder.content = _build_tab_body(
-            theme, txt, _on_state_change, _on_navigate_tab
-        )
         try:
-            content_holder.update()
-        except Exception:
-            pass
+            content_holder.content = _build_tab_body(
+                theme, txt, _on_state_change, _on_navigate_tab
+            )
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "refresh_tab_body_build_failed", exc,
+                active_tab=STATE.active_tab,
+            )
+        logger_service.try_update(content_holder)
 
     def _refresh_tabs() -> None:
-        tab_bar_holder.content = tab_bar(
-            theme,
-            tabs=[txt["tab_upload"], txt["tab_analyze"], txt["tab_output"]],
-            active_index=STATE.active_tab,
-            on_change=_on_tab_change,
-        )
         try:
-            tab_bar_holder.update()
-        except Exception:
-            pass
+            tab_bar_holder.content = tab_bar(
+                theme,
+                tabs=[txt["tab_upload"], txt["tab_analyze"], txt["tab_output"]],
+                active_index=STATE.active_tab,
+                on_change=_on_tab_change,
+            )
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "refresh_tabs_build_failed", exc,
+            )
+        logger_service.try_update(tab_bar_holder)
 
     def _refresh_footer() -> None:
-        footer_holder.content = _build_footer(
-            theme, lang, txt, _on_state_change, _on_navigate_tab
-        )
         try:
-            footer_holder.update()
-        except Exception:
-            pass
+            footer_holder.content = _build_footer(
+                theme, lang, txt, _on_state_change, _on_navigate_tab
+            )
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "refresh_footer_build_failed", exc,
+            )
+        logger_service.try_update(footer_holder)
 
     def _on_state_change() -> None:
         _refresh_footer()
@@ -974,6 +980,10 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     def _on_tab_change(index: int) -> None:
         if index == STATE.active_tab:
             return
+        logger_service.log_event(
+            "INFO", "ai_doc_assistant.view", "tab_change",
+            prev_tab=STATE.active_tab, new_tab=index,
+        )
         STATE.active_tab = index
         _refresh_tabs()
         _refresh_tab_body()

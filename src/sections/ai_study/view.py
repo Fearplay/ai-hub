@@ -23,6 +23,7 @@ from src.sections.ai_study.data import (
     tabs,
 )
 from src.sections.ai_study.strings import s
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
@@ -495,14 +496,20 @@ def _sources_panel(theme: Theme, lang: str) -> ft.Control:
 def build_view(theme: Theme, lang: str) -> ft.Column:
     txt = s(lang)
 
-    panels = [
-        _chat_panel(theme, lang),
-        _summary_panel(theme, lang),
-        _explain_panel(theme, lang),
-        _tasks_panel(theme, lang),
-        _quizzes_panel(theme, lang),
-        _sources_panel(theme, lang),
-    ]
+    try:
+        panels = [
+            _chat_panel(theme, lang),
+            _summary_panel(theme, lang),
+            _explain_panel(theme, lang),
+            _tasks_panel(theme, lang),
+            _quizzes_panel(theme, lang),
+            _sources_panel(theme, lang),
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_study.view", "build_panels_failed", exc,
+        )
+        raise
 
     return ft.Column(
         controls=[

@@ -24,7 +24,8 @@ import flet as ft
 
 from src.components.tab_bar import tab_bar
 from src.services import exporter, store
-from src.sections.ai_career import modern_cv_render, pipeline
+from src.services import logger as logger_service
+from src.sections.ai_career import modern_cv_render, pipeline, themes
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
@@ -40,6 +41,13 @@ from src.sections.ai_career.state import (
 )
 from src.sections.ai_career.strings import s
 from src.theme import Theme
+
+
+# Document kinds whose preview / PDF should expose the palette cycle button.
+_THEME_PALETTE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
+
+# Document kinds whose preview / PDF should expose the layout cycle button.
+_THEME_LAYOUT_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV})
 
 
 _DOC_TAB_LABEL_KEYS = {
@@ -84,6 +92,13 @@ _EXPORT_PLAN: dict[str, tuple[str, ...]] = {
 _MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
+def _resolved_output_lang(ui_lang: str) -> str:
+    selected = (STATE.document_output_lang or "").strip().lower()
+    if selected in ("en", "cs"):
+        return selected
+    return "en" if ui_lang == "en" else "cs"
+
+
 def _visible_doc_kinds() -> list[str]:
     has_github = STATE.candidate is not None and STATE.candidate.get("github_present")
     return [k for k in DOC_KINDS if k != DOC_EVIDENCE or has_github]
@@ -117,6 +132,142 @@ def _flat_button(
     )
 
 
+def _palette_display_name(slug: str, lang: str) -> str:
+    """Localised display name for the active palette."""
+    palette = themes.PALETTES.get(slug)
+    if palette is None:
+        palette = themes.PALETTES[themes.DEFAULT_PALETTE]
+    code = (lang or "en").strip().lower()
+    if code == "cs":
+        return palette.display_name_cs
+    return palette.display_name_en
+
+
+def _layout_display_name(slug: str, txt: dict) -> str:
+    """Localised display name for the active layout."""
+    key = f"doc_layout_{slug}"
+    return txt.get(key) or slug.replace("_", " ").title()
+
+
+def _build_theme_controls(
+    theme: Theme,
+    lang: str,
+    txt: dict,
+    kind: str,
+    *,
+    on_changed: Callable[[], None],
+) -> ft.Control | None:
+    """Return a small chip-styled strip with palette / layout cycle buttons.
+
+    Only Modern CV exposes both axes; the cover letter strip just lets
+    the user cycle the palette so the banner colour matches the CV.
+    Returns ``None`` for any other doc kind so the panel doesn't get a
+    stray empty row.
+    """
+    if kind not in _THEME_PALETTE_DOCS:
+        return None
+
+    state_theme = STATE.modern_cv_theme or {}
+    palette_slug = (state_theme.get("palette") or themes.DEFAULT_PALETTE).strip().lower()
+    layout_slug = (state_theme.get("layout") or themes.DEFAULT_LAYOUT).strip().lower()
+    if palette_slug not in themes.PALETTES:
+        palette_slug = themes.DEFAULT_PALETTE
+    if layout_slug not in themes.LAYOUTS:
+        layout_slug = themes.DEFAULT_LAYOUT
+
+    palette_color = themes.PALETTES[palette_slug].accent
+
+    def _cycle_palette(_e: ft.ControlEvent) -> None:
+        current = (STATE.modern_cv_theme or {}).get("palette") or themes.DEFAULT_PALETTE
+        next_slug = themes.pick_next_palette(current)
+        STATE.modern_cv_theme = {
+            **(STATE.modern_cv_theme or {}),
+            "palette": next_slug,
+        }
+        on_changed()
+
+    def _cycle_layout(_e: ft.ControlEvent) -> None:
+        current = (STATE.modern_cv_theme or {}).get("layout") or themes.DEFAULT_LAYOUT
+        next_slug = themes.pick_next_layout(current)
+        STATE.modern_cv_theme = {
+            **(STATE.modern_cv_theme or {}),
+            "layout": next_slug,
+        }
+        on_changed()
+
+    controls: list[ft.Control] = [
+        ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        width=12,
+                        height=12,
+                        bgcolor=palette_color,
+                        border_radius=6,
+                        border=ft.border.all(1, ft.Colors.with_opacity(0.20, "#000000")),
+                    ),
+                    ft.Text(
+                        txt["doc_theme_color_label"].format(
+                            name=_palette_display_name(palette_slug, lang),
+                        ),
+                        color=theme.text_muted,
+                        size=11,
+                    ),
+                ],
+                spacing=6,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
+            ),
+            padding=ft.padding.symmetric(horizontal=10, vertical=6),
+            bgcolor=theme.surface_2,
+            border=ft.border.all(1, theme.border),
+            border_radius=10,
+        ),
+        _flat_button(
+            theme,
+            txt["doc_change_color_btn"],
+            icon=ft.Icons.PALETTE_OUTLINED,
+            on_click=_cycle_palette,
+        ),
+    ]
+
+    if kind in _THEME_LAYOUT_DOCS:
+        controls.append(
+            ft.Container(
+                content=ft.Text(
+                    txt["doc_theme_layout_label"].format(
+                        name=_layout_display_name(layout_slug, txt),
+                    ),
+                    color=theme.text_muted,
+                    size=11,
+                ),
+                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                bgcolor=theme.surface_2,
+                border=ft.border.all(1, theme.border),
+                border_radius=10,
+            )
+        )
+        controls.append(
+            _flat_button(
+                theme,
+                txt["doc_change_layout_btn"],
+                icon=ft.Icons.VIEW_QUILT_OUTLINED,
+                on_click=_cycle_layout,
+            )
+        )
+
+    return ft.Container(
+        content=ft.Row(
+            controls=controls,
+            spacing=8,
+            run_spacing=8,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.padding.only(bottom=10),
+    )
+
+
 def _ensure_run_folder(role: str) -> str:
     if STATE.last_run_folder and os.path.isdir(STATE.last_run_folder):
         return STATE.last_run_folder
@@ -133,8 +284,10 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["open", path])
         else:
             subprocess.Popen(["xdg-open", path])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.tab_documents", "open_in_explorer_failed", exc, path=path
+        )
 
 
 def _document_body(theme: Theme, txt: dict, kind: str) -> ft.Control:
@@ -307,7 +460,18 @@ def _build_active_doc_panel(
     on_request_rerender: Callable[[], None],
     show_status: Callable[[str, bool], None],
 ) -> ft.Control:
-    body_holder = ft.Container(content=_document_body(theme, txt, kind), expand=True)
+    body_holder = ft.Container(content=_document_body(theme, txt, kind))
+    body_scroll = ft.ListView(
+        controls=[body_holder],
+        expand=True,
+        spacing=0,
+        padding=0,
+    )
+    theme_controls_holder = ft.Container(
+        content=_build_theme_controls(
+            theme, lang, txt, kind, on_changed=lambda: _refresh_body_and_controls()
+        )
+    )
 
     def _refresh_body() -> None:
         body_holder.content = _document_body(theme, txt, kind)
@@ -315,6 +479,23 @@ def _build_active_doc_panel(
             body_holder.update()
         except Exception:
             pass
+
+    def _refresh_theme_controls() -> None:
+        theme_controls_holder.content = _build_theme_controls(
+            theme, lang, txt, kind, on_changed=lambda: _refresh_body_and_controls()
+        )
+        try:
+            theme_controls_holder.update()
+        except Exception:
+            pass
+
+    def _refresh_body_and_controls() -> None:
+        # The theme cycle buttons mutate ``STATE.modern_cv_theme`` and
+        # then call this hook so we redraw the paper preview AND the
+        # chip strip (so the chip's colour swatch + label match the
+        # newly-active palette).
+        _refresh_body()
+        _refresh_theme_controls()
 
     if kind == DOC_MODERN_CV:
         # Modern CV is keyed off ``STATE.modern_cv_data`` (structured
@@ -367,10 +548,12 @@ def _build_active_doc_panel(
         refine_running["value"] = True
         show_status(txt["doc_running"], False)
         _render_buttons()
+        doc_lang = _resolved_output_lang(lang)
+        STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.generate_document(kind, output_lang=lang)
+                result = pipeline.generate_document(kind, output_lang=doc_lang)
                 if result.ok:
                     show_status("", False)
                     nonlocal has_text
@@ -395,10 +578,12 @@ def _build_active_doc_panel(
         refine_running["value"] = True
         show_status(txt["refine_running"], False)
         _render_buttons()
+        doc_lang = _resolved_output_lang(lang)
+        STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.refine_document(kind, output_lang=lang, problems=problems)
+                result = pipeline.refine_document(kind, output_lang=doc_lang, problems=problems)
                 if result.ok:
                     show_status("", False)
                     _refresh_body()
@@ -414,7 +599,8 @@ def _build_active_doc_panel(
 
     return ft.Column(
         controls=[
-            ft.Container(content=body_holder, expand=True),
+            theme_controls_holder,
+            ft.Container(content=body_scroll, expand=True),
             ft.Container(
                 content=ft.Column(
                     controls=[
@@ -509,7 +695,16 @@ def build_documents_tab(
             pass
 
     def _on_doc_tab(idx: int) -> None:
-        STATE.active_document = visible_kinds[idx]
+        new_doc = visible_kinds[idx]
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_documents",
+            "doc_tab_change",
+            index=idx,
+            prev_doc=STATE.active_document,
+            new_doc=new_doc,
+        )
+        STATE.active_document = new_doc
         _refresh_tab_bar()
         _refresh_body()
 
@@ -518,6 +713,13 @@ def build_documents_tab(
 
     def _export(kind_action: str) -> None:
         kind = STATE.active_document
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_documents",
+            "export_start",
+            kind=kind,
+            action=kind_action,
+        )
         # Modern CV is structured JSON, the others are markdown bodies.
         if kind == DOC_MODERN_CV:
             has_payload = bool(STATE.modern_cv_data)
@@ -527,6 +729,13 @@ def build_documents_tab(
             has_payload = bool(text)
 
         if not has_payload and kind_action != "all":
+            logger_service.log_event(
+                "WARNING",
+                "ai_career.tab_documents",
+                "export_no_payload",
+                kind=kind,
+                action=kind_action,
+            )
             _show_status(txt["doc_empty_title"], True)
             return
         role = ""
@@ -592,6 +801,59 @@ def build_documents_tab(
                     _show_status(txt["export_ok_template"].format(path=str(path)), False)
                     return
 
+                # Cover letter exports go through the themed Playwright
+                # renderer so the saved PDF carries the user's chosen
+                # accent colour. Markdown / DOCX still flow through the
+                # legacy exporter because that is what those formats
+                # are good for (plain text + Word).
+                if kind == DOC_COVER_LETTER and kind_action in ("pdf", "html"):
+                    state_theme = STATE.modern_cv_theme or {}
+                    active_theme = themes.resolve_theme(
+                        state_theme.get("palette"), state_theme.get("layout")
+                    )
+                    cover_lang = _resolved_output_lang(lang)
+                    name = ""
+                    contact: dict[str, str] = {}
+                    if isinstance(STATE.modern_cv_data, dict):
+                        name = str(STATE.modern_cv_data.get("full_name") or "")
+                        cd = STATE.modern_cv_data.get("contact") or {}
+                        if isinstance(cd, dict):
+                            contact = {
+                                "location": str(cd.get("location") or ""),
+                                "email": str(cd.get("email") or ""),
+                                "phone": str(cd.get("phone") or ""),
+                            }
+                    if not name and isinstance(STATE.candidate, dict):
+                        name = str(STATE.candidate.get("full_name") or "")
+                    cover_html = themes.render_cover_letter_html(
+                        text,
+                        candidate_name=name,
+                        candidate_contact=contact,
+                        theme=active_theme,
+                        output_lang=cover_lang,
+                    )
+                    if kind_action == "html":
+                        target_html = folder_path / f"{basename}.html"
+                        target_html.parent.mkdir(parents=True, exist_ok=True)
+                        target_html.write_text(cover_html, encoding="utf-8")
+                        path = target_html
+                    else:
+                        from src.services import html_pdf
+
+                        target_pdf = folder_path / f"{basename}.pdf"
+                        try:
+                            html_pdf.render_html_to_pdf(cover_html, target_pdf)
+                            path = target_pdf
+                        except html_pdf.PdfRendererUnavailableError:
+                            path = exporter.export_pdf(
+                                text,
+                                target_pdf,
+                                title=title,
+                                style=style,
+                            )
+                    _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                    return
+
                 if kind_action == "md":
                     path = exporter.export_markdown(text, folder_path / f"{basename}.md")
                 elif kind_action == "html":
@@ -606,8 +868,23 @@ def build_documents_tab(
                     )
                 else:
                     return
+                logger_service.log_event(
+                    "INFO",
+                    "ai_career.tab_documents",
+                    "export_done",
+                    kind=kind,
+                    action=kind_action,
+                    path=str(path),
+                )
                 _show_status(txt["export_ok_template"].format(path=str(path)), False)
             except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_documents",
+                    "export_failed",
+                    exc,
+                    kind=kind,
+                    action=kind_action,
+                )
                 _show_status(txt["export_failed_template"].format(error=str(exc)), True)
 
         threading.Thread(target=_worker, daemon=True).start()

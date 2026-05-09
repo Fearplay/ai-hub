@@ -13,6 +13,7 @@ from typing import Sequence
 import flet as ft
 
 from src.components.tab_bar import tab_bar
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
@@ -31,8 +32,19 @@ def tabbed_panel(
     holder = ft.Container(content=panels[initial_index], expand=True)
 
     def on_change(idx: int) -> None:
-        holder.content = panels[idx]
-        holder.update()
+        try:
+            holder.content = panels[idx]
+        except Exception as exc:
+            logger_service.log_exception(
+                "tabbed_panel", "on_change_set_content_failed", exc,
+                idx=idx, total_panels=len(panels),
+            )
+            return
+        if not logger_service.try_update(holder):
+            logger_service.log_event(
+                "ERROR", "tabbed_panel", "on_change_update_failed",
+                idx=idx,
+            )
 
     bar = tab_bar(
         theme,

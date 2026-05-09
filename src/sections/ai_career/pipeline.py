@@ -24,9 +24,10 @@ from typing import Callable, Optional
 from pathlib import Path
 
 from src.services import ai_provider, exporter, github_client, job_scraper, store
+from src.services import logger as logger_service
 from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
-from src.sections.ai_career import modern_cv_render, prompts, schema
+from src.sections.ai_career import modern_cv_render, prompts, schema, themes
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
@@ -61,7 +62,10 @@ def _request_full_refresh() -> None:
     """
     try:
         from src.app import request_section_refresh
-    except Exception:
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "request_full_refresh_import", exc
+        )
         return
     request_section_refresh()
 
@@ -75,6 +79,9 @@ def _set_error(message: str) -> PipelineResult:
     STATE.activity = "error"
     STATE.last_error = message
     safe(REFS.rerender_context)
+    logger_service.log_event(
+        "ERROR", "ai_career.pipeline", "set_error", message=message
+    )
     return PipelineResult(ok=False, error=message)
 
 
@@ -274,12 +281,20 @@ def analyze_match(*, output_lang: str) -> PipelineResult:
         followup_qa=STATE.followup_qa,
     )
     try:
+        # The match schema carries the categories table, ATS bag,
+        # 5-12 interview questions (each with rationale + STAR answer)
+        # and the skill-gap plan (with learning path + portfolio
+        # project per gap). At 3500 output tokens the LLM regularly
+        # truncates the JSON mid-string and the parser raises
+        # "Provider did not return a MatchAnalysis JSON". 8000 leaves
+        # comfortable headroom on a typical run while still capping
+        # the worst-case spend.
         result = ai_provider.run(
             system=prompts.MATCH_ANALYSIS_SYSTEM,
             user=user,
             schema=schema.MATCH_ANALYSIS_SCHEMA,
             schema_name="match_analysis",
-            max_output_tokens=3500,
+            max_output_tokens=8000,
         )
     except ai_provider.ProviderError as exc:
         return _set_error(str(exc))
@@ -531,6 +546,14 @@ def build_evidence_document(*, output_lang: str) -> str:
 
 
 def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "generate_document_start",
+        kind=kind,
+        output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
+    )
     if kind == DOC_EVIDENCE:
         text = build_evidence_document(output_lang=output_lang)
         if not text:
@@ -539,6 +562,13 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
         STATE.activity = "ready"
         safe(REFS.rerender_context)
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "generate_document_done",
+            kind=kind,
+            chars=len(text),
+        )
         return PipelineResult(ok=True)
 
     if kind == DOC_MODERN_CV:
@@ -551,6 +581,12 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
     if STATE.demo_mode:
         STATE.documents[kind] = _demo_document(kind, output_lang)
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "generate_document_demo_done",
+            kind=kind,
+        )
         return PipelineResult(ok=True)
 
     if not (STATE.candidate and STATE.job_spec and STATE.match):
@@ -573,6 +609,12 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
             temperature=0.3,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline",
+            "generate_document_provider_error",
+            exc,
+            kind=kind,
+        )
         return _set_error(str(exc))
     text = (result.text or "").strip()
     if not text:
@@ -581,6 +623,13 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "generate_document_done",
+        kind=kind,
+        chars=len(text),
+    )
     return PipelineResult(ok=True)
 
 
@@ -593,6 +642,15 @@ def refine_document(
     output_lang: str,
     problems: list[str],
 ) -> PipelineResult:
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "refine_document_start",
+        kind=kind,
+        output_lang=output_lang,
+        problems=len([p for p in problems if p.strip()]),
+        demo_mode=STATE.demo_mode,
+    )
     if kind == DOC_MODERN_CV:
         # Modern CV: regenerate the JSON payload from scratch with the
         # candidate's notes applied, then re-render. There is no
@@ -604,11 +662,22 @@ def refine_document(
     current = STATE.documents.get(kind, "")
     if not current:
         return _set_error("Generate the document before refining it.")
+    cleaned_problems = [p for p in problems if p.strip()]
 
     if STATE.demo_mode:
-        appended = "\n\n_(Demo refinement: would address the listed problems.)_"
-        STATE.documents[kind] = current + appended
+        refreshed = _demo_document(kind, output_lang)
+        if cleaned_problems:
+            heading = "Applied refinement notes" if output_lang == "en" else "Zapracované poznámky"
+            bullets = "\n".join(f"- {p}" for p in cleaned_problems)
+            refreshed = f"{refreshed}\n\n## {heading}\n{bullets}\n"
+        STATE.documents[kind] = refreshed
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "refine_document_demo_done",
+            kind=kind,
+        )
         return PipelineResult(ok=True)
 
     _set_activity("generating")
@@ -616,7 +685,7 @@ def refine_document(
         output_lang=output_lang,
         document_kind=kind,
         document_text=current,
-        problems=[p for p in problems if p.strip()],
+        problems=cleaned_problems,
     )
     try:
         result = ai_provider.run(
@@ -627,6 +696,12 @@ def refine_document(
             temperature=0.3,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline",
+            "refine_document_provider_error",
+            exc,
+            kind=kind,
+        )
         return _set_error(str(exc))
     text = (result.text or "").strip()
     if not text:
@@ -635,6 +710,13 @@ def refine_document(
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "refine_document_done",
+        kind=kind,
+        chars=len(text),
+    )
     return PipelineResult(ok=True)
 
 
@@ -660,11 +742,28 @@ def send_chat_message(
     if not user_text:
         return "", "Empty message."
 
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "send_chat_start",
+        output_lang=output_lang,
+        chars=len(user_text),
+        demo_mode=STATE.demo_mode,
+        history=len(STATE.chat_messages),
+        attachments=len(STATE.chat_attachments),
+    )
+
     if STATE.demo_mode:
         # Echo a short canned reply so the demo flow is fully offline.
         # We intentionally do NOT touch the cost tracker here - demo
         # mode promises 0 spend.
         canned = _demo_chat_reply(user_text, output_lang)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "send_chat_demo_done",
+            chars=len(canned),
+        )
         return canned, ""
 
     history = [
@@ -686,10 +785,22 @@ def send_chat_message(
             temperature=0.4,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "send_chat_provider_error", exc
+        )
         return "", str(exc)
     text = (result.text or "").strip()
     if not text:
+        logger_service.log_event(
+            "ERROR", "ai_career.pipeline", "send_chat_empty_response"
+        )
         return "", "Provider returned an empty response."
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "send_chat_done",
+        reply_chars=len(text),
+    )
     return text, ""
 
 
@@ -808,6 +919,82 @@ _EXPORT_PLAN: dict[str, tuple[str, ...]] = {
 _MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
+def _candidate_contact_for_cover_letter() -> tuple[str, dict]:
+    """Pull the candidate name + contact bag for the Cover Letter banner.
+
+    Prefers the Modern CV payload (canonical, hand-curated by the LLM
+    from the candidate JSON) then falls back to the candidate JSON
+    directly when the Modern CV step has not been run.
+    """
+    name = ""
+    contact: dict[str, str] = {}
+    if isinstance(STATE.modern_cv_data, dict):
+        name = str(STATE.modern_cv_data.get("full_name") or "")
+        cd = STATE.modern_cv_data.get("contact") or {}
+        if isinstance(cd, dict):
+            contact = {
+                "location": str(cd.get("location") or ""),
+                "email": str(cd.get("email") or ""),
+                "phone": str(cd.get("phone") or ""),
+            }
+    if not name and isinstance(STATE.candidate, dict):
+        name = str(STATE.candidate.get("full_name") or "")
+        if not contact:
+            cd = STATE.candidate.get("contact") or {}
+            if isinstance(cd, dict):
+                contact = {
+                    "location": str(cd.get("location") or ""),
+                    "email": str(cd.get("email") or ""),
+                    "phone": str(cd.get("phone") or ""),
+                }
+    return name, contact
+
+
+def _export_cover_letter(
+    body_text: str,
+    target: Path,
+    *,
+    theme: themes.ResumeTheme,
+    output_lang: str,
+) -> Path:
+    """Write the Cover Letter HTML + PDF using the active palette.
+
+    Imports the html_pdf service lazily so the rest of the pipeline
+    keeps working when Playwright is missing (in that case the caller
+    catches the exception and falls back to the legacy reportlab
+    renderer).
+    """
+    from src.services import html_pdf
+
+    name, contact = _candidate_contact_for_cover_letter()
+    cover_html = themes.render_cover_letter_html(
+        body_text,
+        candidate_name=name,
+        candidate_contact=contact,
+        theme=theme,
+        output_lang=output_lang,
+    )
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    html_target = target.with_suffix(".html")
+    try:
+        html_target.write_text(cover_html, encoding="utf-8")
+    except Exception:
+        pass
+
+    try:
+        html_pdf.render_html_to_pdf(cover_html, target)
+    except html_pdf.PdfRendererUnavailableError as exc:
+        raise RuntimeError(
+            "Playwright PDF export is unavailable on this machine. "
+            "Install Google Chrome / Microsoft Edge or run "
+            "`playwright install chromium` to enable PDF export. "
+            f"({exc})"
+        ) from exc
+    return target
+
+
 @dataclass
 class SaveResult:
     ok: bool
@@ -822,18 +1009,43 @@ def save_full_analysis() -> SaveResult:
     and the section header menu's "Save full analysis" item. The on-disk
     layout matches what the History tab expects so "Open in app" still
     rehydrates the run later.
+
+    Each call rolls a **fresh** run folder under ``outputs/`` even if a
+    previous save just happened: the user expects two clicks of "Save
+    complete analysis" to produce two timestamped snapshots, not a
+    silent overwrite. ``store.new_run_dir`` already disambiguates
+    same-second collisions with a numeric suffix (``-2``, ``-3``, ...).
+    Per-document export buttons in :mod:`src.sections.ai_career.tab_documents`
+    keep coalescing into the same run folder via ``_ensure_run_folder``,
+    so individual MD/PDF exports of the same analysis still land in one
+    place.
     """
     if not STATE.documents and not STATE.modern_cv_data:
+        logger_service.log_event(
+            "WARNING", "ai_career.pipeline", "save_full_no_documents"
+        )
         return SaveResult(ok=False, error="no_documents")
 
     role = ""
     if STATE.job_spec:
         role = str(STATE.job_spec.get("title") or "")
-    if STATE.last_run_folder and Path(STATE.last_run_folder).is_dir():
-        folder_path = Path(STATE.last_run_folder)
-    else:
-        folder_path = Path(store.new_run_dir(role or "ai-career-run"))
-        STATE.last_run_folder = str(folder_path)
+    folder_path = Path(store.new_run_dir(role or "ai-career-run"))
+    STATE.last_run_folder = str(folder_path)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "save_full_start",
+        folder=str(folder_path),
+        role=role,
+        documents=len(STATE.documents),
+        has_modern_cv=bool(STATE.modern_cv_data),
+    )
+
+    output_lang = (STATE.document_output_lang or "en").strip().lower() or "en"
+    theme_state = STATE.modern_cv_theme or {}
+    active_theme = themes.resolve_theme(
+        theme_state.get("palette"), theme_state.get("layout")
+    )
 
     for kind, body_text in STATE.documents.items():
         if not body_text:
@@ -842,6 +1054,35 @@ def save_full_analysis() -> SaveResult:
         basename = _DOC_FILE_BASENAMES.get(kind, kind)
         title = basename.replace("_", " ")
         style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
+
+        # Cover letter goes through the themed HTML -> Playwright path
+        # so the printed PDF picks up the user's chosen palette
+        # (matching the Modern CV side panel) instead of the legacy
+        # mono-grey reportlab template.
+        if kind == DOC_COVER_LETTER:
+            cover_lang = output_lang
+            try:
+                _export_cover_letter(
+                    body_text,
+                    folder_path / f"{basename}.pdf",
+                    theme=active_theme,
+                    output_lang=cover_lang,
+                )
+            except Exception:
+                # Fall back to the legacy renderer if Playwright is not
+                # reachable. The user still gets a PDF; it just won't
+                # carry the chosen accent colour.
+                try:
+                    exporter.export_pdf(
+                        body_text,
+                        folder_path / f"{basename}.pdf",
+                        title=title,
+                        style=style,
+                    )
+                except RuntimeError:
+                    pass
+            continue
+
         for fmt in formats:
             try:
                 if fmt == "md":
@@ -874,14 +1115,18 @@ def save_full_analysis() -> SaveResult:
         basename = _DOC_FILE_BASENAMES.get(DOC_MODERN_CV, "Modern_CV")
         try:
             (folder_path / f"{basename}.html").write_text(
-                modern_cv_render.render_html(STATE.modern_cv_data),
+                modern_cv_render.render_html(
+                    STATE.modern_cv_data, output_lang=output_lang
+                ),
                 encoding="utf-8",
             )
         except Exception:
             pass
         try:
             modern_cv_render.render_pdf(
-                STATE.modern_cv_data, folder_path / f"{basename}.pdf"
+                STATE.modern_cv_data,
+                folder_path / f"{basename}.pdf",
+                output_lang=output_lang,
             )
         except Exception:
             pass
@@ -906,6 +1151,10 @@ def save_full_analysis() -> SaveResult:
                 "candidate": candidate,
                 "job_spec": job_spec,
                 "match": match,
+                "modern_cv_theme": {
+                    "palette": active_theme.palette_slug,
+                    "layout": active_theme.layout_slug,
+                },
                 "cost": {
                     "calls": COST.calls,
                     "tokens": COST.tokens_total,
@@ -913,6 +1162,27 @@ def save_full_analysis() -> SaveResult:
                 },
             },
         )
+    except Exception:
+        pass
+
+    # Rich one-pager summary - assembled deterministically from the
+    # already-cached match analysis + tailored CV + cover letter so the
+    # user gets the entire application packet (match report, CV, cover
+    # letter, interview prep, skill gap plan) in one HTML file. No
+    # extra LLM calls.
+    try:
+        from datetime import datetime as _dt
+
+        summary_html = exporter.build_summary_html(
+            candidate=candidate,
+            job_spec=job_spec,
+            match=match,
+            theme=active_theme,
+            output_lang=output_lang,
+            documents=dict(STATE.documents),
+            timestamp=_dt.now().strftime("%Y-%m-%d %H:%M"),
+        )
+        (folder_path / "summary.html").write_text(summary_html, encoding="utf-8")
     except Exception:
         pass
 
@@ -942,9 +1212,17 @@ def save_full_analysis() -> SaveResult:
             docs=docs_list,
         )
         store.append_run(summary)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "save_full_history_append", exc
+        )
 
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "save_full_done",
+        folder=str(folder_path),
+    )
     return SaveResult(ok=True, folder=str(folder_path))
 
 
