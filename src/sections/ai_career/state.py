@@ -124,6 +124,15 @@ class CareerState:
     # ``documents`` because it is a JSON dict, not a markdown blob.
     modern_cv_data: Optional[dict] = None
 
+    # Active palette + layout for the Modern CV / Cover Letter render.
+    # The Documents tab's ``Change colour`` / ``Change layout`` cycle
+    # buttons mutate this in place and re-render the preview without
+    # touching ``modern_cv_data``. Persisted in the saved ``summary.json``
+    # so re-opening a run from History reuses the same theme.
+    modern_cv_theme: dict[str, str] = field(
+        default_factory=lambda: {"palette": "teal", "layout": "two_column_sidebar"}
+    )
+
     # Optional clarifying-question step. Empty when the user did not opt in
     # (Settings -> "Ask follow-up questions before each run") or the AI saw
     # no gaps worth asking about. Each followup_qa entry is

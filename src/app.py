@@ -183,13 +183,56 @@ class AIHubApp:
             ft.ThemeMode.LIGHT if self.theme_mode == "light" else ft.ThemeMode.DARK
         )
         settings_store.set_theme_mode(self.theme_mode)
-        self.build()
+        self._schedule_rebuild()
 
     def toggle_lang(self) -> None:
         self.lang = "cs" if self.lang == "en" else "en"
         self.lang = normalize_lang(self.lang)
         settings_store.set_lang(self.lang)
-        self.build()
+        self._schedule_rebuild()
+
+    def _schedule_rebuild(self) -> None:
+        """Defer ``self.build()`` to the next event-loop tick.
+
+        The Switch / Toggle controls in the sidebar fire ``on_change`` on
+        the UI thread; if we call ``self.build()`` synchronously in that
+        handler we ``page.controls.clear()`` the very Switch that is
+        still mid-event, which Flet handles by freezing the whole window
+        until the user restarts the app.
+
+        Bouncing the rebuild through ``loop.call_soon`` lets the
+        ``on_change`` handler return cleanly first, after which the loop
+        runs ``self.build()`` and the Switch is recreated as part of the
+        new tree.
+        """
+        loop = None
+        try:
+            loop = self.page.session.connection.loop
+        except Exception:
+            loop = None
+        if loop is None:
+            try:
+                self.build()
+            except Exception:
+                pass
+            return
+        try:
+            loop.call_soon_threadsafe(self._safe_rebuild)
+        except Exception:
+            try:
+                self.build()
+            except Exception:
+                pass
+
+    def _safe_rebuild(self) -> None:
+        try:
+            self.build()
+        except Exception:
+            pass
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def _section_theme(self, section: Optional[Section]) -> Theme:
         base_theme = get_theme(self.theme_mode)

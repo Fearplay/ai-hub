@@ -26,7 +26,7 @@ from pathlib import Path
 from src.services import ai_provider, exporter, github_client, job_scraper, store
 from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
-from src.sections.ai_career import modern_cv_render, prompts, schema
+from src.sections.ai_career import modern_cv_render, prompts, schema, themes
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
@@ -274,12 +274,20 @@ def analyze_match(*, output_lang: str) -> PipelineResult:
         followup_qa=STATE.followup_qa,
     )
     try:
+        # The match schema carries the categories table, ATS bag,
+        # 5-12 interview questions (each with rationale + STAR answer)
+        # and the skill-gap plan (with learning path + portfolio
+        # project per gap). At 3500 output tokens the LLM regularly
+        # truncates the JSON mid-string and the parser raises
+        # "Provider did not return a MatchAnalysis JSON". 8000 leaves
+        # comfortable headroom on a typical run while still capping
+        # the worst-case spend.
         result = ai_provider.run(
             system=prompts.MATCH_ANALYSIS_SYSTEM,
             user=user,
             schema=schema.MATCH_ANALYSIS_SCHEMA,
             schema_name="match_analysis",
-            max_output_tokens=3500,
+            max_output_tokens=8000,
         )
     except ai_provider.ProviderError as exc:
         return _set_error(str(exc))
@@ -813,6 +821,82 @@ _EXPORT_PLAN: dict[str, tuple[str, ...]] = {
 _MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
+def _candidate_contact_for_cover_letter() -> tuple[str, dict]:
+    """Pull the candidate name + contact bag for the Cover Letter banner.
+
+    Prefers the Modern CV payload (canonical, hand-curated by the LLM
+    from the candidate JSON) then falls back to the candidate JSON
+    directly when the Modern CV step has not been run.
+    """
+    name = ""
+    contact: dict[str, str] = {}
+    if isinstance(STATE.modern_cv_data, dict):
+        name = str(STATE.modern_cv_data.get("full_name") or "")
+        cd = STATE.modern_cv_data.get("contact") or {}
+        if isinstance(cd, dict):
+            contact = {
+                "location": str(cd.get("location") or ""),
+                "email": str(cd.get("email") or ""),
+                "phone": str(cd.get("phone") or ""),
+            }
+    if not name and isinstance(STATE.candidate, dict):
+        name = str(STATE.candidate.get("full_name") or "")
+        if not contact:
+            cd = STATE.candidate.get("contact") or {}
+            if isinstance(cd, dict):
+                contact = {
+                    "location": str(cd.get("location") or ""),
+                    "email": str(cd.get("email") or ""),
+                    "phone": str(cd.get("phone") or ""),
+                }
+    return name, contact
+
+
+def _export_cover_letter(
+    body_text: str,
+    target: Path,
+    *,
+    theme: themes.ResumeTheme,
+    output_lang: str,
+) -> Path:
+    """Write the Cover Letter HTML + PDF using the active palette.
+
+    Imports the html_pdf service lazily so the rest of the pipeline
+    keeps working when Playwright is missing (in that case the caller
+    catches the exception and falls back to the legacy reportlab
+    renderer).
+    """
+    from src.services import html_pdf
+
+    name, contact = _candidate_contact_for_cover_letter()
+    cover_html = themes.render_cover_letter_html(
+        body_text,
+        candidate_name=name,
+        candidate_contact=contact,
+        theme=theme,
+        output_lang=output_lang,
+    )
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    html_target = target.with_suffix(".html")
+    try:
+        html_target.write_text(cover_html, encoding="utf-8")
+    except Exception:
+        pass
+
+    try:
+        html_pdf.render_html_to_pdf(cover_html, target)
+    except html_pdf.PdfRendererUnavailableError as exc:
+        raise RuntimeError(
+            "Playwright PDF export is unavailable on this machine. "
+            "Install Google Chrome / Microsoft Edge or run "
+            "`playwright install chromium` to enable PDF export. "
+            f"({exc})"
+        ) from exc
+    return target
+
+
 @dataclass
 class SaveResult:
     ok: bool
@@ -840,6 +924,12 @@ def save_full_analysis() -> SaveResult:
         folder_path = Path(store.new_run_dir(role or "ai-career-run"))
         STATE.last_run_folder = str(folder_path)
 
+    output_lang = (STATE.document_output_lang or "en").strip().lower() or "en"
+    theme_state = STATE.modern_cv_theme or {}
+    active_theme = themes.resolve_theme(
+        theme_state.get("palette"), theme_state.get("layout")
+    )
+
     for kind, body_text in STATE.documents.items():
         if not body_text:
             continue
@@ -847,6 +937,35 @@ def save_full_analysis() -> SaveResult:
         basename = _DOC_FILE_BASENAMES.get(kind, kind)
         title = basename.replace("_", " ")
         style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
+
+        # Cover letter goes through the themed HTML -> Playwright path
+        # so the printed PDF picks up the user's chosen palette
+        # (matching the Modern CV side panel) instead of the legacy
+        # mono-grey reportlab template.
+        if kind == DOC_COVER_LETTER:
+            cover_lang = output_lang
+            try:
+                _export_cover_letter(
+                    body_text,
+                    folder_path / f"{basename}.pdf",
+                    theme=active_theme,
+                    output_lang=cover_lang,
+                )
+            except Exception:
+                # Fall back to the legacy renderer if Playwright is not
+                # reachable. The user still gets a PDF; it just won't
+                # carry the chosen accent colour.
+                try:
+                    exporter.export_pdf(
+                        body_text,
+                        folder_path / f"{basename}.pdf",
+                        title=title,
+                        style=style,
+                    )
+                except RuntimeError:
+                    pass
+            continue
+
         for fmt in formats:
             try:
                 if fmt == "md":
@@ -879,14 +998,18 @@ def save_full_analysis() -> SaveResult:
         basename = _DOC_FILE_BASENAMES.get(DOC_MODERN_CV, "Modern_CV")
         try:
             (folder_path / f"{basename}.html").write_text(
-                modern_cv_render.render_html(STATE.modern_cv_data),
+                modern_cv_render.render_html(
+                    STATE.modern_cv_data, output_lang=output_lang
+                ),
                 encoding="utf-8",
             )
         except Exception:
             pass
         try:
             modern_cv_render.render_pdf(
-                STATE.modern_cv_data, folder_path / f"{basename}.pdf"
+                STATE.modern_cv_data,
+                folder_path / f"{basename}.pdf",
+                output_lang=output_lang,
             )
         except Exception:
             pass
@@ -911,6 +1034,10 @@ def save_full_analysis() -> SaveResult:
                 "candidate": candidate,
                 "job_spec": job_spec,
                 "match": match,
+                "modern_cv_theme": {
+                    "palette": active_theme.palette_slug,
+                    "layout": active_theme.layout_slug,
+                },
                 "cost": {
                     "calls": COST.calls,
                     "tokens": COST.tokens_total,
@@ -918,6 +1045,27 @@ def save_full_analysis() -> SaveResult:
                 },
             },
         )
+    except Exception:
+        pass
+
+    # Rich one-pager summary - assembled deterministically from the
+    # already-cached match analysis + tailored CV + cover letter so the
+    # user gets the entire application packet (match report, CV, cover
+    # letter, interview prep, skill gap plan) in one HTML file. No
+    # extra LLM calls.
+    try:
+        from datetime import datetime as _dt
+
+        summary_html = exporter.build_summary_html(
+            candidate=candidate,
+            job_spec=job_spec,
+            match=match,
+            theme=active_theme,
+            output_lang=output_lang,
+            documents=dict(STATE.documents),
+            timestamp=_dt.now().strftime("%Y-%m-%d %H:%M"),
+        )
+        (folder_path / "summary.html").write_text(summary_html, encoding="utf-8")
     except Exception:
         pass
 

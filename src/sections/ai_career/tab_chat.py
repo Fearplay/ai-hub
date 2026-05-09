@@ -238,9 +238,19 @@ def _input_bar(
         max_lines=4,
     )
 
-    file_picker = ft.FilePicker()
-    picker_registered: dict[str, bool] = {"done": False}
     pending_attachment: dict[str, Optional[ParsedFile]] = {"file": None}
+
+    def _on_picker_result(e: ft.FilePickerResultEvent) -> None:
+        files = getattr(e, "files", None) or []
+        if not files:
+            return
+        first = files[0]
+        path = getattr(first, "path", "") or ""
+        if path:
+            _stage_file_from_path(path)
+
+    file_picker = ft.FilePicker(on_result=_on_picker_result)
+    picker_registered: dict[str, bool] = {"done": False}
 
     status_text = ft.Text("", color=theme.text_muted, size=11)
     # Holders we re-render whenever the staged attachment changes so the
@@ -340,31 +350,47 @@ def _input_bar(
         pending_attachment["file"] = parsed
         _refresh_attachment_visuals()
 
-    async def _open_picker(_e: ft.ControlEvent) -> None:
-        page = _e.page
-        if page is None:
+    def _ensure_picker_registered(page: ft.Page) -> None:
+        """Mount the FilePicker on the page so ``pick_files`` actually opens.
+
+        Flet expects pickers to live in ``page.overlay``. We also kick
+        the legacy ``register_service`` private API for older Flet
+        builds where the overlay didn't yet host pickers - that double
+        registration is harmless and keeps the picker working across
+        the supported version range.
+        """
+        if picker_registered["done"]:
             return
-        if not picker_registered["done"]:
-            registry = getattr(page, "_services", None)
-            if registry is not None:
+        try:
+            if file_picker not in page.overlay:
+                page.overlay.append(file_picker)
                 try:
-                    registry.register_service(file_picker)
+                    page.update()
                 except Exception:
                     pass
-            picker_registered["done"] = True
+        except Exception:
+            pass
+        registry = getattr(page, "_services", None)
+        if registry is not None:
+            try:
+                registry.register_service(file_picker)
+            except Exception:
+                pass
+        picker_registered["done"] = True
+
+    def _open_picker(e: ft.ControlEvent) -> None:
+        page = e.page
+        if page is None:
+            return
+        _ensure_picker_registered(page)
         try:
-            files = await file_picker.pick_files(
+            file_picker.pick_files(
                 dialog_title=txt["chat_mode_input_attach"],
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=list(_RESUME_EXTENSIONS),
             )
-        except Exception:
-            files = []
-        if not files:
-            return
-        first = files[0]
-        path = getattr(first, "path", "") or ""
-        _stage_file_from_path(path)
+        except Exception as exc:
+            _set_status(str(exc) or txt["resume_unsupported"], error=True)
 
     def _send(_e: Optional[ft.ControlEvent] = None) -> None:
         if STATE.chat_running:
@@ -448,9 +474,15 @@ def _input_bar(
         1.5, ft.Colors.with_opacity(0.55, theme.border)
     )
 
+    # Click-anywhere drop zone: Flet pack cannot intercept OS-level
+    # drag-and-drop, so we make this hint a real button-sized affordance
+    # the user can tap (or click) to launch the picker. That way the
+    # paperclip is no longer the only target: the entire hint row is
+    # one big "click me to attach" zone, which is what users actually
+    # try first.
     drop_hint_holder.content = ft.Row(
         controls=[
-            ft.Icon(ft.Icons.UPLOAD_FILE_OUTLINED, color=theme.text_muted, size=12),
+            ft.Icon(ft.Icons.UPLOAD_FILE_OUTLINED, color=theme.primary, size=14),
             ft.Text(
                 txt["chat_mode_drop_hint"],
                 color=theme.text_muted,
@@ -462,7 +494,15 @@ def _input_bar(
         tight=True,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
-    drop_hint_holder.padding = ft.padding.only(left=4, top=2, bottom=2)
+    drop_hint_holder.padding = ft.padding.symmetric(horizontal=10, vertical=6)
+    drop_hint_holder.border_radius = 10
+    drop_hint_holder.border = ft.border.all(
+        1, ft.Colors.with_opacity(0.35, theme.primary)
+    )
+    drop_hint_holder.bgcolor = ft.Colors.with_opacity(0.06, theme.primary)
+    drop_hint_holder.ink = True
+    drop_hint_holder.tooltip = txt["chat_mode_input_attach"]
+    drop_hint_holder.on_click = _open_picker
 
     running_text = ft.Text(
         txt["chat_mode_running"] if STATE.chat_running else "",
