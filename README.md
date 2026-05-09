@@ -1,19 +1,32 @@
 # AI Hub
 
-Desktopový AI Hub postavený v Pythonu s knihovnou [Flet](https://flet.dev). Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra** je plně napojená na OpenAI / Anthropic; ostatní sekce jsou postavené na stejné architektuře a postupně se napojují.
+> Czech version: [README.cs.md](README.cs.md).
 
-## Požadavky
+> **Built with [Cursor](https://cursor.com)** - the AI editor that
+> wrote the bulk of this codebase (architecture, sections, AI pipelines,
+> build script). The agent rules under
+> [.cursor/rules/](.cursor/rules/) define how new sections, AI calls,
+> and the `.exe` build are added so contributions stay consistent.
+
+A desktop AI Hub built in Python with [Flet](https://flet.dev). Three-column
+layout: navigation in the left sidebar, the main workspace in the middle,
+and a context panel on the right. The **AI CV / Career** section is fully
+wired to OpenAI / Anthropic; other sections share the same architecture
+and are being filled in as we go.
+
+## Requirements
 
 - Python 3.10+
-- Flet >= 0.25.0 (testováno na 0.84.0)
-- API klíče (volitelné — bez nich jede Demo režim):
-  - **OpenAI** (`sk-…`) nebo **Anthropic** (`sk-ant-…`) v sekci **Nastavení**
-  - **GitHub** personal access token (volitelný, zvedne rate-limit pro AI Career)
+- Flet >= 0.25.0 (tested on 0.84.0)
+- API keys (optional - without them the app runs in Demo mode):
+  - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`) under **Settings**
+  - **GitHub** personal access token (optional, lifts the rate limit for AI Career)
 
-> Žádné Flutter SDK ani Visual Studio C++ není potřeba. Build běží přes
-> `flet pack` (PyInstaller), který si vystačí s čistým Pythonem na PATH.
+> No Flutter SDK or Visual Studio C++ workload is required. Builds run
+> through `flet pack` (PyInstaller), which only needs a plain Python on
+> `PATH`.
 
-## Instalace (vývoj)
+## Install (development)
 
 ```bash
 python -m venv .venv
@@ -25,189 +38,231 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Vývojové spuštění
+## Run in dev mode
 
 ```bash
 py main.py            # Windows
 python main.py        # macOS / Linux
 ```
 
-Upload zóny v **AI Právní asistent** a **AI Životopis / Kariéra** jsou
-*click-to-browse* (otevřou nativní file picker). Skutečný OS drag-and-drop
-by potřeboval `flet-dropzone` + `flet build`, což přidává závislost na
-Flutter SDK a Visual Studio C++ - to záměrně nechceme, protože by se
-zlomil one-click build pro spoluvývoj (viz `build_exe.bat`).
+The upload zones in **AI Legal assistant** and **AI CV / Career** are
+*click-to-browse* (they open the native file picker). Real OS-level
+drag-and-drop would require `flet-dropzone` + `flet build`, which adds a
+Flutter SDK + Visual Studio C++ dependency - we deliberately avoid that
+because it would break the one-click build flow for collaborators (see
+`build_exe.bat`).
 
-## Build .exe (Windows)
+## Build the .exe (Windows)
 
-Pro distribuci na Windows je v rootu repa skript [`build_exe.bat`](build_exe.bat). Dvojklikem vyrobí jediný soubor `dist\AIHub.exe`, který si uživatel pustí na čistém PC bez Pythonu / venv / SDK.
+For Windows distribution, the repo root contains [`build_exe.bat`](build_exe.bat).
+Double-clicking it produces a single `dist\AIHub.exe` that runs on a
+clean PC without Python, virtualenv, or any SDK.
 
-Co skript dělá:
+What the script does:
 
-1. Pokud chybí Python na PATH, zkusí ho doinstalovat přes `winget install -e --id Python.Python.3.13`. Když ani winget není k dispozici, vypíše odkaz na python.org a skončí.
-2. Pokud neexistuje `.venv\`, vytvoří ho.
-3. Aktivuje venv a nainstaluje `requirements.txt` + `pyinstaller`.
-4. Pustí `flet pack main.py --name AIHub` a vyrobí `dist\AIHub.exe`.
+1. If Python isn't on `PATH`, it installs it via
+   `winget install -e --id Python.Python.3.13`. If `winget` isn't
+   available either, it prints a python.org link and exits.
+2. If `.venv\` doesn't exist, it creates one.
+3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
+4. Runs `flet pack main.py --name AIHub` and produces `dist\AIHub.exe`.
 
-Použití:
+Usage:
 
 ```bat
-build_exe.bat            REM standardní build (skip když je exe novější než zdrojáky)
-build_exe.bat --force    REM vždy rebuild i když nic nezměnilo
+build_exe.bat            REM standard build (skipped when the exe is newer than the sources)
+build_exe.bat --force    REM always rebuild, even when nothing changed
 ```
 
-Trade-off: `flet pack` (na rozdíl od `flet build windows`) **nepotřebuje Flutter SDK ani Visual Studio C++**, takže build funguje na čistém Windows. Cenou za to je, že OS drag-and-drop souborů není - upload zóny reagují na klik a otevřou nativní file picker.
+Trade-off: `flet pack` (unlike `flet build windows`) **does not need the
+Flutter SDK or Visual Studio C++**, so the build works on a clean
+Windows machine. The price is that real OS file drag-and-drop is not
+available - upload zones react to click and open the native file picker
+instead.
 
-Cursor pravidlo [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc) zajišťuje, že agent spustí `build_exe.bat` na konci každého úkolu, takže `dist\AIHub.exe` zůstává v souladu se zdrojáky.
+The Cursor rule [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc)
+makes the agent run `build_exe.bat` at the end of every task, so
+`dist\AIHub.exe` stays in sync with the sources.
 
-### Pro spoluvývojáře (úplně stejné prostředí, žádné kopírování)
+### For collaborators (identical environment, no copy/paste)
 
-Ať máte oba na stejném prostředí, **nesdílí se** ručně žádný build artefakt
-(`AIHub.spec`, `.venv\`, `dist\`, `build\` - všechny jsou v
-[.gitignore](.gitignore)). Druhý vývojář dostane identické prostředí takhle:
+Build artefacts (`AIHub.spec`, `.venv\`, `dist\`, `build\`) are all in
+[.gitignore](.gitignore), so nothing is shared by hand. A second
+contributor gets the exact same environment with:
 
 1. `git clone <repo-url>`
 2. `cd ai-hub`
-3. `build_exe.bat` (jeden klik)
+3. `build_exe.bat` (one click)
 
-Skript:
+The script:
 
-- Nainstaluje Python přes `winget`, pokud chybí.
-- Vyrobí lokální `.venv\` a nainstaluje `requirements.txt` přesně tak, jak
-  vidíš ty (commit-pinned).
-- `flet pack` si vygeneruje **vlastní** `AIHub.spec` (ten u tebe je jen
-  artefakt z poslední buildovky, nepatří do gitu).
-- Vyrobí `dist\AIHub.exe`.
+- Installs Python via `winget` if missing.
+- Creates a local `.venv\` and installs `requirements.txt` exactly as you
+  see it (commit-pinned).
+- `flet pack` generates **its own** `AIHub.spec` (the one you might see
+  locally is just an artefact of the last build, it doesn't belong in
+  git).
+- Produces `dist\AIHub.exe`.
 
-Pokud chceš jen pustit dev mód (bez exe), stačí krok 1-2 plus
-`pip install -r requirements.txt` a `py main.py` - viz
-*[Instalace (vývoj)](#instalace-vývoj)*.
+If you only want dev mode (no exe), steps 1-2 plus
+`pip install -r requirements.txt` and `py main.py` are enough - see
+*[Install (development)](#install-development)*.
 
-## API klíče a kde se ukládají
+## API keys and where they live
 
-Sekce **Nastavení** (v sidebaru pod oddělovačem) umožní:
+The **Settings** section (in the sidebar, under the divider) lets you:
 
-- vybrat AI providera (**OpenAI** / **Anthropic**) a model (default `gpt-5.4-mini` / `claude-haiku-4-5`),
-- uložit a smazat API klíče (OpenAI / Anthropic / GitHub),
-- nastavit globální flagy (Demo režim, doplňující otázky).
+- pick the AI provider (**OpenAI** / **Anthropic**) and model
+  (defaults: `gpt-5.4-mini` / `claude-haiku-4-5`),
+- save and delete API keys (OpenAI / Anthropic / GitHub),
+- toggle global flags (Demo mode, follow-up questions),
+- open the **Debug logs** viewer (view / copy / clear / open folder).
 
-Klíče se neukládají na disk v plain textu. Aplikace je pošle do nativního úložiště OS přes balíček [`keyring`](https://pypi.org/project/keyring/):
+Keys are not written to disk in plain text. The app pushes them to the
+OS-native secret store via [`keyring`](https://pypi.org/project/keyring/):
 
 | OS | Backend |
 | --- | --- |
 | Windows | Credential Manager |
 | macOS | Keychain |
-| Linux | Secret Service / KWallet (pokud je nainstalovaný) |
+| Linux | Secret Service / KWallet (when installed) |
 
-Když `keyring` nemá dostupný backend (typicky headless Linux bez `gnome-keyring`), Settings UI se sám přepne do read-only režimu a vysvětlí, co je potřeba doinstalovat.
+When `keyring` has no available backend (typically headless Linux without
+`gnome-keyring`), the Settings UI flips to read-only and explains what to
+install.
 
-### Demo režim (offline, bez tokenů)
+### Demo mode (offline, no tokens)
 
-Každá AI sekce má v Setupu tlačítko **Vyzkoušet ukázková data**, které celý workflow projde bez jediného volání providera. Vhodné pro screenshoty, demonstrace a první seznámení s appkou.
+Every AI section has a **Try demo data** button in Setup which walks the
+whole workflow without calling any provider. Useful for screenshots,
+demos, and the first walk-through of the app.
 
-## Struktura projektu
+### Debug logs
+
+When a click looks like it "did nothing" (theme/lang toggle, mode tab,
+save), the app keeps a small log file:
+
+- Path: `~/AI Hub/logs/app.log` (rotated at 1 MB, max 4 files).
+- Open **Settings -> Debug logs -> View logs** in the app. You can
+  refresh the view, copy the file to the clipboard, open the folder in
+  the OS file browser, or clear it.
+- No personal data is logged - only what was clicked, what succeeded,
+  and the stack trace of any caught exception.
+
+## Project structure
 
 ```
 ai-hub/
 ├── main.py                       # entry point
 ├── requirements.txt
-├── README.md
+├── README.md                     # English (this file)
+├── README.cs.md                  # Czech translation
 ├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
 └── src/
-    ├── theme.py                  # barvy a designové tokeny (dark + light)
-    ├── app.py                    # AIHubApp - stav, layout, routing (sekce nezná jménem)
-    ├── i18n.py                   # globální EN/CS překlady + t(key, lang)
-    ├── components/               # sdílené UI prvky
-    │   ├── sidebar.py            # iteruje registr sekcí, header / scroll / footer
+    ├── theme.py                  # design tokens (dark + light)
+    ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
+    ├── i18n.py                   # global EN/CS strings + t(key, lang)
+    ├── components/               # shared UI primitives
+    │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
     │   ├── user_card.py
     │   ├── section_card.py
     │   ├── document_chip.py
-    │   ├── header.py             # generický (icon, title, subtitle, ? button)
-    │   ├── how_to_dialog.py      # generický modal "Jak používat asistenta"
-    │   ├── tab_bar.py            # generický (list záložek, active index)
+    │   ├── header.py             # generic (icon, title, subtitle, ? button)
+    │   ├── how_to_dialog.py      # generic "How to use" modal
+    │   ├── tab_bar.py            # generic tab strip
     │   ├── chat_message.py
     │   ├── chat_input.py
-    │   ├── context_panel.py      # shell + helpery pro pravý panel
-    │   ├── language_toggle.py    # přepínač EN / CS
-    │   ├── theme_toggle.py       # přepínač dark / light
-    │   └── placeholder.py        # výchozí "připravuje se" view
-    ├── services/                 # SDÍLENÁ INFRASTRUKTURA - jediný vstup pro AI
+    │   ├── context_panel.py      # shell + helpers for the right panel
+    │   ├── language_toggle.py    # EN / CS toggle
+    │   ├── theme_toggle.py       # dark / light toggle
+    │   └── placeholder.py        # default "coming soon" view
+    ├── services/                 # SHARED INFRASTRUCTURE - the only entry point for AI
     │   ├── secrets.py             # keyring wrapper (OS-native API key storage)
-    │   ├── settings_store.py      # JSON preferences (provider, model, flagy)
-    │   ├── ai_provider.py         # run(system, user, schema, ...) → OpenAI / Anthropic
+    │   ├── settings_store.py      # JSON preferences (provider, model, flags)
+    │   ├── ai_provider.py         # run(system, user, schema, ...) -> OpenAI / Anthropic
     │   ├── cost_tracker.py        # session counter (calls / tokens / $)
-    │   ├── job_scraper.py         # URL → job posting text
-    │   ├── file_parser.py         # PDF / DOCX / TXT / HTML → plain text
+    │   ├── job_scraper.py         # URL -> job posting text
+    │   ├── file_parser.py         # PDF / DOCX / TXT / HTML -> plain text
     │   ├── github_client.py       # public profile + repo summary
-    │   ├── exporter.py            # Markdown → MD / HTML / DOCX / PDF
-    │   └── store.py               # JSON-backed history & run output paths
-    ├── sections/                 # FEATURE FOLDERS - 1 složka = 1 položka v sidebaru
-    │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY skupina)
-    │   ├── _base.py              # Section dataclass (s nav_group)
-    │   ├── SECTION_TEMPLATE/     # šablona pro novou sekci (READ ME)
+    │   ├── exporter.py            # Markdown -> MD / HTML / DOCX / PDF
+    │   ├── store.py               # JSON-backed history & run output paths
+    │   └── logger.py              # rotating debug log under ~/AI Hub/logs/app.log
+    ├── sections/                 # FEATURE FOLDERS - 1 folder = 1 sidebar entry
+    │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY groups)
+    │   ├── _base.py              # Section dataclass (with nav_group)
+    │   ├── SECTION_TEMPLATE/     # template for a new section (READ ME)
     │   ├── dashboard/
-    │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter)
-    │   ├── ai_legal/              # plně postavené (4 funkční taby + drag-drop)
+    │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter)
+    │   ├── ai_legal/              # fully built (4 working tabs + drag-drop)
     │   ├── ai_business/          # placeholder
-    │   ├── ai_marketing/         # postavené podle návrhu (mock UI)
+    │   ├── ai_marketing/         # designed mock UI
     │   ├── ai_finance/           # placeholder
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
-    │   ├── ai_doc_assistant/     # AI asistent na PDF / DOCX (summary / Q&A / rewrite / extract)
+    │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
     │   ├── history/              # placeholder (secondary nav)
     │   ├── favorites/            # placeholder (secondary nav)
-    │   └── settings/             # API klíče, provider, obecné (secondary nav)
+    │   └── settings/             # API keys, provider, general, debug logs (secondary nav)
     └── data/
-        └── user.py               # globální mock (jenom přihlášený uživatel)
+        └── user.py               # global mock (the signed-in user only)
 ```
 
-Každá složka v `src/sections/` má:
+Every folder under `src/sections/` has:
 
-- `section.py` - registrace (`SECTION = Section(...)`)
-- `view.py` - hlavní střední sloupec
-- `strings.py` - EN + CS překlady té sekce
-- `data.py` (volitelně) - mock data
-- `context.py` (volitelně) - pravý kontextový panel
+- `section.py` - registration (`SECTION = Section(...)`)
+- `view.py` - the main center column
+- `strings.py` - EN + CS translations for that section
+- `data.py` (optional) - mock data
+- `context.py` (optional) - the right context panel
 
-Adding a new section nikdy neotevírá `src/app.py` ani `src/components/sidebar.py`.
-Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
+Adding a new section never opens `src/app.py` or `src/components/sidebar.py`.
+Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
 [src/sections/SECTION_TEMPLATE/README.md](src/sections/SECTION_TEMPLATE/README.md).
 
-## Co umí
+## What it does
 
-- Tříslupcový layout, scrollovatelný sidebar (header / scroll / footer)
-- **Přepínač jazyka** EN ↔ CS v sidebaru (default English, jak chtěl tým)
-- Auto-discovery sekcí (primary + secondary skupina; History / Favorites / Settings v secondary)
-- Přepínač světlý / tmavý režim
-- **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, demo flagy
-- **AI Životopis / Kariéra** - dva režimy přepínatelné v hlavičce sekce:
-  - **Chat** (Verze B) - konverzační HR asistent, který si můžeš zeptat na cokoli k roli, životopisu, motivačnímu dopisu nebo přípravě na pohovor; do bubliny se dají připojit dokumenty (PDF / DOCX / TXT / MD / HTML) a kontext se přenáší do dalších otázek.
-  - **Formulářový režim** (Verze A) - 4 stage taby (Setup → Match → Documents → History):
-    - scrape inzerátu z URL nebo paste textu
-    - upload životopisu (PDF / DOCX / TXT / HTML), volitelně LinkedIn export
-    - GitHub URL s automatickým fetchem veřejných repos
-    - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
-    - inline refine ("Problem 1, Problem 2 …" → AI revize)
-    - export do MD / HTML / DOCX / PDF a uložení kompletní analýzy do `~/AI Hub/runs/<timestamp>/`
-  - Demo režim (offline showcase) v obou režimech
-  - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
-- **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
-- **AI Právní asistent** - 4 funkční taby (Chat, Analýza dokumentu, Návrhy dokumentů, Šablony), OS drag-drop PDF, mock LLM
-- Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline
+- Three-column layout, scrollable sidebar (header / scroll / footer).
+- **Language toggle** EN <-> CS in the sidebar (default English, per the team).
+- Section auto-discovery (primary + secondary; History / Favorites / Settings live in secondary).
+- Light / dark mode toggle.
+- **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, demo flags, debug logs.
+- **AI CV / Career** - two modes toggled in the section header:
+  - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
+  - **Form mode** (Version A) - 4 stage tabs (Setup -> Match -> Documents -> History):
+    - scrape the job posting from a URL or paste the text,
+    - upload the resume (PDF / DOCX / TXT / HTML), optionally a LinkedIn export,
+    - GitHub URL with automatic fetch of public repos,
+    - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
+    - inline refine ("Problem 1, Problem 2..." -> AI revision),
+    - export to MD / HTML / DOCX / PDF and save the full analysis to `outputs/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
+  - Demo mode (offline showcase) in both modes.
+  - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
+- **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
+- **AI Legal assistant** - 4 working tabs (Chat, Document analysis, Document drafts, Templates), OS drag-drop PDF, mock LLM.
+- Right context panel showing **session cost** (calls / tokens / $) and the pipeline activity.
 
-## Co zatím **neumí** (záměrně)
+## Not yet (deliberately)
 
-- Streaming odpovědí v UI (první iterace volání blokuje s loaderem v context panelu)
-- Multi-jazyčný OUTPUT_LANGUAGE per dokument (jeden run = jeden výstupní jazyk; řízeno globálním lang toggle)
-- Skutečná persistence pro Favorites / History na úrovni celé appky (zatím per-section)
-- AI v ostatních sekcích - architektura je připravená, sekce se postupně dopisují podle vzoru AI Career
+- Streaming responses in the UI (the first iteration blocks with a loader in the context panel).
+- Multi-language `OUTPUT_LANGUAGE` per document (one run = one output language; driven by the global lang toggle).
+- Real persistence for Favorites / History at the app level (currently per-section).
+- AI in the remaining sections - the architecture is ready, sections are filled in following the AI Career template.
+
+## Built with Cursor
+
+This codebase was authored in [Cursor](https://cursor.com), the AI
+editor. Cursor agents follow rules in [.cursor/rules/](.cursor/rules/)
+that codify how to add a new section, where AI provider calls live, how
+to log debug events, and how the `.exe` is rebuilt at the end of every
+task. If you plan to extend the project, read those rules first - they
+are the source of truth for how new code is added.
 
 ## Contributors
 
-Lidi, kteří se na projektu podílejí:
+People working on this project:
 
 <table>
   <tr>
@@ -218,7 +273,7 @@ Lidi, kteří se na projektu podílejí:
         <sub><b>Fearplay</b></sub>
       </a>
       <br />
-      <sub>autor & maintainer</sub>
+      <sub>author &amp; maintainer</sub>
     </td>
     <td align="center" width="120">
       <a href="https://github.com/lukasekcerny">
@@ -227,12 +282,13 @@ Lidi, kteří se na projektu podílejí:
         <sub><b>lukasekcerny</b></sub>
       </a>
       <br />
-      <sub>spoluautor</sub>
+      <sub>co-author</sub>
     </td>
   </tr>
 </table>
 
-Až bude repo veřejné, půjde tuhle galerii vyměnit za auto-generovanou:
+Once the repo goes public this gallery can be replaced with the
+auto-generated one:
 
 ```markdown
 <a href="https://github.com/Fearplay/ai-hub/graphs/contributors">
@@ -240,16 +296,19 @@ Až bude repo veřejné, půjde tuhle galerii vyměnit za auto-generovanou:
 </a>
 ```
 
-Chceš pomoct? Detaily workflow, pojmenování branch a commitů jsou v souboru [CONTRIBUTING.md](CONTRIBUTING.md).
+Want to help? Branch / commit conventions are documented in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
-Tento projekt je licencován pod **MIT licencí** - viz soubor [LICENSE](LICENSE).
+This project is licensed under the **MIT License** - see [LICENSE](LICENSE).
 
-Použité knihovny:
+Libraries used:
 
-| Knihovna | Licence | Odkaz |
+| Library | License | Link |
 | --- | --- | --- |
 | [Flet](https://flet.dev) | Apache License 2.0 | https://github.com/flet-dev/flet/blob/main/LICENSE |
 
-Apache 2.0 je s MIT plně kompatibilní, takže můžeme tento projekt distribuovat pod MIT, dokud zachováme atribuci původní knihovny (viz [LICENSE](LICENSE)).
+Apache 2.0 is fully compatible with MIT, so we can distribute this
+project under MIT as long as we keep the upstream attribution (see
+[LICENSE](LICENSE)).

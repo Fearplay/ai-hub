@@ -24,6 +24,7 @@ import flet as ft
 
 from src.components.tab_bar import tab_bar
 from src.services import exporter, store
+from src.services import logger as logger_service
 from src.sections.ai_career import modern_cv_render, pipeline, themes
 from src.sections.ai_career.refs import REFS, safe
 from src.sections.ai_career.state import (
@@ -283,8 +284,10 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["open", path])
         else:
             subprocess.Popen(["xdg-open", path])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.tab_documents", "open_in_explorer_failed", exc, path=path
+        )
 
 
 def _document_body(theme: Theme, txt: dict, kind: str) -> ft.Control:
@@ -692,7 +695,16 @@ def build_documents_tab(
             pass
 
     def _on_doc_tab(idx: int) -> None:
-        STATE.active_document = visible_kinds[idx]
+        new_doc = visible_kinds[idx]
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_documents",
+            "doc_tab_change",
+            index=idx,
+            prev_doc=STATE.active_document,
+            new_doc=new_doc,
+        )
+        STATE.active_document = new_doc
         _refresh_tab_bar()
         _refresh_body()
 
@@ -701,6 +713,13 @@ def build_documents_tab(
 
     def _export(kind_action: str) -> None:
         kind = STATE.active_document
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_documents",
+            "export_start",
+            kind=kind,
+            action=kind_action,
+        )
         # Modern CV is structured JSON, the others are markdown bodies.
         if kind == DOC_MODERN_CV:
             has_payload = bool(STATE.modern_cv_data)
@@ -710,6 +729,13 @@ def build_documents_tab(
             has_payload = bool(text)
 
         if not has_payload and kind_action != "all":
+            logger_service.log_event(
+                "WARNING",
+                "ai_career.tab_documents",
+                "export_no_payload",
+                kind=kind,
+                action=kind_action,
+            )
             _show_status(txt["doc_empty_title"], True)
             return
         role = ""
@@ -842,8 +868,23 @@ def build_documents_tab(
                     )
                 else:
                     return
+                logger_service.log_event(
+                    "INFO",
+                    "ai_career.tab_documents",
+                    "export_done",
+                    kind=kind,
+                    action=kind_action,
+                    path=str(path),
+                )
                 _show_status(txt["export_ok_template"].format(path=str(path)), False)
             except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_documents",
+                    "export_failed",
+                    exc,
+                    kind=kind,
+                    action=kind_action,
+                )
                 _show_status(txt["export_failed_template"].format(error=str(exc)), True)
 
         threading.Thread(target=_worker, daemon=True).start()

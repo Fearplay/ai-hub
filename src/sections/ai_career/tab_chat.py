@@ -21,6 +21,7 @@ from typing import Callable, Optional
 
 import flet as ft
 
+from src.services import logger as logger_service
 from src.services.file_parser import ParsedFile, parse_file
 from src.sections.ai_career import pipeline
 from src.sections.ai_career.refs import REFS, safe
@@ -37,7 +38,10 @@ def _request_full_refresh() -> None:
     """Trigger a full section rebuild from anywhere in this module."""
     try:
         from src.app import request_section_refresh
-    except Exception:
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.tab_chat", "request_full_refresh_import", exc
+        )
         return
     request_section_refresh()
 
@@ -240,16 +244,13 @@ def _input_bar(
 
     pending_attachment: dict[str, Optional[ParsedFile]] = {"file": None}
 
-    def _on_picker_result(e: ft.FilePickerResultEvent) -> None:
-        files = getattr(e, "files", None) or []
-        if not files:
-            return
-        first = files[0]
-        path = getattr(first, "path", "") or ""
-        if path:
-            _stage_file_from_path(path)
-
-    file_picker = ft.FilePicker(on_result=_on_picker_result)
+    # Flet 0.84 dropped ``FilePicker(on_result=...)`` and turned
+    # ``pick_files()`` into an async function that returns the picked
+    # files directly. We follow the same pattern used by
+    # ``ai_career/upload.py`` and ``ai_legal/drop_zone.py`` -
+    # ``await file_picker.pick_files(...)`` from an async click handler
+    # and register the picker as a service on first use.
+    file_picker = ft.FilePicker()
     picker_registered: dict[str, bool] = {"done": False}
 
     status_text = ft.Text("", color=theme.text_muted, size=11)
@@ -262,10 +263,7 @@ def _input_bar(
     def _set_status(message: str, *, error: bool = False) -> None:
         status_text.value = message
         status_text.color = "#EF4444" if error else theme.text_muted
-        try:
-            status_text.update()
-        except Exception:
-            pass
+        logger_service.try_update(status_text)
 
     def _build_attachment_chip(attachment: ParsedFile) -> ft.Control:
         """Removable pill above the input row showing the staged file."""
@@ -327,10 +325,7 @@ def _input_bar(
             input_row_holder.border = ft.border.all(1, theme.primary)
             _set_status(txt["chat_mode_attached_template"].format(name=attachment.name))
         for c in (attachment_chip_holder, drop_hint_holder, input_row_holder):
-            try:
-                c.update()
-            except Exception:
-                pass
+            logger_service.try_update(c)
 
     def _remove_attachment(_e: ft.ControlEvent) -> None:
         pending_attachment["file"] = None
@@ -341,63 +336,141 @@ def _input_bar(
             return
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         if ext not in _RESUME_EXTENSIONS:
+            logger_service.log_event(
+                "WARNING",
+                "ai_career.tab_chat",
+                "stage_file_unsupported",
+                ext=ext,
+                path=path,
+            )
             _set_status(txt["resume_unsupported"], error=True)
             return
         parsed = parse_file(path)
         if not parsed.ok:
+            logger_service.log_event(
+                "WARNING",
+                "ai_career.tab_chat",
+                "stage_file_parse_failed",
+                path=path,
+                error=parsed.error,
+            )
             _set_status(parsed.error or txt["resume_unsupported"], error=True)
             return
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_chat",
+            "stage_file_ok",
+            name=parsed.name,
+            ext=ext,
+            chars=len(parsed.text or ""),
+        )
         pending_attachment["file"] = parsed
         _refresh_attachment_visuals()
 
     def _ensure_picker_registered(page: ft.Page) -> None:
-        """Mount the FilePicker on the page so ``pick_files`` actually opens.
+        """Register the FilePicker as a page service so ``pick_files`` works.
 
-        Flet expects pickers to live in ``page.overlay``. We also kick
-        the legacy ``register_service`` private API for older Flet
-        builds where the overlay didn't yet host pickers - that double
-        registration is harmless and keeps the picker working across
-        the supported version range.
+        In Flet 0.84 ``FilePicker`` is a :class:`Service` - it lives in
+        ``page._services`` rather than ``page.overlay``. The first
+        ``pick_files`` call must happen *after* registration; subsequent
+        calls reuse the same instance for free.
         """
         if picker_registered["done"]:
             return
-        try:
-            if file_picker not in page.overlay:
-                page.overlay.append(file_picker)
-                try:
-                    page.update()
-                except Exception:
-                    pass
-        except Exception:
-            pass
         registry = getattr(page, "_services", None)
         if registry is not None:
             try:
                 registry.register_service(file_picker)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_chat", "register_picker_failed", exc
+                )
         picker_registered["done"] = True
 
-    def _open_picker(e: ft.ControlEvent) -> None:
+    async def _open_picker(e: ft.ControlEvent) -> None:
         page = e.page
         if page is None:
+            logger_service.log_event(
+                "WARNING", "ai_career.tab_chat", "open_picker_no_page"
+            )
             return
         _ensure_picker_registered(page)
+        logger_service.log_event("INFO", "ai_career.tab_chat", "open_picker")
         try:
-            file_picker.pick_files(
+            files = await file_picker.pick_files(
                 dialog_title=txt["chat_mode_input_attach"],
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=list(_RESUME_EXTENSIONS),
             )
         except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.tab_chat", "open_picker_failed", exc
+            )
             _set_status(str(exc) or txt["resume_unsupported"], error=True)
+            return
+        if not files:
+            return
+        first = files[0]
+        path = getattr(first, "path", "") or ""
+        if path:
+            _stage_file_from_path(path)
+
+    async def _paste_from_clipboard(e: ft.ControlEvent) -> None:
+        """Append clipboard text to the message field.
+
+        Some users hit a Flutter focus quirk where the embedded
+        ``TextField`` ignores Ctrl+V on the very first interaction with
+        the chat tab. This explicit button always works because it goes
+        through the Flet ``Clipboard`` service, which we await on the
+        page's asyncio loop.
+        """
+        page = e.page
+        if page is None:
+            logger_service.log_event(
+                "WARNING", "ai_career.tab_chat", "paste_no_page"
+            )
+            return
+        try:
+            clipboard = ft.Clipboard()
+            registry = getattr(page, "_services", None)
+            if registry is not None:
+                try:
+                    registry.register_service(clipboard)
+                except Exception:
+                    pass
+            text = await clipboard.get()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.tab_chat", "paste_failed", exc
+            )
+            _set_status(str(exc) or txt["chat_mode_paste_failed"], error=True)
+            return
+        if not text:
+            logger_service.log_event(
+                "DEBUG", "ai_career.tab_chat", "paste_empty"
+            )
+            _set_status(txt["chat_mode_paste_empty"])
+            return
+        existing = text_field.value or ""
+        text_field.value = (existing + ("\n" if existing else "") + text)
+        logger_service.try_update(text_field)
+        logger_service.log_event(
+            "INFO", "ai_career.tab_chat", "paste_ok", chars=len(text)
+        )
+        _set_status(txt["chat_mode_paste_done"].format(chars=len(text)))
 
     def _send(_e: Optional[ft.ControlEvent] = None) -> None:
         if STATE.chat_running:
+            logger_service.log_event(
+                "DEBUG", "ai_career.tab_chat", "send_ignored_running"
+            )
             return
         text_value = (text_field.value or "").strip()
         attachment = pending_attachment["file"]
         if not text_value and attachment is None:
+            logger_service.log_event(
+                "DEBUG", "ai_career.tab_chat", "send_ignored_empty"
+            )
             return
 
         if attachment is not None:
@@ -405,6 +478,15 @@ def _input_bar(
             attachment_label = attachment.name
         else:
             attachment_label = ""
+
+        logger_service.log_event(
+            "INFO",
+            "ai_career.tab_chat",
+            "send_start",
+            chars=len(text_value),
+            attachment=attachment_label,
+            demo_mode=STATE.demo_mode,
+        )
 
         pipeline.append_chat_message(
             "user",
@@ -414,27 +496,43 @@ def _input_bar(
         text_field.value = ""
         pending_attachment["file"] = None
         _refresh_attachment_visuals()
-        try:
-            text_field.update()
-        except Exception:
-            pass
+        logger_service.try_update(text_field)
         STATE.chat_running = True
         STATE.chat_last_error = ""
         on_after_send()
 
         def _worker() -> None:
-            assistant_text, error = pipeline.send_chat_message(
-                output_lang=lang,
-                user_text=text_value or f"(Attached {attachment_label})",
-            )
+            try:
+                assistant_text, error = pipeline.send_chat_message(
+                    output_lang=lang,
+                    user_text=text_value or f"(Attached {attachment_label})",
+                )
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_chat", "send_worker_failed", exc
+                )
+                assistant_text = ""
+                error = str(exc) or "unexpected error"
             STATE.chat_running = False
             if error:
                 STATE.chat_last_error = error
+                logger_service.log_event(
+                    "ERROR",
+                    "ai_career.tab_chat",
+                    "send_done_error",
+                    error=error,
+                )
                 pipeline.append_chat_message(
                     "assistant",
                     txt["chat_mode_error_template"].format(error=error),
                 )
             else:
+                logger_service.log_event(
+                    "INFO",
+                    "ai_career.tab_chat",
+                    "send_done_ok",
+                    reply_chars=len(assistant_text or ""),
+                )
                 pipeline.append_chat_message("assistant", assistant_text)
             safe(REFS.rerender_context)
             REFS.dispatch(_request_full_refresh)
@@ -448,6 +546,13 @@ def _input_bar(
         tooltip=txt["chat_mode_input_attach"],
         on_click=_open_picker,
     )
+    paste_btn = ft.IconButton(
+        icon=ft.Icons.CONTENT_PASTE,
+        icon_color=theme.text_muted,
+        icon_size=18,
+        tooltip=txt["chat_mode_paste_tooltip"],
+        on_click=_paste_from_clipboard,
+    )
     send_btn = ft.IconButton(
         icon=ft.Icons.SEND,
         icon_color=ft.Colors.WHITE,
@@ -460,7 +565,7 @@ def _input_bar(
     text_field.on_submit = lambda e: _send(e)
 
     input_row_holder.content = ft.Row(
-        controls=[attach_btn, text_field, send_btn],
+        controls=[attach_btn, paste_btn, text_field, send_btn],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )

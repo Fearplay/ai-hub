@@ -19,13 +19,16 @@ The left-sidebar items are auto-discovered from `src/sections/<key>/`.
 ## Hard rules - never break these
 
 - Do **not** edit `src/app.py`, `src/components/sidebar.py`, or
-  `src/sections/__init__.py` to register a section. Auto-discovery handles it.
+ `src/sections/__init__.py` to register a section. Auto-discovery handles it.
 - Do **not** put per-section translations in `src/i18n.py`. Per-section
-  copy lives in `src/sections/<key>/strings.py` with both `en` and `cs` keys.
+ copy lives in `src/sections/<key>/strings.py` with both `en` and `cs` keys.
 - Do **not** put per-section mock data in `src/data/`. Only `USER` is
-  global; everything else lives in `src/sections/<key>/data.py`.
+ global; everything else lives in `src/sections/<key>/data.py`.
 - Do **not** import from another section's folder. Sections are isolated.
 - Every visible string must have both `en` and `cs` entries.
+- Do **not** swallow exceptions silently. Every `except` block must call
+ `src.services.logger.log_exception(...)` so the failure shows up in
+ **Settings -> Debug logs**. See "Debug logs (mandatory)" below.
 
 ## Section file shape
 
@@ -46,6 +49,110 @@ SECTION = Section(
 
 `build_view(theme, lang)` and (optional) `build_context(theme, lang)`
 must return `ft.Control`. Both receive `lang` as `"en"` or `"cs"`.
+
+## Error logging (mandatory - the #1 priority)
+
+**ERROR-level logging is the mandatory minimum.** Every section must
+produce a visible ERROR line in **Settings -> Debug logs** whenever
+something fails. The user must never have to guess why a section did not
+load or why a click had no effect.
+
+### Safety net (already in place)
+
+`Section.safe_build_view()` in `src/sections/_base.py` wraps every
+section's `build_view` automatically. If the function raises, the
+wrapper writes an ERROR log with the full traceback **and** renders a
+red error message in the section slot instead of a blank screen. The
+same wrapper exists for `build_context`. You do **not** need to
+duplicate this outer try/except inside `build_view` yourself.
+
+### Mandatory ERROR log checklist
+
+Every section **must** cover these four failure classes. If your section
+does not have a particular class (e.g. placeholder sections have no
+tabs), skip it.
+
+1. **Panel build failures** - if building a tab panel or sub-component
+   raises, log it and re-raise so `safe_build_view` catches it:
+
+   ```python
+   try:
+       panels = [_chat_panel(theme, lang), _form_panel(theme, lang)]
+   except Exception as exc:
+       logger_service.log_exception("<key>.view", "build_panels_failed", exc)
+       raise
+   ```
+
+2. **Tab / mode switch failures** - if a re-render inside a handler
+   raises, log it:
+
+   ```python
+   def _on_tab_change(index: int) -> None:
+       logger_service.log_event(
+           "INFO", "<key>.view", "tab_change",
+           prev_tab=STATE.active_tab, new_tab=index,
+       )
+       STATE.active_tab = index
+       try:
+           _rerender()
+       except Exception as exc:
+           logger_service.log_exception("<key>.view", "tab_change_failed", exc)
+   ```
+
+3. **Control update failures** - use `logger_service.try_update(control)`
+   instead of bare `control.update()`. On first mount `try_update`
+   silently returns `False` (expected); on a genuine error it also
+   returns `False` so you can log:
+
+   ```python
+   if not logger_service.try_update(holder):
+       logger_service.log_event(
+           "ERROR", "<key>.view", "holder_update_failed",
+       )
+   ```
+
+4. **Worker / pipeline failures** - every background thread must catch
+   and log exceptions:
+
+   ```python
+   def _worker() -> None:
+       try:
+           result = pipeline.run_action(output_lang=lang)
+       except Exception as exc:
+           logger_service.log_exception("<key>.view", "worker_failed", exc)
+           ...
+   ```
+
+### Absolute prohibitions
+
+- **NEVER** write `except ...: pass` without `log_exception`. Every
+  bare `pass` is a silent failure that hides bugs from the user.
+- **NEVER** write bare `control.update()` in an event handler. Use
+  `logger_service.try_update(control)` or wrap in try/except +
+  `log_exception`.
+- **Do not** log API keys, full prompts, full document bodies or any
+  other PII / secret. Lengths and identifiers only (`chars=`, `kind=`,
+  `provider=`, …).
+- **Do not** create your own logging handler. The single source of
+  truth is `src.services.logger`; it already configures the rotating
+  file handler the Settings viewer reads from.
+- **Do not** use `print(...)` for diagnostics. Use `log_event(...)`
+  (the stream handler echoes to stdout in dev mode anyway).
+
+### Info-level logging (recommended, not required)
+
+On top of the mandatory error logging, sections with interactive state
+should also log INFO events for navigation and user actions:
+
+```python
+logger_service.log_event(
+    "INFO", "<key>.view", "mode_change",
+    index=index, prev_mode=STATE.mode, new_mode=new_mode,
+)
+```
+
+Reference implementation: [`src/sections/ai_career/`](mdc:../../src/sections/ai_career)
+(`view.py`, `tab_chat.py`, `tab_documents.py`, `pipeline.py`).
 
 ## Sections that call AI
 

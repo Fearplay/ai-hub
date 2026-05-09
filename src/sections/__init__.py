@@ -23,6 +23,7 @@ import importlib
 from pathlib import Path
 
 from src.sections._base import Section
+from src.services import logger as logger_service
 
 
 def _discover() -> list[Section]:
@@ -42,11 +43,30 @@ def _discover() -> list[Section]:
             module = importlib.import_module(module_name)
         except ModuleNotFoundError:
             continue
+        except Exception as exc:
+            logger_service.log_exception(
+                "sections", "discover_import_failed", exc,
+                module=module_name,
+            )
+            continue
 
         section = getattr(module, "SECTION", None)
         if isinstance(section, Section):
             sections.append(section)
+        else:
+            logger_service.log_event(
+                "ERROR",
+                "sections",
+                "discover_no_section_constant",
+                module=module_name,
+                found=type(section).__name__ if section is not None else "None",
+            )
 
+    logger_service.log_event(
+        "INFO", "sections", "discover_done",
+        count=len(sections),
+        keys=[s.key for s in sections],
+    )
     sections.sort(key=lambda s: (s.order, s.key))
     return sections
 

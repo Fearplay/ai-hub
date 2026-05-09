@@ -26,6 +26,7 @@ from src.sections.ai_finance.data import (
     tabs,
 )
 from src.sections.ai_finance.strings import s
+from src.services import logger as logger_service
 from src.theme import Theme
 
 
@@ -585,16 +586,22 @@ def _templates_panel(theme: Theme, lang: str) -> ft.Control:
 def build_view(theme: Theme, lang: str) -> ft.Column:
     txt = s(lang)
 
-    panels = [
-        _chat_panel(theme, lang),
-        _budget_panel(theme, lang),
-        _invest_panel(theme, lang),
-        _analysis_panel(theme, lang),
-        _taxes_panel(theme, lang),
-        _insurance_panel(theme, lang),
-        _calculators_panel(theme, lang),
-        _templates_panel(theme, lang),
-    ]
+    try:
+        panels = [
+            _chat_panel(theme, lang),
+            _budget_panel(theme, lang),
+            _invest_panel(theme, lang),
+            _analysis_panel(theme, lang),
+            _taxes_panel(theme, lang),
+            _insurance_panel(theme, lang),
+            _calculators_panel(theme, lang),
+            _templates_panel(theme, lang),
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_finance.view", "build_panels_failed", exc,
+        )
+        raise
 
     return ft.Column(
         controls=[

@@ -24,6 +24,7 @@ from typing import Callable, Optional
 from pathlib import Path
 
 from src.services import ai_provider, exporter, github_client, job_scraper, store
+from src.services import logger as logger_service
 from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
 from src.sections.ai_career import modern_cv_render, prompts, schema, themes
@@ -61,7 +62,10 @@ def _request_full_refresh() -> None:
     """
     try:
         from src.app import request_section_refresh
-    except Exception:
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "request_full_refresh_import", exc
+        )
         return
     request_section_refresh()
 
@@ -75,6 +79,9 @@ def _set_error(message: str) -> PipelineResult:
     STATE.activity = "error"
     STATE.last_error = message
     safe(REFS.rerender_context)
+    logger_service.log_event(
+        "ERROR", "ai_career.pipeline", "set_error", message=message
+    )
     return PipelineResult(ok=False, error=message)
 
 
@@ -539,6 +546,14 @@ def build_evidence_document(*, output_lang: str) -> str:
 
 
 def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "generate_document_start",
+        kind=kind,
+        output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
+    )
     if kind == DOC_EVIDENCE:
         text = build_evidence_document(output_lang=output_lang)
         if not text:
@@ -547,6 +562,13 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
         STATE.activity = "ready"
         safe(REFS.rerender_context)
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "generate_document_done",
+            kind=kind,
+            chars=len(text),
+        )
         return PipelineResult(ok=True)
 
     if kind == DOC_MODERN_CV:
@@ -559,6 +581,12 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
     if STATE.demo_mode:
         STATE.documents[kind] = _demo_document(kind, output_lang)
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "generate_document_demo_done",
+            kind=kind,
+        )
         return PipelineResult(ok=True)
 
     if not (STATE.candidate and STATE.job_spec and STATE.match):
@@ -581,6 +609,12 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
             temperature=0.3,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline",
+            "generate_document_provider_error",
+            exc,
+            kind=kind,
+        )
         return _set_error(str(exc))
     text = (result.text or "").strip()
     if not text:
@@ -589,6 +623,13 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "generate_document_done",
+        kind=kind,
+        chars=len(text),
+    )
     return PipelineResult(ok=True)
 
 
@@ -601,6 +642,15 @@ def refine_document(
     output_lang: str,
     problems: list[str],
 ) -> PipelineResult:
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "refine_document_start",
+        kind=kind,
+        output_lang=output_lang,
+        problems=len([p for p in problems if p.strip()]),
+        demo_mode=STATE.demo_mode,
+    )
     if kind == DOC_MODERN_CV:
         # Modern CV: regenerate the JSON payload from scratch with the
         # candidate's notes applied, then re-render. There is no
@@ -622,6 +672,12 @@ def refine_document(
             refreshed = f"{refreshed}\n\n## {heading}\n{bullets}\n"
         STATE.documents[kind] = refreshed
         REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "refine_document_demo_done",
+            kind=kind,
+        )
         return PipelineResult(ok=True)
 
     _set_activity("generating")
@@ -640,6 +696,12 @@ def refine_document(
             temperature=0.3,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline",
+            "refine_document_provider_error",
+            exc,
+            kind=kind,
+        )
         return _set_error(str(exc))
     text = (result.text or "").strip()
     if not text:
@@ -648,6 +710,13 @@ def refine_document(
     STATE.activity = "ready"
     safe(REFS.rerender_context)
     REFS.dispatch(_request_full_refresh)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "refine_document_done",
+        kind=kind,
+        chars=len(text),
+    )
     return PipelineResult(ok=True)
 
 
@@ -673,11 +742,28 @@ def send_chat_message(
     if not user_text:
         return "", "Empty message."
 
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "send_chat_start",
+        output_lang=output_lang,
+        chars=len(user_text),
+        demo_mode=STATE.demo_mode,
+        history=len(STATE.chat_messages),
+        attachments=len(STATE.chat_attachments),
+    )
+
     if STATE.demo_mode:
         # Echo a short canned reply so the demo flow is fully offline.
         # We intentionally do NOT touch the cost tracker here - demo
         # mode promises 0 spend.
         canned = _demo_chat_reply(user_text, output_lang)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "send_chat_demo_done",
+            chars=len(canned),
+        )
         return canned, ""
 
     history = [
@@ -699,10 +785,22 @@ def send_chat_message(
             temperature=0.4,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "send_chat_provider_error", exc
+        )
         return "", str(exc)
     text = (result.text or "").strip()
     if not text:
+        logger_service.log_event(
+            "ERROR", "ai_career.pipeline", "send_chat_empty_response"
+        )
         return "", "Provider returned an empty response."
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "send_chat_done",
+        reply_chars=len(text),
+    )
     return text, ""
 
 
@@ -911,18 +1009,37 @@ def save_full_analysis() -> SaveResult:
     and the section header menu's "Save full analysis" item. The on-disk
     layout matches what the History tab expects so "Open in app" still
     rehydrates the run later.
+
+    Each call rolls a **fresh** run folder under ``outputs/`` even if a
+    previous save just happened: the user expects two clicks of "Save
+    complete analysis" to produce two timestamped snapshots, not a
+    silent overwrite. ``store.new_run_dir`` already disambiguates
+    same-second collisions with a numeric suffix (``-2``, ``-3``, ...).
+    Per-document export buttons in :mod:`src.sections.ai_career.tab_documents`
+    keep coalescing into the same run folder via ``_ensure_run_folder``,
+    so individual MD/PDF exports of the same analysis still land in one
+    place.
     """
     if not STATE.documents and not STATE.modern_cv_data:
+        logger_service.log_event(
+            "WARNING", "ai_career.pipeline", "save_full_no_documents"
+        )
         return SaveResult(ok=False, error="no_documents")
 
     role = ""
     if STATE.job_spec:
         role = str(STATE.job_spec.get("title") or "")
-    if STATE.last_run_folder and Path(STATE.last_run_folder).is_dir():
-        folder_path = Path(STATE.last_run_folder)
-    else:
-        folder_path = Path(store.new_run_dir(role or "ai-career-run"))
-        STATE.last_run_folder = str(folder_path)
+    folder_path = Path(store.new_run_dir(role or "ai-career-run"))
+    STATE.last_run_folder = str(folder_path)
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "save_full_start",
+        folder=str(folder_path),
+        role=role,
+        documents=len(STATE.documents),
+        has_modern_cv=bool(STATE.modern_cv_data),
+    )
 
     output_lang = (STATE.document_output_lang or "en").strip().lower() or "en"
     theme_state = STATE.modern_cv_theme or {}
@@ -1095,9 +1212,17 @@ def save_full_analysis() -> SaveResult:
             docs=docs_list,
         )
         store.append_run(summary)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "save_full_history_append", exc
+        )
 
+    logger_service.log_event(
+        "INFO",
+        "ai_career.pipeline",
+        "save_full_done",
+        folder=str(folder_path),
+    )
     return SaveResult(ok=True, folder=str(folder_path))
 
 

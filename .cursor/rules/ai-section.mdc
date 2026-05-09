@@ -54,8 +54,21 @@ Inside `src/sections/<key>/` you may add (all optional except as noted):
   `True` and return curated mock data — that lets users showcase the
   feature without spending tokens.
 - **Runs persist on disk.** Use `src.services.store.new_run_dir(...)`
-  and write outputs through `src.services.exporter.export_*`. The
-  history index lives at `~/AI Hub/history.json`.
+ and write outputs through `src.services.exporter.export_*`. The
+ history index lives at `~/AI Hub/history.json`. Every "Save complete
+ analysis" call must request a fresh `new_run_dir(...)` - never reuse
+ the previous run folder, otherwise two saves silently overwrite each
+ other (see `ai_career.pipeline.save_full_analysis`).
+- **Pipeline functions log start / end / errors** through
+ `src.services.logger.log_event` and `log_exception`. AI calls must
+ emit a `*_start` line (with `kind`, `output_lang`, `demo_mode`) and a
+ matching `*_done` or `*_failed` line (with `chars=` for sizes, never
+ the raw text). This is what makes silent provider errors visible in
+ **Settings -> Debug logs**. See `src/sections/ai_career/pipeline.py`
+ (`generate_document`, `refine_document`, `send_chat_message`,
+ `save_full_analysis`) for the canonical pattern. The companion rule
+ [sections.mdc](sections.mdc) has the full list of mandatory log
+ events.
 
 ## Section file shape (AI-aware)
 
@@ -83,22 +96,41 @@ SECTION = Section(
 
 ```python
 from src.services import ai_provider
+from src.services import logger as logger_service
 from src.sections.<key> import prompts, schema
 from src.sections.<key>.state import STATE
 
+
 def extract_thing(*, output_lang: str):
+    logger_service.log_event(
+        "INFO", "<key>.pipeline", "extract_thing_start",
+        output_lang=output_lang, demo_mode=STATE.demo_mode,
+    )
     if STATE.demo_mode:
         STATE.thing = ...  # mock
+        logger_service.log_event(
+            "INFO", "<key>.pipeline", "extract_thing_demo_done"
+        )
         return
-    result = ai_provider.run(
-        system=prompts.THING_SYSTEM,
-        user=prompts.build_thing_user(output_lang=output_lang, ...),
-        schema=schema.THING_SCHEMA,
-        schema_name="thing",
-    )
+    try:
+        result = ai_provider.run(
+            system=prompts.THING_SYSTEM,
+            user=prompts.build_thing_user(output_lang=output_lang, ...),
+            schema=schema.THING_SCHEMA,
+            schema_name="thing",
+        )
+    except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "<key>.pipeline", "extract_thing_provider_error", exc,
+        )
+        raise
     STATE.thing = result.data
+    logger_service.log_event(
+        "INFO", "<key>.pipeline", "extract_thing_done",
+        fields=len(result.data or {}),
+    )
 ```
 
 That keeps every section's AI footprint in five files (prompts, schema,
 state, pipeline, plus tabs) and a single shared dependency on
-`src.services.ai_provider`.
+`src.services.ai_provider` (plus the shared `logger_service`).
