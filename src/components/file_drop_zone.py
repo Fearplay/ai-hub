@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional, Sequence
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -72,8 +72,46 @@ class _DropZone(ClickFrame):
         self._on_emit = on_emit
         self.setAcceptDrops(True)
         self.setMinimumHeight(height)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        # Preferred (not Maximum) on the vertical axis so the dashed
+        # frame can grow when wrapped title / hint / CTA labels need
+        # more than ``height`` pixels (e.g. longer Czech translations
+        # like "Volitelné. PDF, HTML nebo TXT - export z LinkedIn ->
+        # Settings") instead of clipping them inside a fixed box. The
+        # size policy alone is not enough on QFrame though - we also
+        # override hasHeightForWidth / heightForWidth / sizeHint below
+        # so the parent vbox actually queries the inner labels' wrapped
+        # height instead of using the unwrapped (single-line) sizeHint.
+        size_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        size_policy.setHeightForWidth(True)
+        self.setSizePolicy(size_policy)
         self._apply_idle_style()
+
+    # height-for-width plumbing --------------------------------------------
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        layout = self.layout()
+        if layout is None:
+            return self.minimumHeight()
+        # ``totalHeightForWidth`` includes the layout's own margins, so
+        # we don't need to subtract anything here.
+        natural = layout.totalHeightForWidth(max(width, 1))
+        if natural <= 0:
+            natural = layout.totalSizeHint().height()
+        return max(natural, self.minimumHeight())
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        base = super().sizeHint()
+        # Width is whatever the parent decided; height should follow
+        # the wrapped labels via heightForWidth so the dashed frame
+        # grows for longer translations instead of clipping them.
+        width = max(base.width(), self.width(), self.minimumWidth(), 1)
+        return QSize(base.width(), self.heightForWidth(width))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
 
     # styling ---------------------------------------------------------------
 
@@ -171,7 +209,13 @@ def file_drop_zone(
 
     container = QFrame()
     container.setStyleSheet("background: transparent;")
-    container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    # Outer container mirrors the inner zone's vertical policy so it
+    # can grow with wrapped labels instead of clipping the dashed box.
+    # ``setHeightForWidth(True)`` makes the parent vbox in tab_setup
+    # ask for the wrapped height when calculating overall layout.
+    outer_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    outer_policy.setHeightForWidth(True)
+    container.setSizePolicy(outer_policy)
     outer_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
     container.setLayout(outer_layout)
 
@@ -223,7 +267,7 @@ def file_drop_zone(
         height=height,
     )
 
-    inner_layout = vbox(spacing=4, margins=(14, 14, 14, 14))
+    inner_layout = vbox(spacing=6, margins=(14, 16, 14, 16))
     inner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     drop.setLayout(inner_layout)
 

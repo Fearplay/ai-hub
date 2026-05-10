@@ -264,6 +264,13 @@ class LinkedInState:
     demo_mode: bool = False
     runs_history: list[dict] = field(default_factory=list)
 
+    # Vertical scroll position of the Setup tab's QScrollArea, kept
+    # across the full section rebuild that fires every time the user
+    # drops a file / toggles a checkbox / etc. Without this, the tab
+    # snaps back to the top after every ``rebuild()``, which is jarring
+    # when the user is mid-scroll deep inside step 2 / step 3.
+    setup_scroll_y: int = 0
+
     # --- Reset helpers -------------------------------------------------
 
     def reset_run(self) -> None:

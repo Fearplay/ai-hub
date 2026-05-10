@@ -524,9 +524,13 @@ class _BaseTextButton(QPushButton):
                 border-radius: {radius}px;
                 padding: {padding};
                 color: {fg};
+                outline: none;
             }}
             QPushButton:hover {{
                 background-color: {bg_hover};
+            }}
+            QPushButton:focus {{
+                outline: none;
             }}
             QPushButton:disabled {{
                 background-color: {bg};

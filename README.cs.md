@@ -133,6 +133,29 @@ Klíče se neukládají na disk v plain textu. Aplikace je pošle do nativního 
 
 Když `keyring` nemá dostupný backend (typicky headless Linux bez `gnome-keyring`), Settings UI se sám přepne do read-only režimu a vysvětlí, co je potřeba doinstalovat.
 
+### HTTPS přes systémové úložiště certifikátů
+
+Každé volání OpenAI / Anthropic / GitHubu jde přes `httpx`, který ve
+výchozím stavu ověřuje certifikáty proti vendorovanému `certifi` CA
+balíku. Ve firemních / školních sítích (Zscaler, Netskope, antivirový
+MITM, vlastní interní root) je řetězec uložený jen v **OS** úložišti,
+ne v `certifi`, a requesty padají na `SSL: CERTIFICATE_VERIFY_FAILED`.
+Aby HTTPS na takových strojích fungovalo bez ruční konfigurace, volá
+`main.py` jako úplně první runtime příkaz
+[`truststore.inject_into_ssl()`](https://truststore.readthedocs.io/),
+který přepojí Python `ssl.SSLContext` na nativní úložiště:
+
+| OS | Backend |
+| --- | --- |
+| Windows | CryptoAPI (Trusted Root Certification Authorities) |
+| macOS | Security framework |
+| Linux | OpenSSL systémové rooty |
+
+`truststore` je přidán do `requirements.txt` a do .exe se dostává přes
+`--collect-submodules truststore` v `build_exe.bat`. Žádný kód v
+sekcích / knihovnách `inject_into_ssl()` nevolá - dle upstream
+upozornění to smí jen entry-point aplikace.
+
 ### Demo režim (offline, bez tokenů)
 
 Každá AI sekce má v Setupu tlačítko **Vyzkoušet ukázková data**, které celý workflow projde bez jediného volání providera. Vhodné pro screenshoty, demonstrace a první seznámení s appkou.

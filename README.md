@@ -146,6 +146,30 @@ When `keyring` has no available backend (typically headless Linux without
 `gnome-keyring`), the Settings UI flips to read-only and explains what to
 install.
 
+### HTTPS via the OS trust store
+
+Every OpenAI / Anthropic / GitHub call ultimately flows through `httpx`,
+which by default validates server certificates against the bundled
+`certifi` CA list. On corporate / school networks (Zscaler, Netskope,
+antivirus MITM, custom internal roots), the chain is only present in
+the **OS** trust store, not in `certifi`, and the request fails with
+`SSL: CERTIFICATE_VERIFY_FAILED`. To make HTTPS Just Work on those
+machines, `main.py` calls
+[`truststore.inject_into_ssl()`](https://truststore.readthedocs.io/) as
+the very first runtime statement, which patches Python's `ssl.SSLContext`
+to use:
+
+| OS | Backend |
+| --- | --- |
+| Windows | CryptoAPI (Trusted Root Certification Authorities) |
+| macOS | Security framework |
+| Linux | OpenSSL system roots |
+
+`truststore` is added to `requirements.txt` and bundled into the .exe via
+`--collect-submodules truststore` in `build_exe.bat`. No section / library
+code calls `inject_into_ssl()` - per the upstream warning, only the
+application entry point is allowed to.
+
 ### Demo mode (offline, no tokens)
 
 Every AI section has a **Try demo data** button in Setup which walks the

@@ -521,13 +521,27 @@ def build_setup_tab(
     def _on_state_change() -> None:
         safe(REFS.rerender_context)
 
+    # Holder reference so the rebuild wrapper below can read the
+    # current scroll position before the section is rebuilt. Defined
+    # before ``scroll`` so the wrapper closes over the dict, not over
+    # ``scroll`` directly (the latter is created later).
+    scroll_holder: dict[str, QScrollArea | None] = {"scroll": None}
+
+    def _rebuild_preserving_scroll() -> None:
+        sc = scroll_holder["scroll"]
+        if sc is not None:
+            bar = sc.verticalScrollBar()
+            if bar is not None:
+                STATE.setup_scroll_y = bar.value()
+        on_request_rerender()
+
     inner = QWidget()
     inner.setStyleSheet(f"background-color: {theme.bg};")
     inner_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
     inner.setLayout(inner_layout)
-    inner_layout.addWidget(_step_targeting(theme, lang, txt, _on_state_change, on_request_rerender))
-    inner_layout.addWidget(_step_inputs(theme, lang, txt, _on_state_change, on_request_rerender))
-    inner_layout.addWidget(_step_output(theme, lang, txt, _on_state_change, on_request_rerender))
+    inner_layout.addWidget(_step_targeting(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))
+    inner_layout.addWidget(_step_inputs(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))
+    inner_layout.addWidget(_step_output(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))
     inner_layout.addStretch(1)
 
     scroll = QScrollArea()
@@ -537,6 +551,19 @@ def build_setup_tab(
     scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
     scroll.setWidget(inner)
     layout.addWidget(scroll, 1)
+    scroll_holder["scroll"] = scroll
+
+    # Restore the previously-saved scroll offset on the next event-loop
+    # tick - by then the QScrollArea knows its real viewport size and
+    # ``verticalScrollBar().maximum()`` reflects the full inner height.
+    saved_scroll_y = STATE.setup_scroll_y
+    if saved_scroll_y > 0:
+        def _restore_scroll() -> None:
+            bar = scroll.verticalScrollBar()
+            if bar is None:
+                return
+            bar.setValue(min(saved_scroll_y, bar.maximum()))
+        runtime_dispatch(_restore_scroll)
 
     layout.addWidget(_footer_bar(theme, lang, txt, on_navigate_tab))
     return container

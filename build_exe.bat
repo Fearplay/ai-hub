@@ -133,10 +133,17 @@ REM   --collect-submodules PySide6         -> bring all of PySide6's dynamic
 REM                                            submodules into the bundle so
 REM                                            QSyntaxHighlighter, QtSvg etc.
 REM                                            don't fail at runtime.
+REM   --collect-submodules truststore      -> truststore loads its OS-specific
+REM                                            backend (_windows / _macos /
+REM                                            _openssl) at import time; force
+REM                                            PyInstaller to bundle all three
+REM                                            so the .exe trusts the system
+REM                                            CA store on a clean machine.
 pyinstaller --noconfirm --onefile --windowed --name AIHub ^
     --add-data "assets\fonts;assets\fonts" ^
     --hidden-import pyperclip ^
     --collect-submodules PySide6 ^
+    --collect-submodules truststore ^
     %ICON_ARG% ^
     main.py
 if errorlevel 1 (
