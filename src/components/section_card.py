@@ -39,15 +39,15 @@ def section_card(
     head_row = hbox(spacing=10, margins=(0, 0, 0, 0))
 
     icon_box = QFrame()
-    icon_box.setFixedSize(30, 30)
+    icon_box.setFixedSize(34, 34)
     icon_box.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 8px;"
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 10px;"
     )
     icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_box.setLayout(icon_layout)
     icon_layout.addWidget(
-        IconLabel(icon, color=theme.primary, size=16),
+        IconLabel(icon, color=theme.primary, size=18),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
     head_row.addWidget(icon_box)

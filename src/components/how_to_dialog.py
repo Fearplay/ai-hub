@@ -51,14 +51,14 @@ def _section_block(theme: Theme, *, icon: str, title: str, body: str) -> QFrame:
     block.setLayout(layout)
 
     icon_box = QFrame()
-    icon_box.setFixedSize(34, 34)
+    icon_box.setFixedSize(40, 40)
     icon_box.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 10px;"
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 12px;"
     )
     icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_box.setLayout(icon_layout)
-    icon_layout.addWidget(IconLabel(icon, color=theme.primary, size=18),
+    icon_layout.addWidget(IconLabel(icon, color=theme.primary, size=22),
                           alignment=Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(icon_box)
 

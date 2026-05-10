@@ -21,6 +21,7 @@ from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ElidedLabel,
     GhostButton,
     IconLabel,
     IconOnlyButton,
@@ -119,7 +120,13 @@ def _row(
     info.setLayout(il)
     il.addWidget(BodyLabel(summary.role or "—", theme=theme, size=14, weight=QFont.Weight.Bold))
     il.addWidget(MutedLabel(f"{summary.company or '—'} · {summary.timestamp}", theme=theme, size=12))
-    il.addWidget(SubtleLabel(summary.folder, theme=theme, size=11, italic=True))
+    folder_label = ElidedLabel(
+        summary.folder,
+        color=theme.text_subtle,
+        size=11,
+        italic=True,
+    )
+    il.addWidget(folder_label)
     layout.addWidget(info, 1)
 
     pill = Pill(text=f"{txt['history_score_label']}: {score}", bg=rgba(score_color, 0.14), fg=score_color)

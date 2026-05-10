@@ -74,8 +74,9 @@ Co skript dělá:
 1. Pokud chybí Python na PATH, zkusí ho doinstalovat přes `winget install -e --id Python.Python.3.13`. Když ani winget není k dispozici, vypíše odkaz na python.org a skončí.
 2. Pokud neexistuje `.venv\`, vytvoří ho.
 3. Aktivuje venv a nainstaluje `requirements.txt` + `pyinstaller`.
-4. Pustí `pyinstaller --onefile --windowed --name AIHub` (s vloženým fontem
-   Material Icons z `assets\fonts\`) a vyrobí `dist\AIHub.exe`.
+4. Pustí `pyinstaller --onefile --windowed --name AIHub` (s vloženým
+   subsetem fontu **Material Symbols Rounded** z `assets\fonts\`) a
+   vyrobí `dist\AIHub.exe`.
 
 Použití:
 
@@ -194,19 +195,20 @@ ai-hub/
 ├── LICENSE
 ├── .gitignore
 ├── assets/
-│   └── fonts/                     # vložený Material Icons font + codepoints
+│   └── fonts/                     # vložený subset Material Symbols Rounded + codepoints
 └── src/
     ├── theme.py                  # barvy a designové tokeny (dark + light)
     ├── app.py                    # AIHubApp - stav, layout, routing (sekce nezná jménem)
     ├── i18n.py                   # globální EN/CS překlady + t(key, lang)
     ├── qt/                        # PySide6 stavební bloky
     │   ├── theme.py              # QSS emitter + rgba helper
-    │   ├── icons.py              # loader Material Icons fontu + codepointy
-    │   ├── widgets.py            # Card / IconLabel / typografie / tlačítka / Pill
+    │   ├── icons.py              # loader fontu Material Symbols Rounded + codepointy
+    │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typografie / tlačítka / Pill
     │   ├── effects.py            # drop shadow + opacity helpery
     │   ├── markdown.py           # bold-spans pro plain QLabel
     │   ├── dialog.py             # BaseDialog (themed modal scaffold)
-    │   └── runtime.py             # cross-thread UI dispatcher (worker → GUI)
+    │   ├── runtime.py             # cross-thread UI dispatcher (worker → GUI)
+    │   └── window_chrome.py      # Win32 DWM helper - obarví OS title bar podle theme
     ├── components/               # sdílené UI prvky (PySide6)
     │   ├── sidebar.py            # iteruje registr sekcí, header / scroll / footer
     │   ├── nav_item.py
@@ -272,7 +274,16 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
 - Tříslupcový layout, scrollovatelný sidebar (header / scroll / footer)
 - **Přepínač jazyka** EN ↔ CS v sidebaru (default English, jak chtěl tým)
 - Auto-discovery sekcí (primary + secondary skupina; History / Favorites / Settings v secondary)
-- Přepínač světlý / tmavý režim
+- Přepínač světlý / tmavý režim - **Windows OS title bar** (proužek
+  s X / minimalizovat / maximalizovat a názvem appky) se přebarví
+  podle aktivního theme přes DWM API, takže v dark módu už nepřežívá
+  bílý pruh nad tmavým sidebarem (`src/qt/window_chrome.py`, na macOS /
+  Linuxu nedělá nic).
+- **Rychlé přepnutí theme + jazyka** - kliknutí na pill v sidebaru
+  jenom znovu aplikuje globální QSS, přestaví sidebar a přestaví
+  **jenom** aktivní sekci (ostatní si nový jazyk vyzvednou až při
+  příštím kliknutí). Celé okno se už nepřebudovává od nuly, takže
+  bývalá ~3sekundová pauza na sekci AI Career je pryč.
 - **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, demo flagy, debug logy
 - **AI Životopis / Kariéra** - dva režimy přepínatelné v hlavičce sekce:
   - **Chat** (Verze B) - konverzační HR asistent, který si můžeš zeptat na cokoli k roli, životopisu, motivačnímu dopisu nebo přípravě na pohovor; do bubliny se dají připojit dokumenty (PDF / DOCX / TXT / MD / HTML) a kontext se přenáší do dalších otázek.
@@ -360,7 +371,7 @@ Použité knihovny a assety:
 | Položka | Licence | Odkaz |
 | --- | --- | --- |
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (s výjimkou pro dynamické linkování, kterou PyInstaller používá) | https://www.qt.io/licensing |
-| [Material Icons (Outlined)](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 
 LGPL-3.0 i Apache-2.0 jsou s MIT redistribucí kompatibilní, dokud zachováme atribuci (viz [LICENSE](LICENSE)).

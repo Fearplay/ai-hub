@@ -1,10 +1,17 @@
-"""Material Icons (Outlined) integration for PySide6.
+"""Material Symbols Rounded integration for PySide6.
 
-We bundle Google's ``MaterialIconsOutlined-Regular.otf`` (Apache-2.0)
-under :file:`assets/fonts/`. The companion ``.codepoints`` file maps
-every icon name to its single-character Unicode glyph in that font.
-Both are loaded once at process start: the font goes into the Qt font
-database and the codepoints are read into a ``dict[str, str]``.
+We bundle Google's Material Symbols Rounded variable font subset
+(``MaterialSymbolsRounded-Regular.otf``, Apache-2.0) under
+:file:`assets/fonts/`. The companion ``.codepoints`` file maps every
+icon name to its single-character Unicode glyph. Both are loaded once
+at process start: the font goes into the Qt font database and the
+codepoints are read into a ``dict[str, str]``.
+
+The subset OTF only carries the ~140 glyphs the app actually uses (see
+:class:`Icons`). To add another icon, drop the upstream variable font
+into ``assets/fonts/MaterialSymbolsRounded-VariableFont.ttf``, add the
+new ``Icons.X`` constant, and re-run the subset helper from project
+history (``fontTools.subset.Subsetter`` keyed off this module).
 
 Usage from a widget module:
 
@@ -18,16 +25,12 @@ Usage from a widget module:
 
 Icon constants follow the Flet ``ft.Icons.X`` naming so the migration
 keeps the same vocabulary in section views (``Icons.WORK_OUTLINE``,
-``Icons.ATTACH_FILE``, ...).
-
-Naming rule for the constants: each ``Icons.X`` constant maps to a
-Material Icons codepoint name in the bundled Outlined font. Because the
-font is already the outlined variant, names ending in ``_OUTLINED`` in
-the Flutter catalog (``DESCRIPTION_OUTLINED``, ``WARNING_AMBER_OUTLINED``,
-``SHIELD_OUTLINED``, ...) resolve to the base name (``description``,
-``warning_amber``, ``shield``). Names ending in ``_OUTLINE`` denote a
-distinct stroke-only glyph the font ships separately (``MAIL_OUTLINE``,
-``WORK_OUTLINE``, ``LIGHTBULB_OUTLINE``).
+``Icons.ATTACH_FILE``, ...). Material Symbols dropped a handful of
+"old generation" name suffixes - in particular ``_OUTLINE`` /
+``_OUTLINED`` are now style axes on a single base name, so e.g.
+``Icons.BOOKMARK_OUTLINE`` resolves to ``"bookmark"`` here even though
+the Material Icons codepoint file used to expose ``"bookmark_outline"``
+as a separate glyph.
 """
 
 from __future__ import annotations
@@ -59,7 +62,7 @@ def _bundled_root() -> Path:
 
 
 def _load_codepoints() -> dict[str, str]:
-    path = _bundled_root() / "assets" / "fonts" / "MaterialIconsOutlined-Regular.codepoints"
+    path = _bundled_root() / "assets" / "fonts" / "MaterialSymbolsRounded-Regular.codepoints"
     out: dict[str, str] = {}
     try:
         text = path.read_text(encoding="utf-8")
@@ -93,7 +96,7 @@ def _ensure_loaded() -> None:
         _CODEPOINTS = _load_codepoints()
     if _FONT_FAMILY is not None:
         return
-    font_path = _bundled_root() / "assets" / "fonts" / "MaterialIconsOutlined-Regular.otf"
+    font_path = _bundled_root() / "assets" / "fonts" / "MaterialSymbolsRounded-Regular.otf"
     if not font_path.exists():
         _FONT_FAMILY = ""
         return
@@ -161,7 +164,7 @@ class Icons:
     ACCOUNT_BALANCE_WALLET_OUTLINED = "account_balance_wallet"
     ADD = "add"
     ALTERNATE_EMAIL = "alternate_email"
-    APPLE = "apple"
+    APPLE = "phone_iphone"
     ARROW_BACK = "arrow_back"
     ARROW_FORWARD = "arrow_forward"
     ARTICLE_OUTLINED = "article"
@@ -173,7 +176,7 @@ class Icons:
     BAR_CHART = "bar_chart"
     BOLT_OUTLINED = "bolt"
     BOOKMARK_BORDER = "bookmark_border"
-    BOOKMARK_OUTLINE = "bookmark_outline"
+    BOOKMARK_OUTLINE = "bookmark"
     BUSINESS_CENTER_OUTLINED = "business_center"
     CALCULATE_OUTLINED = "calculate"
     CALENDAR_TODAY = "calendar_today"
@@ -253,7 +256,7 @@ class Icons:
     PICTURE_AS_PDF = "picture_as_pdf"
     PIE_CHART_OUTLINE = "pie_chart_outline"
     PLAY_ARROW_ROUNDED = "play_arrow"
-    PLAY_CIRCLE_OUTLINE = "play_circle_outline"
+    PLAY_CIRCLE_OUTLINE = "play_circle"
     POST_ADD = "post_add"
     PSYCHOLOGY_ALT_OUTLINED = "psychology_alt"
     PSYCHOLOGY_OUTLINED = "psychology"

@@ -27,6 +27,7 @@ from src.qt.widgets import (
     BodyLabel,
     GhostButton,
     IconLabel,
+    IconOnlyButton,
     MutedLabel,
     PrimaryButton,
     SubtleLabel,
@@ -743,18 +744,27 @@ def build_documents_tab(
     br_layout.addWidget(back_btn)
     br_layout.addStretch(1)
 
-    md_btn = GhostButton(txt["export_md_btn"], theme=theme, icon=Icons.NOTES)
-    md_btn.clicked.connect(lambda: _export("md"))
-    br_layout.addWidget(md_btn)
-    html_btn = GhostButton(txt["export_html_btn"], theme=theme, icon=Icons.HTML)
-    html_btn.clicked.connect(lambda: _export("html"))
-    br_layout.addWidget(html_btn)
-    docx_btn = GhostButton(txt["export_docx_btn"], theme=theme, icon=Icons.DESCRIPTION)
-    docx_btn.clicked.connect(lambda: _export("docx"))
-    br_layout.addWidget(docx_btn)
-    pdf_btn = GhostButton(txt["export_pdf_btn"], theme=theme, icon=Icons.PICTURE_AS_PDF)
-    pdf_btn.clicked.connect(lambda: _export("pdf"))
-    br_layout.addWidget(pdf_btn)
+    # Per-format export buttons collapse to icon-only with a tooltip:
+    # six labelled buttons in this row truncated at 1080 px in Czech.
+    # The labelled Back + Save-complete buttons on each end keep a
+    # descriptive label (the user reaches for them most often).
+    def _icon_export(icon_name: str, tooltip: str, action: str):
+        btn = IconOnlyButton(
+            icon_name,
+            color=theme.text,
+            size=18,
+            bg=rgba(theme.text, 0.04),
+            bg_hover=rgba(theme.text, 0.10),
+            radius=10,
+            tooltip=tooltip,
+        )
+        btn.clicked.connect(lambda _=False, a=action: _export(a))
+        return btn
+
+    br_layout.addWidget(_icon_export(Icons.NOTES, txt["export_md_btn"], "md"))
+    br_layout.addWidget(_icon_export(Icons.HTML, txt["export_html_btn"], "html"))
+    br_layout.addWidget(_icon_export(Icons.DESCRIPTION, txt["export_docx_btn"], "docx"))
+    br_layout.addWidget(_icon_export(Icons.PICTURE_AS_PDF, txt["export_pdf_btn"], "pdf"))
     all_btn = PrimaryButton(txt["export_all_btn"], theme=theme, icon=Icons.SAVE_OUTLINED)
     all_btn.clicked.connect(lambda: _export("all"))
     br_layout.addWidget(all_btn)

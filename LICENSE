@@ -33,9 +33,12 @@ compatible with the MIT License above.
   Copyright (c) The Qt Company Ltd.
   https://www.qt.io/licensing
 
-- Material Icons - Outlined font (https://github.com/google/material-design-icons)
-  Apache License 2.0. The bundled file
-  ``assets/fonts/MaterialIconsOutlined-Regular.otf`` is unmodified.
+- Material Symbols Rounded font (https://github.com/google/material-design-icons)
+  Apache License 2.0. The bundled
+  ``assets/fonts/MaterialSymbolsRounded-Regular.otf`` is a glyph-subset
+  of the upstream variable font (only the icon names referenced in
+  ``src/qt/icons.py`` are kept). The accompanying
+  ``MaterialSymbolsRounded-Regular.codepoints`` index file is unmodified.
   Copyright (c) Google Inc.
   https://github.com/google/material-design-icons/blob/master/LICENSE
 

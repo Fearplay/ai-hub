@@ -11,7 +11,8 @@ REM      - falls back to a clear message + python.org link
 REM   2. Create / activate a project-local .venv\
 REM   3. Upgrade pip and install requirements.txt + pyinstaller
 REM   4. Run "pyinstaller" to bundle main.py into one .exe (with the
-REM      Material Icons font baked into ``assets\fonts\``)
+REM      Material Symbols Rounded icon font baked into
+REM      ``assets\fonts\`` so glyphs render on a clean machine)
 REM   5. Print the output path
 REM
 REM Skips the rebuild when dist\AIHub.exe is newer than every .py
@@ -122,8 +123,10 @@ if exist "assets\icon.ico" set "ICON_ARG=--icon assets\icon.ico"
 REM PyInstaller flags:
 REM   --onefile --windowed                 -> single-file GUI app, no console
 REM   --name AIHub                         -> output name
-REM   --add-data "src;dst"                 -> bundle the Material Icons font
-REM                                            (Windows uses ; as path separator)
+REM   --add-data "src;dst"                 -> bundle the Material Symbols
+REM                                            Rounded font subset (.otf)
+REM                                            and the codepoints map
+REM                                            (Windows uses ; as separator)
 REM   --hidden-import pyperclip             -> defensive; pyperclip is sometimes
 REM                                            picked up via lazy try/except
 REM   --collect-submodules PySide6         -> bring all of PySide6's dynamic

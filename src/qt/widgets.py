@@ -134,6 +134,61 @@ def SubtleLabel(
     )
 
 
+class ElidedLabel(QLabel):
+    """``QLabel`` that ellides (``...``) when the available width is too small.
+
+    The default :class:`QLabel` clips the trailing characters when the
+    text overflows; we want a ``...\\path\\to\\file`` look for long
+    file paths in history rows and similar narrow strips. Set
+    ``mode`` to switch between elide-left / elide-middle / elide-right
+    (defaults to ``ElideMiddle`` which matches the Flet original).
+    """
+
+    def __init__(
+        self,
+        text: str,
+        *,
+        color: str,
+        size: int,
+        weight: int | QFont.Weight = QFont.Weight.Normal,
+        italic: bool = False,
+        mode: Qt.TextElideMode = Qt.TextElideMode.ElideMiddle,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._full_text = text
+        self._mode = mode
+        font = QFont()
+        font.setPixelSize(size)
+        font.setWeight(_coerce_weight(weight))
+        font.setItalic(italic)
+        self.setFont(font)
+        self.setStyleSheet(f"color: {color}; background: transparent;")
+        self.setWordWrap(False)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full_text = text or ""
+        self._update_elided()
+
+    def setEliding(self, mode: Qt.TextElideMode) -> None:  # noqa: N802
+        self._mode = mode
+        self._update_elided()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._update_elided()
+
+    def _update_elided(self) -> None:
+        from PySide6.QtGui import QFontMetrics
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(self._full_text, self._mode, max(self.width() - 4, 16))
+        super().setText(elided)
+        self.setToolTip(self._full_text)
+
+
 def AccentLabel(
     text: str, *, theme: Theme, size: int = 12, weight: int = QFont.Weight.DemiBold
 ) -> QLabel:
@@ -184,8 +239,12 @@ class IconLabel(QLabel):
         self._size = size
         self.setFont(icon_font(size))
         self.setStyleSheet(f"color: {color}; background: transparent;")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedSize(size + 4, size + 4)
+        # Material Symbols glyphs sit slightly higher in the em-box
+        # than the old Material Icons font - the extra vertical room
+        # plus an explicit centre alignment keeps them visually
+        # centred inside their fixed-size box.
+        self.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        self.setFixedSize(size + 6, size + 6)
 
     def set_color(self, color: str) -> None:
         if color == self._color:
@@ -201,7 +260,7 @@ class IconLabel(QLabel):
             return
         self._size = size
         self.setFont(icon_font(size))
-        self.setFixedSize(size + 4, size + 4)
+        self.setFixedSize(size + 6, size + 6)
 
 
 # --- containers / cards -----------------------------------------------------

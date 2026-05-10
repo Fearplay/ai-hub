@@ -160,14 +160,14 @@ def _card(
     head_row.setLayout(head_layout)
 
     icon_box = QFrame()
-    icon_box.setFixedSize(32, 32)
+    icon_box.setFixedSize(36, 36)
     icon_box.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 8px;"
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 10px;"
     )
     ib_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     ib_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_box.setLayout(ib_layout)
-    ib_layout.addWidget(IconLabel(icon, color=theme.primary, size=18),
+    ib_layout.addWidget(IconLabel(icon, color=theme.primary, size=20),
                         alignment=Qt.AlignmentFlag.AlignCenter)
     head_layout.addWidget(icon_box)
 

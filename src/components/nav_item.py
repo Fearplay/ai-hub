@@ -16,11 +16,47 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from src.qt.theme import rgba
 from src.qt.widgets import ClickFrame, IconLabel, Pill, hbox
 from src.theme import Theme
+
+
+def _badge_widget(theme: Theme, text: str) -> QWidget:
+    """Render a sidebar nav badge.
+
+    Short labels (<= 2 chars, e.g. notification counts) become a tight
+    20x20 circle so the row stays balanced. Longer text falls back to
+    the regular pill so we don't squeeze, e.g., "NEW" into a circle.
+    """
+    text = str(text)
+    if len(text) <= 2:
+        chip = QFrame()
+        chip.setObjectName("NavBadge")
+        chip.setFixedSize(20, 20)
+        chip.setStyleSheet(
+            f"QFrame#NavBadge {{ background-color: {theme.badge}; border-radius: 10px; }}"
+        )
+        layout = QVBoxLayout(chip)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        font = QFont()
+        font.setPixelSize(11)
+        font.setWeight(QFont.Weight.DemiBold)
+        label = QLabel(text)
+        label.setFont(font)
+        label.setStyleSheet("color: #FFFFFF; background: transparent;")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+        return chip
+    return Pill(
+        text=text,
+        bg=theme.badge,
+        fg="#FFFFFF",
+        radius=10,
+        padding=(2, 8, 2, 8),
+    )
 
 
 @dataclass
@@ -82,14 +118,7 @@ def nav_item_handle(
     layout.addWidget(text_label, 1)
 
     if badge:
-        pill = Pill(
-            text=str(badge),
-            bg=theme.badge,
-            fg="#FFFFFF",
-            radius=10,
-            padding=(2, 8, 2, 8),
-        )
-        layout.addWidget(pill)
+        layout.addWidget(_badge_widget(theme, badge))
 
     bg = theme.primary_tint if active else "transparent"
     hover_bg = rgba(theme.primary, 0.10) if not active else theme.primary_tint

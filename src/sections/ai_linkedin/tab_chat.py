@@ -215,7 +215,7 @@ def _build_input_bar(
         f"""
         QFrame#ChatInputRow {{
             background-color: {theme.surface};
-            border: 1.5px solid {rgba(theme.border, 0.55)};
+            border: 1px solid {theme.border};
             border-radius: 14px;
         }}
         """

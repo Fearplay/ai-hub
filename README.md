@@ -80,8 +80,8 @@ What the script does:
 2. If `.venv\` doesn't exist, it creates one.
 3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
 4. Runs `pyinstaller --onefile --windowed --name AIHub` (with the
-   Material Icons font under `assets\fonts\` baked in) and produces
-   `dist\AIHub.exe`.
+   bundled Material Symbols Rounded icon font subset under
+   `assets\fonts\` baked in) and produces `dist\AIHub.exe`.
 
 Usage:
 
@@ -197,19 +197,20 @@ ai-hub/
 ├── LICENSE
 ├── .gitignore
 ├── assets/
-│   └── fonts/                     # bundled Material Icons font + codepoints
+│   └── fonts/                     # bundled Material Symbols Rounded subset + codepoints
 └── src/
     ├── theme.py                  # design tokens (dark + light)
     ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
     ├── i18n.py                   # global EN/CS strings + t(key, lang)
     ├── qt/                        # PySide6 building blocks
     │   ├── theme.py              # QSS emitter + rgba helper
-    │   ├── icons.py              # Material Icons font loader + codepoint registry
-    │   ├── widgets.py            # Card / IconLabel / typography / buttons / Pill
+    │   ├── icons.py              # Material Symbols Rounded font loader + codepoint registry
+    │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typography / buttons / Pill
     │   ├── effects.py            # drop shadow + opacity helpers
     │   ├── markdown.py           # bold-spans helper for plain QLabel
     │   ├── dialog.py             # BaseDialog (themed modal scaffold)
-    │   └── runtime.py             # cross-thread UI dispatcher (worker -> GUI)
+    │   ├── runtime.py             # cross-thread UI dispatcher (worker -> GUI)
+    │   └── window_chrome.py      # Win32 DWM helper - tints the OS title bar to match the theme
     ├── components/               # shared UI primitives (PySide6)
     │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
@@ -276,7 +277,16 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
 - Three-column layout, scrollable sidebar (header / scroll / footer).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
 - Section auto-discovery (primary + secondary; History / Favorites / Settings live in secondary).
-- Light / dark mode toggle.
+- Light / dark mode toggle - the **Windows OS title bar** (caption strip with
+  X / minimise / maximise + app name) is tinted to match the active theme via
+  the DWM API, so dark mode no longer leaves a bright white strip on top of
+  the dark sidebar (`src/qt/window_chrome.py`, no-op on macOS / Linux).
+- **Snappy theme + language switch** - flipping the sidebar pill reapplies
+  the global QSS, rebuilds the sidebar widget, and rebuilds **only** the
+  active section's center + right column (other sections pick up the new
+  language on their next click). The full window is no longer torn down on
+  every toggle, so the previously-3-second freeze on the AI Career section
+  is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, demo flags, debug logs.
 - **AI CV / Career** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
@@ -367,7 +377,7 @@ Libraries and assets used:
 | Item | License | Link |
 | --- | --- | --- |
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
-| [Material Icons (Outlined)](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 
 LGPL-3.0 and Apache-2.0 are both compatible with MIT redistribution as
