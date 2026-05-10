@@ -295,9 +295,10 @@ def _wrap_chips(items: List[str], chip_factory) -> QWidget:
 
 def _highlight_pill(label: str, *, accent: str, accent_soft: str) -> QFrame:
     chip = QFrame()
+    chip.setObjectName("ModernCvHighlightPill")
     chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#ModernCvHighlightPill {{
             background-color: {rgba(accent, 0.14)};
             border: 1px solid {accent_soft};
             border-radius: 6px;
@@ -473,9 +474,10 @@ def _cert_item(entry: dict, *, accent_dark: str, ink_700: str, ink_900: str) -> 
 
 def _leadership_banner(items: List[str], *, accent: str, accent_dark: str, rule: str, ink_700: str) -> QFrame:
     banner = QFrame()
+    banner.setObjectName("ModernCvLeadershipBanner")
     banner.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#ModernCvLeadershipBanner {{
             background-color: {rgba(accent, 0.10)};
             border-left: 4px solid {rule};
             border-radius: 6px;

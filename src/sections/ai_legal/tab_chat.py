@@ -120,9 +120,10 @@ def _user_bubble(theme: Theme, lang: str) -> QWidget:
 def _callout_box(theme: Theme, *, label: str, text: str) -> QFrame:
     accent = "#F59E0B"
     box = QFrame()
+    box.setObjectName("LegalChatCalloutBox")
     box.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalChatCalloutBox {{
             background-color: {rgba(accent, 0.10)};
             border: 1px solid {rgba(accent, 0.22)};
             border-radius: 10px;

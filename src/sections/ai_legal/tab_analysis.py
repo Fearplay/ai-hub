@@ -90,9 +90,10 @@ def _view_toggle(
     txt = s(lang)
     mode = STATE.analysis_view_mode
     holder = QFrame()
+    holder.setObjectName("LegalAnalysisViewToggle")
     holder.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalAnalysisViewToggle {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 10px;
@@ -115,9 +116,10 @@ def _findings_card(
     accent: str,
 ) -> QFrame:
     card = QFrame()
+    card.setObjectName("LegalFindingsCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalFindingsCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;
@@ -204,9 +206,10 @@ def _document_view(theme: Theme, lang: str) -> QWidget:
     layout.addWidget(_findings_card(theme, icon=Icons.LIGHTBULB_OUTLINE, title=txt["analysis_recommendations_title"], items=findings["recommendations"], accent=_INFO_COLOR))
 
     md_card = QFrame()
+    md_card.setObjectName("LegalAnalysisMarkdownCard")
     md_card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalAnalysisMarkdownCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;

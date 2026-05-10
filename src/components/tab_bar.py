@@ -31,7 +31,7 @@ def _tab(
     on_click: Optional[Callable[[], None]] = None,
 ) -> ClickFrame:
     container = ClickFrame()
-    container.setStyleSheet("background: transparent;")
+    container.setStyleSheet("background: transparent; border: none;")
     container.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
     if on_click is None:
         container.set_clickable(False)
@@ -72,9 +72,10 @@ def tab_bar(
     on_change: Optional[Callable[[int], None]] = None,
 ) -> QFrame:
     bar = QFrame()
+    bar.setObjectName("SectionTabBar")
     bar.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#SectionTabBar {{
             background-color: {theme.bg};
             border-bottom: 1px solid {theme.border};
         }}
@@ -94,8 +95,8 @@ def tab_bar(
     outer.addWidget(scroll)
 
     inner = QFrame()
-    inner.setStyleSheet("background: transparent;")
-    inner_layout = hbox(spacing=24, margins=(24, 4, 24, 4))
+    inner.setStyleSheet("background: transparent; border: none;")
+    inner_layout = hbox(spacing=24, margins=(24, 6, 24, 6))
     inner.setLayout(inner_layout)
 
     for i, label in enumerate(tabs):

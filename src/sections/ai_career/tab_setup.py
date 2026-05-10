@@ -64,9 +64,10 @@ _LINKEDIN_EXTENSIONS = ("pdf", "txt", "html", "htm")
 
 def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget) -> QFrame:
     card = QFrame()
+    card.setObjectName("CareerStepCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#CareerStepCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;
@@ -101,9 +102,10 @@ def _to_parsed(uploaded: UploadedFile) -> ParsedFile:
 
 def _file_chip(theme: Theme, *, parsed: ParsedFile, on_clear: Callable[[], None], clear_tooltip: str) -> QFrame:
     chip = QFrame()
+    chip.setObjectName("CareerFileChip")
     chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#CareerFileChip {{
             background-color: {theme.surface_2};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -393,7 +395,15 @@ def build_setup_tab(
     layout.addWidget(scroll, 1)
 
     footer = QFrame()
-    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    footer.setObjectName("CareerSetupFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#CareerSetupFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     footer_layout = vbox(spacing=8, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
 

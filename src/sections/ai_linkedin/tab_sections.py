@@ -202,9 +202,10 @@ def build_sections_tab(
     body_holder.setLayout(body_layout)
 
     section_card_target = QFrame()
+    section_card_target.setObjectName("LinkedInSectionsTargetCard")
     section_card_target.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInSectionsTargetCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;
@@ -239,9 +240,10 @@ def build_sections_tab(
     body_layout.addWidget(section_card_target)
 
     posts_card = QFrame()
+    posts_card.setObjectName("LinkedInSectionsPostsCard")
     posts_card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInSectionsPostsCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;

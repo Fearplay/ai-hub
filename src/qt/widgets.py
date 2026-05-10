@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -399,6 +399,11 @@ def status_pill(theme: Theme, *, ok: bool, label: str) -> Pill:
 
 
 class _BaseTextButton(QPushButton):
+    # Horizontal padding (left + right) baked into the QSS, used by sizeHint.
+    _PAD_H = 28
+    # Vertical padding (top + bottom) baked into the QSS, used by sizeHint.
+    _PAD_V = 16
+
     def __init__(
         self,
         text: str,
@@ -474,6 +479,30 @@ class _BaseTextButton(QPushButton):
     def set_label(self, text: str) -> None:
         if self._label is not None:
             self._label.setText(text)
+            self.updateGeometry()
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        # Override so callers using the standard QPushButton API still
+        # update the visible label (and trigger a relayout).
+        if getattr(self, "_label", None) is not None and text:
+            self._label.setText(text)
+            self.updateGeometry()
+            return
+        super().setText(text)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        # QPushButton's default sizeHint is computed from its native text +
+        # icon, which is empty here because we render the label inside an
+        # inner QWidget. Delegate to the inner widget so the button is wide
+        # enough for the actual content + the QSS padding.
+        inner = getattr(self, "_inner", None)
+        if inner is not None:
+            hint = inner.sizeHint()
+            return QSize(hint.width() + self._PAD_H, hint.height() + self._PAD_V)
+        return super().sizeHint()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
 
 
 def PrimaryButton(

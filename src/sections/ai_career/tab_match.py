@@ -120,9 +120,10 @@ def _category_bar(theme: Theme, *, name: str, score: int, evidence: List[str]) -
     score = max(0, min(100, int(score)))
     color = _OK_COLOR if score >= 75 else (_RISK_COLOR if score < 55 else theme.primary)
     holder = QFrame()
+    holder.setObjectName("MatchCategoryBar")
     holder.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MatchCategoryBar {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -164,9 +165,10 @@ def _bullet_column(
     bullet_marker: str = "•",
 ) -> QFrame:
     holder = QFrame()
+    holder.setObjectName("MatchBulletColumn")
     holder.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MatchBulletColumn {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -207,9 +209,10 @@ def _ats_column(
     missing_label: str,
 ) -> QFrame:
     holder = QFrame()
+    holder.setObjectName("MatchAtsColumn")
     holder.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MatchAtsColumn {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -376,9 +379,10 @@ def build_match_tab(
     cat_holder.setLayout(cat_layout)
     if not categories:
         empty_cat = QFrame()
+        empty_cat.setObjectName("MatchEmptyCategories")
         empty_cat.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#MatchEmptyCategories {{
                 background-color: {theme.surface};
                 border: 1px solid {theme.border};
                 border-radius: 12px;
@@ -420,9 +424,10 @@ def build_match_tab(
     body_layout.addWidget(cols_row)
 
     evidence_card = QFrame()
+    evidence_card.setObjectName("MatchEvidenceCard")
     evidence_card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MatchEvidenceCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -468,7 +473,15 @@ def build_match_tab(
     layout.addWidget(scroll, 1)
 
     footer = QFrame()
-    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    footer.setObjectName("MatchFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#MatchFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     footer_layout = vbox(spacing=6, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
     status_label = SubtleLabel("", theme=theme, size=11)

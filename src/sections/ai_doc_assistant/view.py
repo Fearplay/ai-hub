@@ -81,9 +81,10 @@ _PREVIEW_CHARS = 800
 
 def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget) -> QFrame:
     card = QFrame()
+    card.setObjectName("DocAssistantStepCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocAssistantStepCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;
@@ -110,9 +111,10 @@ def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget
 
 def _file_chip(theme: Theme, txt: dict, doc: UploadedDoc, on_clear: Callable[[], None]) -> QFrame:
     chip = QFrame()
+    chip.setObjectName("DocAssistantFileChip")
     chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocAssistantFileChip {{
             background-color: {theme.surface_2};
             border: 1px solid {theme.border};
             border-radius: 12px;

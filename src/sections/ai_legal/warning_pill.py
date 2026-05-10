@@ -26,10 +26,11 @@ def warning_pill(theme: Theme, lang: str) -> QFrame:
     accent = "#F59E0B"
 
     pill = QFrame()
+    pill.setObjectName("LegalWarningPill")
     pill.setFixedWidth(290)
     pill.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalWarningPill {{
             background-color: {rgba(accent, 0.08)};
             border: 1px solid {rgba(accent, 0.25)};
             border-radius: 10px;

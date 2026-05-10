@@ -279,9 +279,10 @@ def _build_input_bar(
             _set_status("")
             return
         chip = QFrame()
+        chip.setObjectName("LinkedInChatAttachmentChip")
         chip.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#LinkedInChatAttachmentChip {{
                 background-color: {theme.assistant_bubble};
                 border: 1px solid {theme.border};
                 border-radius: 999px;

@@ -109,9 +109,10 @@ def _section_card(
     actions: list[QWidget] | None = None,
 ) -> QFrame:
     card = QFrame()
+    card.setObjectName("LinkedInOutputCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInOutputCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;

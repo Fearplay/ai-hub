@@ -57,9 +57,10 @@ def _action_chip(theme: Theme, icon: str, label: str) -> ClickFrame:
 
 def _attachment_card(theme: Theme, lang: str, attachment: dict) -> QFrame:
     card = QFrame()
+    card.setObjectName("ChatAttachmentCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#ChatAttachmentCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 10px;
@@ -155,9 +156,10 @@ def _user_message(theme: Theme, *, time: str, text: str) -> QWidget:
     bubble_row.setSpacing(10)
 
     bubble = QFrame()
+    bubble.setObjectName("ChatUserBubble")
     bubble.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#ChatUserBubble {{
             background-color: {theme.user_bubble};
             border-radius: 14px;
         }}
@@ -205,9 +207,10 @@ def _assistant_message(
     body_layout.addWidget(MutedLabel(time, theme=theme, size=11))
 
     bubble = QFrame()
+    bubble.setObjectName("ChatAssistantBubble")
     bubble.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#ChatAssistantBubble {{
             background-color: {theme.assistant_bubble};
             border-radius: 14px;
         }}

@@ -139,9 +139,10 @@ def _card(
     body: QWidget,
 ) -> QFrame:
     card = QFrame()
+    card.setObjectName("SettingsCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#SettingsCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 16px;
@@ -502,9 +503,10 @@ def _keys_card(theme: Theme, lang: str, txt: dict) -> QFrame:
 
     if not vault_ok:
         warning = QFrame()
+        warning.setObjectName("VaultWarning")
         warning.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#VaultWarning {{
                 background-color: {rgba("#EF4444", 0.10)};
                 border: 1px solid {rgba("#EF4444", 0.40)};
                 border-radius: 10px;
@@ -651,9 +653,10 @@ def _logs_view(
     on_back: Callable[[], None],
 ) -> QFrame:
     container = QFrame()
+    container.setObjectName("LogsView")
     container.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LogsView {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 16px;

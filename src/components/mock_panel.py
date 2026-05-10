@@ -47,9 +47,10 @@ from src.theme import Theme
 
 def _hero_card(theme: Theme, *, icon: str, title: str, description: str) -> QFrame:
     card = QFrame()
+    card.setObjectName("MockHeroCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MockHeroCard {{
             background-color: {rgba(theme.primary_tint, 0.35)};
             border: 1px solid {rgba(theme.primary, 0.35)};
             border-radius: 12px;
@@ -83,9 +84,10 @@ def _hero_card(theme: Theme, *, icon: str, title: str, description: str) -> QFra
 
 def _in_preparation_pill(theme: Theme, lang: str) -> QFrame:
     pill = QFrame()
+    pill.setObjectName("MockInPreparationPill")
     pill.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MockInPreparationPill {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 10px;
@@ -116,9 +118,10 @@ def _text_field_block(theme: Theme, *, label: str, hint: str, multiline: bool = 
 
 def _examples_card(theme: Theme, lang: str, examples: Sequence[str]) -> QFrame:
     card = QFrame()
+    card.setObjectName("MockExamplesCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MockExamplesCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;

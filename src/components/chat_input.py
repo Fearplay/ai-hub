@@ -62,9 +62,10 @@ def chat_input(theme: Theme, lang: str) -> QFrame:
     container.setLayout(outer)
 
     input_row = QFrame()
+    input_row.setObjectName("MockChatInputRow")
     input_row.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#MockChatInputRow {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;

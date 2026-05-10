@@ -263,9 +263,10 @@ def _breakdown_block(theme: Theme, lang: str) -> QWidget:
     block_layout.addWidget(title)
 
     table = QFrame()
+    table.setObjectName("FinanceTable")
     table.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#FinanceTable {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 10px;

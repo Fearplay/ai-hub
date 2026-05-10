@@ -134,23 +134,29 @@ def _open_in_explorer(path: str) -> None:
 def _empty_card(theme: Theme, txt: dict, icon: str, *, title_key: str, desc_key: str) -> QWidget:
     holder = QWidget()
     holder.setStyleSheet(f"background-color: {theme.bg};")
+    holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     layout = vbox(spacing=10, margins=(40, 40, 40, 40))
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     holder.setLayout(layout)
     layout.addWidget(IconLabel(icon, color=theme.text_muted, size=36),
                      alignment=Qt.AlignmentFlag.AlignHCenter)
-    layout.addWidget(TitleLabel(txt[title_key], theme=theme, size=15, weight=QFont.Weight.Bold), alignment=Qt.AlignmentFlag.AlignHCenter)
+    title_label = TitleLabel(txt[title_key], theme=theme, size=15, weight=QFont.Weight.Bold)
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title_label.setMinimumWidth(360)
+    layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignHCenter)
     desc = MutedLabel(txt[desc_key], theme=theme, size=12)
     desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    desc.setMinimumWidth(360)
     layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
     return holder
 
 
 def _markdown_card(theme: Theme, body_text: str) -> QFrame:
     card = QFrame()
+    card.setObjectName("DocMarkdownCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocMarkdownCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
@@ -208,9 +214,10 @@ def _theme_controls(
     holder.setLayout(layout)
 
     palette_chip = QFrame()
+    palette_chip.setObjectName("DocPaletteChip")
     palette_chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocPaletteChip {{
             background-color: {theme.surface_2};
             border: 1px solid {theme.border};
             border-radius: 10px;
@@ -241,9 +248,10 @@ def _theme_controls(
 
     if kind in _THEME_LAYOUT_DOCS:
         layout_chip = QFrame()
+        layout_chip.setObjectName("DocLayoutChip")
         layout_chip.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#DocLayoutChip {{
                 background-color: {theme.surface_2};
                 border: 1px solid {theme.border};
                 border-radius: 10px;
@@ -290,9 +298,10 @@ def _problem_inputs(theme: Theme, txt: dict, kind: str) -> tuple[QFrame, Callabl
         row.setLayout(rl)
 
         label_chip = QFrame()
+        label_chip.setObjectName("DocProblemLabelChip")
         label_chip.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#DocProblemLabelChip {{
                 background-color: {theme.surface_2};
                 border: 1px solid {theme.border};
                 border-radius: 8px;
@@ -418,9 +427,10 @@ def _build_active_doc_panel(
     refine_running = {"value": False}
 
     refine_card = QFrame()
+    refine_card.setObjectName("DocRefineCard")
     refine_card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocRefineCard {{
             background-color: {theme.surface};
             border-top: 1px solid {theme.border};
         }}
@@ -709,7 +719,15 @@ def build_documents_tab(
         threading.Thread(target=_worker, daemon=True).start()
 
     footer = QFrame()
-    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    footer.setObjectName("DocFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#DocFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     footer_layout = vbox(spacing=8, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
     footer_layout.addWidget(status_label)

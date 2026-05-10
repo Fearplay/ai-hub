@@ -36,7 +36,7 @@ class _PillSwitch(QFrame):
         bg = self._theme.primary if self._active else rgba(self._theme.text_muted, 0.30)
         self.setStyleSheet(
             f"""
-            QFrame {{
+            _PillSwitch {{
                 background-color: {bg};
                 border-radius: 10px;
             }}

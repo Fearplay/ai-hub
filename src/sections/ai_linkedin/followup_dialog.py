@@ -172,9 +172,10 @@ def open_followup_dialog(
         states.append(state)
 
         card = QFrame()
+        card.setObjectName("LinkedInFollowupQuestionCard")
         card.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#LinkedInFollowupQuestionCard {{
                 background-color: {theme.surface};
                 border: 1px solid {theme.border};
                 border-radius: 12px;

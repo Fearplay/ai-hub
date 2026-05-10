@@ -301,10 +301,11 @@ def _a4_preview(theme: Theme, lang: str) -> QFrame:
     ]
 
     paper = QFrame()
+    paper.setObjectName("LegalTemplatePaper")
     paper.setFixedSize(320, 440)
     paper.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalTemplatePaper {{
             background-color: {paper_color};
             border: 1px solid #CBD5F5;
             border-radius: 10px;

@@ -55,9 +55,10 @@ _LINKEDIN_EXTENSIONS = ("pdf", "txt", "html", "htm")
 
 def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget) -> QFrame:
     card = QFrame()
+    card.setObjectName("LinkedInStepCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInStepCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 14px;
@@ -87,9 +88,10 @@ def _file_chip(
     clear_tooltip: str,
 ) -> QFrame:
     chip = QFrame()
+    chip.setObjectName("LinkedInFileChip")
     chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInFileChip {{
             background-color: {theme.surface_2};
             border: 1px solid {theme.border};
             border-radius: 12px;

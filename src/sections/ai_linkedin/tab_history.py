@@ -63,9 +63,10 @@ def _row(theme: Theme, txt: dict, summary: store.RunSummary) -> QFrame:
     score_color = "#22C55E" if score >= 80 else ("#F97316" if score < 60 else theme.primary)
 
     row = QFrame()
+    row.setObjectName("LinkedInHistoryRow")
     row.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LinkedInHistoryRow {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;

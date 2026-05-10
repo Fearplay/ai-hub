@@ -74,10 +74,11 @@ def context_panel_shell(theme: Theme, *cards: QWidget) -> QFrame:
 
 def empty_context_panel(theme: Theme) -> QFrame:
     container = QFrame()
+    container.setObjectName("EmptyContextPanel")
     container.setFixedWidth(336)
     container.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#EmptyContextPanel {{
             background-color: {theme.bg};
             border-left: 1px solid {theme.border};
         }}

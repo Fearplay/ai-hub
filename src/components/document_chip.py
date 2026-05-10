@@ -52,9 +52,10 @@ def document_chip(
     on_remove: Optional[Callable[[], None]] = None,
 ) -> QFrame:
     chip = QFrame()
+    chip.setObjectName("DocumentChip")
     chip.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#DocumentChip {{
             background-color: {theme.surface_2};
             border-radius: 10px;
         }}

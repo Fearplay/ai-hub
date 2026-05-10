@@ -272,9 +272,10 @@ def _build_input_bar(
             _set_status("")
             return
         chip = QFrame()
+        chip.setObjectName("CareerChatAttachmentChip")
         chip.setStyleSheet(
             f"""
-            QFrame {{
+            QFrame#CareerChatAttachmentChip {{
                 background-color: {theme.assistant_bubble};
                 border: 1px solid {theme.border};
                 border-radius: 999px;

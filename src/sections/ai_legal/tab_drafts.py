@@ -328,9 +328,10 @@ def _interactive_input(
 ) -> QFrame:
     txt = s(lang)
     holder = QFrame()
+    holder.setObjectName("LegalDraftsInputBar")
     holder.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#LegalDraftsInputBar {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
