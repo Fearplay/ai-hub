@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QFrame, QSizePolicy
 
 from src.qt.icons import Icons
 from src.qt.theme import rgba
-from src.qt.widgets import BodyLabel, IconLabel, MutedLabel, hbox, vbox
+from src.qt.widgets import BodyLabel, IconLabel, MutedLabel, hbox, vbox, wrap_label_slot
 from src.sections.ai_legal.strings import s
 from src.theme import Theme
 
@@ -27,7 +27,8 @@ def warning_pill(theme: Theme, lang: str) -> QFrame:
 
     pill = QFrame()
     pill.setObjectName("LegalWarningPill")
-    pill.setFixedWidth(290)
+    pill.setMaximumWidth(360)
+    pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     pill.setStyleSheet(
         f"""
         QFrame#LegalWarningPill {{
@@ -38,7 +39,7 @@ def warning_pill(theme: Theme, lang: str) -> QFrame:
         """
     )
     layout = hbox(spacing=10, margins=(12, 8, 12, 8))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     pill.setLayout(layout)
 
     icon_box = QFrame()
@@ -55,7 +56,7 @@ def warning_pill(theme: Theme, lang: str) -> QFrame:
 
     info = QFrame()
     info.setStyleSheet("background: transparent; border: none;")
-    info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(info)
     info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     info.setLayout(info_layout)
     info_layout.addWidget(BodyLabel(txt["warning_pill_title"], theme=theme, size=12, weight=QFont.Weight.Bold))

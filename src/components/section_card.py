@@ -15,6 +15,7 @@ from src.qt.widgets import (
     TitleLabel,
     hbox,
     vbox,
+    wrap_label_slot,
 )
 from src.theme import Theme
 
@@ -37,6 +38,7 @@ def section_card(
     layout.setSpacing(12)
 
     head_row = hbox(spacing=10, margins=(0, 0, 0, 0))
+    head_row.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     icon_box = QFrame()
     icon_box.setFixedSize(34, 34)
@@ -54,7 +56,7 @@ def section_card(
 
     text_holder = QFrame()
     text_holder.setStyleSheet("background: transparent;")
-    text_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(text_holder)
     text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     text_holder.setLayout(text_layout)
     text_layout.addWidget(TitleLabel(title, theme=theme, size=14))

@@ -1,0 +1,157 @@
+---
+description: Rules for PySide6 text widgets so labels never overflow, always wrap, and follow content width
+alwaysApply: true
+---
+
+# AI Hub - PySide6 text rules (no overflow, ever)
+
+Every visible string in the app ultimately ends up in a `QLabel`. Qt
+does not wrap labels by default, and even when you turn wrapping on the
+parent layout still needs the right size policy or the second line just
+clips. The screenshots that prompted this rule showed exactly that:
+"Document summarised into 12 points" rendered, was wrapped, and then
+the status icon on the right overlapped the wrapped second line because
+the row was centered vertically.
+
+These rules apply to every `.py` file under `src/` that creates Qt
+widgets. They are mandatory.
+
+## Hard rules - never break these
+
+### 1. Build labels through the helpers in `src/qt/widgets.py`
+
+Use `BodyLabel`, `MutedLabel`, `TitleLabel`, `SubtleLabel`,
+`AccentLabel`, `custom_label`, or `IconLabel`. They all go through
+`_make_label(...)` which calls `setWordWrap(True)` for you.
+
+Direct `QLabel(text)` calls are **forbidden** because the default is
+`wordWrap=False` and the text will clip. The only exception is
+`ElidedLabel` (intentionally single-line, e.g. history file paths)
+which sets the mode explicitly.
+
+- Good: `BodyLabel("Document summary", theme=theme, size=13)`
+- Good: `custom_label("Title", color=theme.text, size=14)`
+- Bad: `QLabel("Document summary")` (no wrap, clips)
+
+### 2. Never `setFixedWidth(...)` on a container that holds text
+
+Fixed-width frames cut wrapped text in half because the content cannot
+grow taller as it wraps. Use `setMaximumWidth(...)` instead so the
+container can be narrower on small screens **and** grow when the text
+is short.
+
+The only two allowed `setFixedWidth` callers in the whole repo are the
+left sidebar (`src/components/sidebar.py`, 280 px) and the right
+context panel (`src/components/context_panel.py`, 336 px). Both have
+internal scroll areas that absorb overflow. Everything else - chat
+bubbles, warning pills, info cards, stat rows - uses `setMaximumWidth`.
+
+- Good: `bubble.setMaximumWidth(420)` + word-wrapped `BodyLabel` inside
+- Good: `pill.setMaximumWidth(320)`
+- Bad: `bubble.setFixedWidth(380)` (text gets clipped at the second line)
+- Bad: `pill.setFixedWidth(290)` (Czech translation gets cut)
+
+### 3. The label "slot" frame must be Expanding / Preferred
+
+Whenever a label is wrapped inside a `QFrame` that lives next to icons
+in a `hbox` (the icon + title + status pattern), the slot frame must
+have:
+
+```python
+slot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+row_layout.addWidget(slot, 1)
+```
+
+The `1` stretch in `addWidget(..., 1)` is mandatory, otherwise the slot
+gets only its minimum size and the wrapped text overflows underneath
+the next sibling widget.
+
+### 4. AlignTop on rows where text can wrap
+
+The common bug looks like this:
+
+```python
+# WRONG - status icon stays vertically centered even after the
+# description wraps to two lines, so it visually overlaps line 2.
+row_layout = hbox(...)
+row_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+row_layout.addWidget(badge)
+row_layout.addWidget(info_slot, 1)
+row_layout.addWidget(status_icon)
+```
+
+Whenever the middle slot contains a wrap-prone label and the row has
+more than one widget on its right, set `AlignTop`:
+
+```python
+row_layout = hbox(...)
+row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+```
+
+The badge / icon will now hug the top of the row and the slot will
+grow downward as the text wraps. This is the canonical fix for the
+"Document summarised into 12 points" overflow.
+
+`AlignVCenter` is only acceptable when the row is a strict single line
+(navigation row with a short label, segmented buttons, etc.).
+
+### 5. Chat bubbles use `setMaximumWidth`
+
+Chat bubbles must shrink to their content but never grow beyond a
+sensible limit:
+
+```python
+bubble = QFrame()
+bubble.setMaximumWidth(420)  # right-side user, or left-side assistant
+bubble.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+```
+
+`setFixedWidth` is forbidden on chat bubbles because the screenshots
+show wrap issues on long single-line questions.
+
+### 6. The `wrap_label_slot(widget)` helper
+
+`src/qt/widgets.py` exposes a tiny helper:
+
+```python
+def wrap_label_slot(widget: QWidget) -> QWidget:
+    """Mark a container as the expanding text slot in an icon+text+icon row."""
+    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    return widget
+```
+
+Use it on every "info" / "text_holder" / "title_holder" frame that
+hosts wrap-prone labels. It keeps the policy uniform and lets `Grep`
+audits find every slot at once.
+
+## How to audit your work
+
+Before opening a PR that touches any view-layer code, run these greps:
+
+```
+rg "setFixedWidth\(" src
+rg "setAlignment\(Qt\.AlignmentFlag\.AlignVCenter\)" src
+rg "QLabel\(" src --glob "!src/qt/widgets.py" --glob "!src/qt/markdown.py"
+```
+
+- The first should show only the two allowed callers (sidebar /
+ context panel) and chip-like fixed-size widgets that hold no text
+ (badges, dots, avatars, color swatches).
+- The second should only flag single-line rows. If a hit owns a
+ wrap-prone label, switch to `AlignTop`.
+- The third should be empty (every `QLabel()` call should go through a
+ helper).
+
+## Don'ts
+
+- Do **not** disable word wrap to "make a label fit in one line". If it
+ needs to elide, use `ElidedLabel(..., mode=Qt.TextElideMode.ElideRight)`.
+- Do **not** use `setMinimumWidth` to "reserve room" for text - the
+ layout will not shrink on smaller windows. Use `setMaximumWidth` or
+ leave it alone.
+- Do **not** wrap a label in nested `QFrame` slots without giving the
+ outer slot the Expanding policy. Stretch propagation stops at the
+ first non-expanding parent.
+- Do **not** add `setWordWrap(True)` after-the-fact on a raw `QLabel`
+ to dodge rule 1 - go through the helper so future labels behave the
+ same way.

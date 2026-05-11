@@ -5,9 +5,13 @@ REM ============================================================
 REM Builds a single-file dist\AIHub.exe with no prerequisites.
 REM
 REM What this does (in order):
-REM   1. Make sure Python 3.10+ is on the PATH
-REM      - tries winget if missing
-REM      - falls back to a clear message + python.org link
+REM   1. Find a working Python 3.10+:
+REM      - try "python" on PATH (the usual case)
+REM      - fall back to "py -3" (the Windows Python Launcher; ships with
+REM        every python.org install and stays on PATH even when the user
+REM        unchecked "Add python.exe to PATH" during install)
+REM      - if neither works, install via winget; if winget is missing,
+REM        print a python.org link and exit
 REM   2. Create / activate a project-local .venv\
 REM   3. Upgrade pip and install requirements.txt + pyinstaller
 REM   4. Run "pyinstaller" to bundle main.py into one .exe (with the
@@ -27,6 +31,7 @@ if /I "%~1"=="--force" set "FORCE_REBUILD=1"
 if /I "%~1"=="-f" set "FORCE_REBUILD=1"
 
 set "EXIT_CODE=0"
+set "PYCMD="
 
 echo.
 echo ============================================================
@@ -34,8 +39,22 @@ echo  AI Hub - Windows build (PySide6)
 echo ============================================================
 
 REM ---------- 1. Python ----------
+REM Try "python" first (most common), then "py -3" (Windows Python Launcher).
+REM We don't enforce a minimum version with a regex here - if the chosen
+REM interpreter is too old, "pip install -r requirements.txt" will fail
+REM later with a clear error.
 where python >nul 2>nul
-if errorlevel 1 (
+if not errorlevel 1 set "PYCMD=python"
+
+if not defined PYCMD (
+    where py >nul 2>nul
+    if not errorlevel 1 (
+        py -3 --version >nul 2>nul
+        if not errorlevel 1 set "PYCMD=py -3"
+    )
+)
+
+if not defined PYCMD (
     echo [1/5] Python not found on PATH. Trying winget install...
     where winget >nul 2>nul
     if errorlevel 1 (
@@ -53,22 +72,32 @@ if errorlevel 1 (
         set "EXIT_CODE=1"
         goto :done
     )
-    REM Refresh PATH for this session
+    REM Refresh PATH for this session so the freshly installed Python is visible.
     for /f "usebackq tokens=2,*" %%A in (`reg query "HKCU\Environment" /v PATH 2^>nul`) do set "PATH=%%B;%PATH%"
     where python >nul 2>nul
-    if errorlevel 1 (
-        echo  ^> Python installed but not yet on PATH. Open a new terminal and re-run.
-        set "EXIT_CODE=1"
-        goto :done
+    if not errorlevel 1 set "PYCMD=python"
+    if not defined PYCMD (
+        where py >nul 2>nul
+        if not errorlevel 1 (
+            py -3 --version >nul 2>nul
+            if not errorlevel 1 set "PYCMD=py -3"
+        )
     )
 )
-echo [1/5] Python OK.
-python --version
+
+if not defined PYCMD (
+    echo  ^> Python installed but not yet on PATH. Open a new terminal and re-run.
+    set "EXIT_CODE=1"
+    goto :done
+)
+
+echo [1/5] Python OK ^(using "!PYCMD!"^).
+!PYCMD! --version
 
 REM ---------- 2. venv ----------
 if not exist ".venv\Scripts\activate.bat" (
     echo [2/5] Creating .venv ...
-    python -m venv .venv
+    !PYCMD! -m venv .venv
     if errorlevel 1 (
         echo  ^> Failed to create .venv. Check Python install.
         set "EXIT_CODE=1"
@@ -83,6 +112,9 @@ if errorlevel 1 (
     set "EXIT_CODE=1"
     goto :done
 )
+
+REM From this point on, "python", "pip" and "pyinstaller" resolve to the
+REM venv binaries because activate.bat prepended .venv\Scripts to PATH.
 
 REM ---------- 3. dependencies ----------
 echo [3/5] Installing dependencies ...

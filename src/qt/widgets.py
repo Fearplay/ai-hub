@@ -643,7 +643,13 @@ class IconOnlyButton(QToolButton):
     """Square button rendering only an icon glyph.
 
     Wraps ``QToolButton`` so we can apply hover styling via QSS without
-    the default Qt button chrome.
+    the default Qt button chrome. The glyph is rendered through a
+    centred :class:`IconLabel` child instead of ``QToolButton``'s
+    native text drawing — Material Symbols glyphs sit slightly higher
+    in their em-box than what ``QToolButton`` assumes, so the native
+    path looked optically shifted up-left. The inner ``IconLabel``
+    layout is ``AlignCenter`` so the highlight is always centred no
+    matter the button size.
     """
 
     def __init__(
@@ -660,12 +666,24 @@ class IconOnlyButton(QToolButton):
     ) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setText(glyph(name))
-        self.setFont(icon_font(size))
-        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        # Suppress the native text rendering entirely - the glyph is
+        # drawn by the inner IconLabel below.
+        self.setText("")
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         self.setFixedSize(size + 14, size + 14)
         self.setToolTip(tooltip)
+        self.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect, True)
+
+        inner = IconLabel(name, color=color, size=size, parent=self)
+        inner.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(inner, 0, Qt.AlignmentFlag.AlignCenter)
+        self._inner_icon = inner
+
         hover_rule = (
             f"QToolButton:hover {{ background-color: {bg_hover}; }}"
             if bg_hover
@@ -679,9 +697,17 @@ class IconOnlyButton(QToolButton):
                 border: none;
                 border-radius: {radius}px;
             }}
+            QToolButton:disabled {{
+                background-color: {bg};
+            }}
             {hover_rule}
             """
         )
+
+    def set_icon_color(self, color: str) -> None:
+        """Update the inner glyph colour without rebuilding the button."""
+        if hasattr(self, "_inner_icon"):
+            self._inner_icon.set_color(color)
 
 
 # --- inputs -----------------------------------------------------------------
@@ -788,6 +814,24 @@ def expanding_h(widget: QWidget) -> QWidget:
     return widget
 
 
+def wrap_label_slot(widget: QWidget) -> QWidget:
+    """Mark a container as the expanding text slot in an icon+text+icon row.
+
+    Whenever a wrap-prone label lives inside a ``QFrame`` that sits in a
+    horizontal row next to fixed-size siblings (badges, status icons),
+    that frame must be allowed to grow horizontally **and** report a
+    height that follows the wrapped content. Without this the row
+    collapses to the unwrapped single-line height and the second line
+    overlaps the sibling icons.
+
+    See `.cursor/rules/qt-text.mdc` rule 3 ("the label slot must be
+    Expanding / Preferred"). Use this helper instead of inlining the
+    policy so a single grep finds every label slot in the app.
+    """
+    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    return widget
+
+
 def expanding_v(widget: QWidget) -> QWidget:
     widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
     return widget
@@ -828,4 +872,5 @@ __all__ = [
     "themed_line_edit",
     "themed_text_edit",
     "vbox",
+    "wrap_label_slot",
 ]

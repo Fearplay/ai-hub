@@ -2,8 +2,11 @@
 
 Layout:
 
-* :func:`src.components.header.header` overlaid with the
-  ``warning_pill`` aligned to the top-right.
+* Compact :func:`src.components.header.header` (no ``How to use this``
+  / ``...`` trailing buttons) so the title and subtitle have the floor.
+* Inline ``warning_pill`` banner directly under the header, full-width
+  but ``AlignLeft``-anchored, calling out that the assistant does not
+  replace a lawyer.
 * Interactive :func:`src.components.tab_bar.tab_bar` with four tabs;
   clicking swaps the body widget in-place without a global rebuild.
 * A ``content_holder`` whose child changes as the active tab changes
@@ -12,19 +15,16 @@ Layout:
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
     QStackedLayout,
     QWidget,
 )
 
 from src.components.header import header
 from src.components.tab_bar import tab_bar
-from src.qt.widgets import vbox
+from src.qt.widgets import hbox, vbox
 from src.sections.ai_legal.data import SECTION_ICON, tabs
 from src.sections.ai_legal.refs import REFS
 from src.sections.ai_legal.state import STATE
@@ -61,6 +61,23 @@ def _build_tab_body(
         return QWidget()
 
 
+def _warning_banner(theme: Theme, lang: str) -> QWidget:
+    """Wrap the warning pill so it sits left-aligned below the header.
+
+    The pill itself caps at ``setMaximumWidth(360)`` so on wide windows
+    it stays close to the title block instead of stretching across the
+    whole bar — which would have weakened the visual hierarchy.
+    """
+    holder = QFrame()
+    holder.setStyleSheet(f"background-color: {theme.bg};")
+    layout = hbox(spacing=0, margins=(24, 0, 24, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    holder.setLayout(layout)
+    layout.addWidget(warning_pill(theme, lang), 0, Qt.AlignmentFlag.AlignLeft)
+    layout.addStretch(1)
+    return holder
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
@@ -69,23 +86,18 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     layout = vbox(spacing=0, margins=(0, 0, 0, 0))
     container.setLayout(layout)
 
-    header_widget = header(theme, lang, icon=SECTION_ICON, title=txt["title"], subtitle=txt["subtitle"])
-    pill_widget = warning_pill(theme, lang)
-
-    header_with_pill = QFrame()
-    header_with_pill.setStyleSheet("background: transparent;")
-    overlay_layout = QHBoxLayout(header_with_pill)
-    overlay_layout.setContentsMargins(0, 0, 0, 0)
-    overlay_layout.setSpacing(0)
-    overlay_layout.addWidget(header_widget, 1)
-    pill_holder = QFrame()
-    pill_holder.setStyleSheet("background: transparent;")
-    pill_layout = vbox(spacing=0, margins=(0, 22, 24, 0))
-    pill_holder.setLayout(pill_layout)
-    pill_layout.addWidget(pill_widget, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-    pill_layout.addStretch(1)
-    overlay_layout.addWidget(pill_holder, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-    layout.addWidget(header_with_pill)
+    header_widget = header(
+        theme,
+        lang,
+        icon=SECTION_ICON,
+        title=txt["title"],
+        subtitle=txt["subtitle"],
+        show_help_button=False,
+        show_menu_button=False,
+        compact=True,
+    )
+    layout.addWidget(header_widget)
+    layout.addWidget(_warning_banner(theme, lang))
 
     tab_bar_holder = QWidget()
     tab_bar_holder.setStyleSheet(f"background-color: {theme.bg};")

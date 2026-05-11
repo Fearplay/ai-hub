@@ -32,6 +32,7 @@ from src.qt.widgets import (
     MutedLabel,
     hbox,
     vbox,
+    wrap_label_slot,
 )
 from src.theme import Theme
 
@@ -127,10 +128,11 @@ def quick_action_row(theme: Theme, icon: str, label: str) -> ClickFrame:
         """
     )
     layout = hbox(spacing=10, margins=(8, 8, 8, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
     layout.addWidget(IconLabel(icon, color=theme.text_muted, size=16))
     text = BodyLabel(label, theme=theme, size=12)
-    text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(text)
     layout.addWidget(text, 1)
     layout.addWidget(IconLabel("chevron_right", color=theme.text_muted, size=16))
     return row

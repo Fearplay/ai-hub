@@ -1,11 +1,17 @@
-"""Mock data for the AI Legal section.
+"""Mock data + static UI copy for the AI Legal section.
 
-Everything here is static demo content. Real data flow:
-1. PDF arrives via :mod:`src.sections.ai_legal.drop_zone` (or via the upload
-   button in the right context panel).
-2. Mock analysis stats / chat messages stay constant - we don't run a real
-   model. The shape of the data, however, matches what an LLM-backed
-   pipeline would later return.
+The dictionaries here are split into two groups:
+
+1. **UI scaffolding** that stays static regardless of mode (tab labels,
+   quick-action button definitions, color swatches, …).
+2. **Demo fallback content** used by :mod:`src.sections.ai_legal.pipeline`
+   when ``STATE.demo_mode`` is True - the analysis findings, the markdown
+   doc summary, draft preview paragraphs, etc. In production these come
+   from the LLM call; the shape matches what the pipeline returns so the
+   tabs can render either source uniformly.
+
+There is no hardcoded "uploaded file" anymore: the chat / analysis /
+drafts tabs render an empty state until the user drops a real document.
 """
 
 from __future__ import annotations
@@ -16,12 +22,6 @@ from src.sections.ai_legal.strings import s
 
 
 SECTION_ICON = Icons.GAVEL_OUTLINED
-
-DEFAULT_UPLOADED_FILE: dict = {
-    "name": "smlouva_o_dilo.pdf",
-    "type": "PDF",
-    "size": "245 kB",
-}
 
 
 def tabs(lang: str) -> list[str]:
@@ -34,13 +34,24 @@ def tabs(lang: str) -> list[str]:
     ]
 
 
+QUICK_ACTION_SUMMARIZE = "summarize"
+QUICK_ACTION_RISKS = "risks"
+QUICK_ACTION_EXPLAIN = "explain"
+QUICK_ACTION_CHANGES = "changes"
+
+
 def chat_quick_actions(lang: str) -> list[dict]:
+    """Quick-action chips shown both in the empty chat state and below each
+    assistant reply. ``key`` is the stable identifier the pipeline uses to
+    look up the user-prompt template; ``label`` is what the user sees and
+    is also injected verbatim as the user-bubble text when they tap the chip.
+    """
     txt = s(lang)
     return [
-        {"icon": Icons.SUMMARIZE_OUTLINED, "label": txt["chat_action_summarize"]},
-        {"icon": Icons.WARNING_AMBER_OUTLINED, "label": txt["chat_action_risks"]},
-        {"icon": Icons.MENU_BOOK_OUTLINED, "label": txt["chat_action_explain"]},
-        {"icon": Icons.EDIT_NOTE_OUTLINED, "label": txt["chat_action_changes"]},
+        {"key": QUICK_ACTION_SUMMARIZE, "icon": Icons.SUMMARIZE_OUTLINED, "label": txt["chat_action_summarize"]},
+        {"key": QUICK_ACTION_RISKS, "icon": Icons.WARNING_AMBER_OUTLINED, "label": txt["chat_action_risks"]},
+        {"key": QUICK_ACTION_EXPLAIN, "icon": Icons.MENU_BOOK_OUTLINED, "label": txt["chat_action_explain"]},
+        {"key": QUICK_ACTION_CHANGES, "icon": Icons.EDIT_NOTE_OUTLINED, "label": txt["chat_action_changes"]},
     ]
 
 

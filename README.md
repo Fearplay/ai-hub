@@ -52,13 +52,18 @@ The upload zones in **AI Legal assistant**, **AI CV / Career**,
 component (`src/components/file_drop_zone.py`) that:
 
 * Renders a dashed-border drop zone with a prominent "Click to browse"
-  call-to-action - clicking opens the native file picker.
+  call-to-action - clicking opens the native file picker. There is no
+  separate "Upload" button - the dashed zone *is* the button, which
+  keeps the UI from having two redundant ways to do the same thing.
 * Always shows a **Paste path** button beneath the zone. On Windows you
   can `Shift+Right-click` a file in Explorer -> *Copy as path*, then
   click the button - the file is loaded immediately.
 * Accepts real **OS drag-and-drop** thanks to Qt's `dragEnterEvent` /
   `dropEvent` plumbing - drop a file from Explorer / Finder / Files
   directly onto the zone and it loads instantly.
+* Accepts **PDF / DOCX / HTML / HTM / TXT / MD** files - the extracted
+  text body is what feeds the AI prompts in **AI Legal**, **AI Career**
+  and friends.
 
 The clipboard handling itself is centralised in
 `src/services/clipboard.py`. It is a thin synchronous wrapper around
@@ -270,7 +275,7 @@ ai-hub/
     │   ├── dashboard/
     │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter)
     │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
-    │   ├── ai_legal/              # fully built (4 working tabs + drag-drop)
+    │   ├── ai_legal/              # AI-wired chat (multi-format upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # designed mock UI
     │   ├── ai_finance/           # placeholder
@@ -333,7 +338,12 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - Save the complete profile to `outputs/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
   - Demo mode (offline showcase) populates a curated end-to-end example in seconds.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
-- **AI Legal assistant** - 4 working tabs (Chat, Document analysis, Document drafts, Templates), OS drag-drop PDF, mock LLM.
+- **AI Legal assistant** - fully AI-wired chat with a legal document:
+  - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
+  - **Four quick-action chips** - Summarise / Find risks / Explain legal terms / Suggest changes - each opens a tailored prompt and streams the reply back into the chat. Plain typing in the input field also works.
+  - **No-lawyer disclaimer** - inline banner under the header reminds the user the assistant does not replace legal advice; every long reply re-states it in plain language.
+  - **Demo mode** - turn the global Demo flag on in **Settings** to walk the same UI without any provider call (returns a stubbed answer).
+  - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
 - Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
 

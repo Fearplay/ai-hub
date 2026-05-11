@@ -73,11 +73,13 @@ def _segmented_button(
         }}
         """
     )
-    layout = hbox(spacing=0, margins=(14, 8, 14, 8))
-    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout = hbox(spacing=0, margins=(16, 8, 16, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
     chip.setLayout(layout)
     color = "#FFFFFF" if active else theme.text_muted
-    layout.addWidget(custom_label(label, color=color, size=12, weight=QFont.Weight.DemiBold))
+    text_label = custom_label(label, color=color, size=12, weight=QFont.Weight.DemiBold)
+    text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(text_label, 0, Qt.AlignmentFlag.AlignCenter)
     chip.clicked.connect(on_click)
     return chip
 

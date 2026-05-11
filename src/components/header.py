@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMenu,
     QSizePolicy,
@@ -25,6 +26,7 @@ from src.qt.widgets import (
     TitleLabel,
     hbox,
     vbox,
+    wrap_label_slot,
 )
 from src.theme import Theme
 
@@ -47,17 +49,24 @@ class HeaderMenuItem:
     enabled: bool = True
 
 
-def _category_icon(theme: Theme, icon: str) -> QFrame:
+def _category_icon(theme: Theme, icon: str, *, compact: bool = False) -> QFrame:
     box = QFrame()
-    box.setFixedSize(44, 44)
+    if compact:
+        box.setFixedSize(36, 36)
+        radius = 10
+        glyph_size = 18
+    else:
+        box.setFixedSize(44, 44)
+        radius = 12
+        glyph_size = 22
     box.setStyleSheet(
-        f"background-color: {theme.primary}; border-radius: 12px;"
+        f"background-color: {theme.primary}; border-radius: {radius}px;"
     )
     layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     box.setLayout(layout)
     layout.addWidget(
-        IconLabel(icon, color="#FFFFFF", size=22),
+        IconLabel(icon, color="#FFFFFF", size=glyph_size),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
     return box
@@ -65,8 +74,11 @@ def _category_icon(theme: Theme, icon: str) -> QFrame:
 
 def _menu_button(theme: Theme, menu_items: Sequence[HeaderMenuItem]) -> QWidget:
     btn = QToolButton()
-    btn.setText(glyph(Icons.MORE_HORIZ))
-    btn.setFont(icon_font(18))
+    # Glyph is drawn by the centred IconLabel child below — keeping the
+    # native QToolButton text on top would render the glyph twice, so
+    # we explicitly clear it.
+    btn.setText("")
+    btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
     btn.setFixedSize(38, 38)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
@@ -87,6 +99,14 @@ def _menu_button(theme: Theme, menu_items: Sequence[HeaderMenuItem]) -> QWidget:
         }}
         """
     )
+    glyph_label = IconLabel(Icons.MORE_HORIZ, color=theme.text, size=18, parent=btn)
+    glyph_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    glyph_layout = QHBoxLayout(btn)
+    glyph_layout.setContentsMargins(0, 0, 0, 0)
+    glyph_layout.setSpacing(0)
+    glyph_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    glyph_layout.addWidget(glyph_label, 0, Qt.AlignmentFlag.AlignCenter)
+
     if not menu_items:
         return btn
 
@@ -162,22 +182,40 @@ def header(
     on_help_click: Optional[HeaderClickHandler] = None,
     trailing: Optional[QWidget] = None,
     menu_items: Optional[Sequence[HeaderMenuItem]] = None,
+    show_help_button: bool = True,
+    show_menu_button: bool = True,
+    compact: bool = False,
 ) -> QFrame:
+    """Render the section's top bar.
+
+    ``show_help_button`` / ``show_menu_button`` let sections (currently
+    only AI Legal) hide the trailing GhostButton ("How to use this") and
+    the ``...`` overflow menu. Defaults stay ``True`` so every other
+    section keeps its current look.
+
+    ``compact`` shrinks the vertical padding and the category icon so
+    sections that need a denser layout (AI Legal again) can save
+    vertical real estate for the content below the bar.
+    """
     bar = QFrame()
     bar.setStyleSheet(f"background-color: {theme.bg};")
     bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
-    row = hbox(spacing=14, margins=(24, 22, 24, 10))
+    margins = (24, 12, 24, 6) if compact else (24, 22, 24, 10)
+    spacing = 12 if compact else 14
+    row = hbox(spacing=spacing, margins=margins)
+    row.setAlignment(Qt.AlignmentFlag.AlignTop)
     bar.setLayout(row)
 
-    row.addWidget(_category_icon(theme, icon))
+    row.addWidget(_category_icon(theme, icon, compact=compact))
 
     text_col = QFrame()
     text_col.setStyleSheet("background: transparent;")
-    text_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(text_col)
     text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     text_col.setLayout(text_layout)
-    text_layout.addWidget(TitleLabel(title, theme=theme, size=18, weight=QFont.Weight.Bold))
+    title_size = 16 if compact else 18
+    text_layout.addWidget(TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold))
     if subtitle:
         text_layout.addWidget(MutedLabel(subtitle, theme=theme, size=12))
     row.addWidget(text_col, 1)
@@ -185,15 +223,17 @@ def header(
     if trailing is not None:
         row.addWidget(trailing)
 
-    help_btn = GhostButton(
-        t("how_to_use", lang),
-        theme=theme,
-        icon=Icons.MENU_BOOK_OUTLINED,
-    )
-    if on_help_click is not None:
-        help_btn.clicked.connect(on_help_click)
-    row.addWidget(help_btn)
+    if show_help_button:
+        help_btn = GhostButton(
+            t("how_to_use", lang),
+            theme=theme,
+            icon=Icons.MENU_BOOK_OUTLINED,
+        )
+        if on_help_click is not None:
+            help_btn.clicked.connect(on_help_click)
+        row.addWidget(help_btn)
 
-    row.addWidget(_menu_button(theme, menu_items or []))
+    if show_menu_button:
+        row.addWidget(_menu_button(theme, menu_items or []))
 
     return bar

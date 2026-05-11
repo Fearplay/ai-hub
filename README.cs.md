@@ -51,13 +51,18 @@ Upload zóny v **AI Právní asistent**, **AI Životopis / Kariéra**,
 komponentu (`src/components/file_drop_zone.py`), která:
 
 * Vykreslí zónu s čárkovaným okrajem a výrazným call-to-action
-  „Klikni a vyber soubor" - kliknutí otevře nativní file picker.
+  „Klikni a vyber soubor" - kliknutí otevře nativní file picker. Žádné
+  samostatné "Upload" tlačítko už není - čárkovaná zóna *je* tlačítko,
+  takže UI nemá dva redundantní způsoby jak udělat totéž.
 * Pod zónou vždy vykreslí tlačítko **Vložit cestu**. Na Windows si
   v Průzkumníku dáš `Shift+Pravý klik` na soubor → *Kopírovat jako
   cestu*, klikneš na tlačítko a soubor se ihned načte.
 * Přijímá skutečný **OS drag-and-drop** díky Qt `dragEnterEvent` /
   `dropEvent` - soubor přetažený z Průzkumníku / Finderu / Files se
   naplní okamžitě.
+* Přijímá **PDF / DOCX / HTML / HTM / TXT / MD** - extrahovaný text je
+  to, co krmí AI prompty v **AI Právním asistentovi**, **AI Career** a
+  podobně.
 
 Práce se schránkou je centralizovaná v `src/services/clipboard.py` -
 synchronní obálka nad knihovnou
@@ -266,7 +271,7 @@ ai-hub/
     │   ├── dashboard/
     │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter)
     │   ├── ai_linkedin/          # plně napojené (LinkedIn Profile Builder + content)
-    │   ├── ai_legal/              # plně postavené (4 funkční taby + drag-drop)
+    │   ├── ai_legal/              # AI-napojený chat (multi-formát upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # postavené podle návrhu (mock UI)
     │   ├── ai_finance/           # placeholder
@@ -329,7 +334,12 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - Save complete LinkedIn package → `outputs/linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
   - Demo režim, EN/CS strings, doplňující otázky (clarifying questions) když chybí signál pro některou sekci
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
-- **AI Právní asistent** - 4 funkční taby (Chat, Analýza dokumentu, Návrhy dokumentů, Šablony), OS drag-drop PDF, mock LLM
+- **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
+  - **Multi-formát upload** - přetáhni `PDF`, `DOCX`, `HTML`, `TXT` (nebo `MD`) dokument do pravého panelu; tělo textu krmí prompty, z počítače odchází jen extrahovaný plain text.
+  - **Čtyři quick-action tlačítka** - Shrnout / Najít rizika / Vysvětlit právní pojmy / Navrhnout úpravy - každé otevře specializovaný prompt a streamuje odpověď zpátky do chatu. Volné psaní v inputu funguje stejně.
+  - **Disclaimer „nejsem advokát"** - inline banner pod hlavičkou připomíná, že asistent nenahrazuje právní poradenství; každá delší odpověď to znovu zmíní běžným jazykem.
+  - **Demo režim** - globální Demo flag v **Nastavení** projde stejné UI bez volání providera (vrací stubovanou odpověď).
+  - **Kompaktní hlavička** - sekce Legal vypíná koncová tlačítka *Jak to použít* / `…` a používá užší top bar, aby chat měl víc vertikálního prostoru; ostatní sekce si zachovávají plnou hlavičku díky novým flagsům `show_help_button` / `show_menu_button` / `compact` v `src/components/header.py`.
 - Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline
 
 ## Co zatím **neumí** (záměrně)

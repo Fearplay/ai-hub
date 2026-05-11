@@ -2,12 +2,13 @@
 
 Three cards stacked from top to bottom:
 
-1. **Attached documents** - upload button at the top, currently uploaded
-   PDF chip below it (or a placeholder + the drop zone if nothing's
-   uploaded yet).
-2. **Document analysis** - the four stats from the screenshot
-   (Summary / Risks / Important clauses / Recommendations) followed by
-   a primary button that jumps the user to the Analysis tab.
+1. **Attached documents** - the click-to-browse / drop zone is the only
+   way to attach a file. There is no separate upload button anymore -
+   the dashed drop frame *is* the button. Once a document is parsed we
+   render a small chip with its name + size below the zone.
+2. **Document analysis** - the four stats (Summary / Risks / Important
+   clauses / Recommendations) followed by a primary button that jumps
+   the user to the Analysis tab.
 3. **Quick actions** - same chevron-list pattern other sections use.
 """
 
@@ -31,7 +32,6 @@ from src.components.section_card import section_card
 from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
-    AccentLabel,
     BodyLabel,
     ClickFrame,
     IconLabel,
@@ -40,7 +40,11 @@ from src.qt.widgets import (
     custom_label,
     hbox,
     vbox,
+    wrap_label_slot,
 )
+from src.services import logger as logger_service
+from src.services.file_parser import ParsedFile
+from src.sections.ai_legal import pipeline
 from src.sections.ai_legal.data import context_quick_actions, context_stats
 from src.sections.ai_legal.drop_zone import drop_zone
 from src.sections.ai_legal.refs import REFS
@@ -62,29 +66,6 @@ _STATUS_ICON = {
 }
 
 
-def _upload_button(theme: Theme, lang: str) -> ClickFrame:
-    txt = s(lang)
-    btn = ClickFrame()
-    btn.setStyleSheet(
-        f"""
-        ClickFrame {{
-            background-color: {rgba(theme.primary, 0.10)};
-            border: 1px solid {rgba(theme.primary, 0.20)};
-            border-radius: 10px;
-        }}
-        ClickFrame:hover {{
-            background-color: {rgba(theme.primary, 0.18)};
-        }}
-        """
-    )
-    layout = hbox(spacing=8, margins=(12, 10, 12, 10))
-    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    btn.setLayout(layout)
-    layout.addWidget(IconLabel(Icons.FILE_UPLOAD_OUTLINED, color=theme.primary, size=16))
-    layout.addWidget(AccentLabel(txt["ctx_upload_btn"], theme=theme, size=13, weight=QFont.Weight.DemiBold))
-    return btn
-
-
 def _analysis_stat_row(
     theme: Theme,
     *,
@@ -97,7 +78,7 @@ def _analysis_stat_row(
     row = QFrame()
     row.setStyleSheet("background: transparent;")
     layout = hbox(spacing=10, margins=(4, 6, 4, 6))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
     badge = QFrame()
@@ -113,7 +94,7 @@ def _analysis_stat_row(
 
     info = QFrame()
     info.setStyleSheet("background: transparent;")
-    info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(info)
     info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     info.setLayout(info_layout)
     info_layout.addWidget(BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold))
@@ -132,8 +113,15 @@ def _build_panel(theme: Theme, lang: str) -> QWidget:
         if REFS.rerender_main is not None:
             REFS.rerender_main()
 
-    def _on_file_resolved(file_dict: dict) -> None:
-        STATE.uploaded_file = file_dict
+    def _on_file_resolved(file_dict: dict, parsed: ParsedFile) -> None:
+        try:
+            pipeline.attach_document(file_dict=file_dict, parsed=parsed)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_legal.context", "attach_document_failed", exc,
+                name=file_dict.get("name", ""),
+            )
+            return
         if REFS.rerender_context is not None:
             REFS.rerender_context()
         if REFS.rerender_tab_body is not None:
@@ -144,14 +132,13 @@ def _build_panel(theme: Theme, lang: str) -> QWidget:
     docs_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
     docs_holder.setLayout(docs_layout)
 
-    docs_layout.addWidget(_upload_button(theme, lang))
+    docs_layout.addWidget(drop_zone(theme, lang, on_file_resolved=_on_file_resolved, height=120))
+
     if STATE.uploaded_file:
         f = STATE.uploaded_file
         docs_layout.addWidget(document_chip(theme, lang, name=f["name"], ext=f["type"], size=f["size"]))
     else:
         docs_layout.addWidget(MutedLabel(txt["ctx_no_doc"], theme=theme, size=12))
-
-    docs_layout.addWidget(drop_zone(theme, lang, on_file_resolved=_on_file_resolved, height=104))
 
     documents_card = section_card(theme, icon=Icons.DESCRIPTION_OUTLINED, title=txt["ctx_attached_title"], body=docs_holder)
 
