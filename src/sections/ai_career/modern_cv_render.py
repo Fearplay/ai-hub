@@ -100,8 +100,17 @@ def _make_label(
     weight: int = 400,
     italic: bool = False,
     letter_spacing: float = 0.0,
-    selectable: bool = False,
+    selectable: bool = True,
 ) -> QLabel:
+    """Build a label for the Modern CV preview.
+
+    ``selectable`` defaults to ``True`` so the user can copy any text
+    from the preview (name, role, contact, bullets, …) into the
+    "Refine with AI" problem field on the same tab. Decorative glyphs
+    (sidebar icons, bullet markers) opt out by passing
+    ``selectable=False`` - selecting them does no harm, but we don't
+    want the I-beam cursor to appear over a tiny ``@`` or ``▸``.
+    """
     label = QLabel(text)
     font = QFont()
     font.setPixelSize(int(round(size)))
@@ -224,10 +233,10 @@ def _sidebar_contact_row(icon: str, text: str, *, accent_soft: str) -> QWidget:
     layout = _hbox(spacing=4, margins=(0, 0, 0, 0))
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
-    icon_label = _make_label(icon, color=accent_soft, size=11, weight=700)
+    icon_label = _make_label(icon, color=accent_soft, size=11, weight=700, selectable=False)
     icon_label.setFixedWidth(14)
     layout.addWidget(icon_label)
-    layout.addWidget(_make_label(text, color="#FFFFFF", size=11, selectable=True), 1)
+    layout.addWidget(_make_label(text, color="#FFFFFF", size=11), 1)
     return row
 
 
@@ -335,7 +344,7 @@ def _bullet_row(text: str, *, ink_700: str, ink_900: str, rule: str) -> QFrame:
     layout = _hbox(spacing=4, margins=(0, 0, 0, 0))
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
-    bullet = _make_label("\u25B8", color=rule, size=11, weight=700)
+    bullet = _make_label("\u25B8", color=rule, size=11, weight=700, selectable=False)
     bullet.setFixedWidth(14)
     layout.addWidget(bullet)
     layout.addWidget(_rich_label(
@@ -502,7 +511,7 @@ def _leadership_banner(items: List[str], *, accent: str, accent_dark: str, rule:
         rl = _hbox(spacing=4, margins=(0, 0, 0, 0))
         rl.setAlignment(Qt.AlignmentFlag.AlignTop)
         row.setLayout(rl)
-        bullet = _make_label("\u25CF", color=rule, size=10, weight=700)
+        bullet = _make_label("\u25CF", color=rule, size=10, weight=700, selectable=False)
         bullet.setFixedWidth(12)
         rl.addWidget(bullet)
         rl.addWidget(_rich_label(
@@ -519,12 +528,16 @@ def _leadership_banner(items: List[str], *, accent: str, accent_dark: str, rule:
 # --- main render entry points -----------------------------------------------
 
 
-_PAPER_WIDTH = 720
-_PAPER_HEIGHT = 1018
+_PAPER_WIDTH = 680
+_PAPER_HEIGHT = 962
 
 
 def render_view(theme: Theme, data: Optional[dict]) -> QWidget:
-    """Render the Modern CV payload as a themed two-column Qt preview."""
+    """Render the Modern CV payload as a themed Qt preview.
+
+    The preview now reflects both palette and layout slug so clicking
+    "Change layout" updates immediately (not only after export).
+    """
     if not isinstance(data, dict):
         data = {}
 
@@ -537,6 +550,7 @@ def render_view(theme: Theme, data: Optional[dict]) -> QWidget:
     ink_900 = active.text_primary
     ink_700 = "#334155"
     ink_500 = active.text_muted
+    layout_slug = active.layout_slug
 
     full_name = _safe_str(data.get("full_name"))
     role_headline = _safe_str(data.get("role_headline"))
@@ -554,158 +568,230 @@ def render_view(theme: Theme, data: Optional[dict]) -> QWidget:
     education = _safe_list(data.get("education"))
     certifications = _safe_list(data.get("certifications"))
 
-    sidebar = _GradientFrame(accent, accent_dark)
-    sidebar.setFixedSize(240, _PAPER_HEIGHT)
-    sidebar_layout = _vbox(spacing=4, margins=(20, 22, 20, 22))
-    sidebar.setLayout(sidebar_layout)
-    sidebar_layout.addWidget(_make_label(full_name, color="#FFFFFF", size=22, weight=800))
-    if role_headline:
-        sidebar_layout.addWidget(_make_label(role_headline, color=accent_soft, size=11, weight=500))
-    if role_subtitle:
-        sidebar_layout.addWidget(_make_label(role_subtitle, color=accent_soft, size=10, weight=400))
-
-    contact_rows: list[QWidget] = []
-    location = _safe_str(contact.get("location") if isinstance(contact, dict) else "")
-    email = _safe_str(contact.get("email") if isinstance(contact, dict) else "")
-    phone = _safe_str(contact.get("phone") if isinstance(contact, dict) else "")
-    if location:
-        contact_rows.append(_sidebar_contact_row("@", location, accent_soft=accent_soft))
-    if email:
-        contact_rows.append(_sidebar_contact_row("\u2709", email, accent_soft=accent_soft))
-    if phone:
-        contact_rows.append(_sidebar_contact_row("\u260E", phone, accent_soft=accent_soft))
-    if contact_rows:
-        sidebar_layout.addWidget(_sidebar_block("Contact", contact_rows, accent_soft=accent_soft))
-
-    if online_links:
-        link_rows: list[QWidget] = []
-        for link in online_links:
-            if not isinstance(link, dict):
-                continue
-            label_text = _safe_str(link.get("label")) or _safe_str(link.get("url"))
-            icon = _safe_str(link.get("icon")) or "\u2022"
-            if not label_text:
-                continue
-            link_rows.append(_sidebar_contact_row(icon, label_text, accent_soft=accent_soft))
-        if link_rows:
-            sidebar_layout.addWidget(_sidebar_block("Online", link_rows, accent_soft=accent_soft))
-
-    if skill_groups:
-        groups: list[QWidget] = []
-        for group in skill_groups:
-            if not isinstance(group, dict):
-                continue
-            label_text = _safe_str(group.get("label"))
-            tags = [_safe_str(t) for t in _safe_list(group.get("tags")) if _safe_str(t)]
-            if not (label_text and tags):
-                continue
-            block = QFrame()
-            block.setStyleSheet("background: transparent;")
-            bl = _vbox(spacing=4, margins=(0, 0, 0, 8))
-            block.setLayout(bl)
-            bl.addWidget(_make_label(
-                label_text.upper(),
-                color=accent_soft,
-                size=9,
-                weight=600,
-                letter_spacing=0.6,
+    def _fill_main(main_layout: QVBoxLayout) -> None:
+        main_layout.addWidget(_section_heading("Profile", accent=accent, rule=rule))
+        if profile_summary:
+            main_layout.addWidget(_rich_label(
+                profile_summary,
+                color=ink_700,
+                size=11,
+                bold_color=ink_900,
+                bold_weight=600,
             ))
-            bl.addWidget(_wrap_chips(tags, _skill_chip_dark))
-            groups.append(block)
-        if groups:
-            sidebar_layout.addWidget(_sidebar_block("Tech Stack", groups, accent_soft=accent_soft))
+        if leadership_highlights:
+            main_layout.addWidget(_leadership_banner(
+                leadership_highlights,
+                accent=accent,
+                accent_dark=accent_dark,
+                rule=rule,
+                ink_700=ink_700,
+            ))
 
-    if languages:
-        lang_rows: list[QWidget] = []
-        for lang_entry in languages:
-            if not isinstance(lang_entry, dict):
-                continue
-            name = _safe_str(lang_entry.get("name"))
-            level = _safe_str(lang_entry.get("level"))
-            if not name:
-                continue
-            row = QFrame()
-            row.setStyleSheet("background: transparent;")
-            rl = _hbox(spacing=8, margins=(0, 0, 0, 0))
-            row.setLayout(rl)
-            rl.addWidget(_make_label(name, color="#FFFFFF", size=11, weight=500), 1)
-            rl.addWidget(_make_label(level, color=accent_soft, size=10, weight=600))
-            lang_rows.append(row)
-        if lang_rows:
-            sidebar_layout.addWidget(_sidebar_block("Languages", lang_rows, accent_soft=accent_soft))
-    sidebar_layout.addStretch(1)
+        if experience:
+            main_layout.addWidget(_section_heading("Work Experience", accent=accent, rule=rule))
+            for entry in experience:
+                if isinstance(entry, dict):
+                    main_layout.addWidget(_job_card(
+                        entry,
+                        accent=accent,
+                        accent_dark=accent_dark,
+                        rule=rule,
+                        ink_900=ink_900,
+                        ink_700=ink_700,
+                        ink_500=ink_500,
+                        accent_soft=accent_soft,
+                    ))
 
-    main_column = QFrame()
-    main_column.setStyleSheet(f"background-color: {paper};")
-    main_column.setFixedHeight(_PAPER_HEIGHT)
-    main_layout = _vbox(spacing=4, margins=(24, 22, 24, 22))
-    main_column.setLayout(main_layout)
+        if projects:
+            main_layout.addWidget(_section_heading("Projects", accent=accent, rule=rule))
+            for entry in projects:
+                if isinstance(entry, dict):
+                    main_layout.addWidget(_project_card(
+                        entry,
+                        accent_dark=accent_dark,
+                        rule=rule,
+                        ink_700=ink_700,
+                        ink_900=ink_900,
+                    ))
 
-    main_layout.addWidget(_section_heading("Profile", accent=accent, rule=rule))
-    if profile_summary:
-        main_layout.addWidget(_rich_label(
-            profile_summary,
-            color=ink_700,
-            size=11,
-            bold_color=ink_900,
-            bold_weight=600,
-        ))
-    if leadership_highlights:
-        main_layout.addWidget(_leadership_banner(
-            leadership_highlights,
-            accent=accent,
-            accent_dark=accent_dark,
-            rule=rule,
-            ink_700=ink_700,
-        ))
+        if education:
+            main_layout.addWidget(_section_heading("Education", accent=accent, rule=rule))
+            for entry in education:
+                if isinstance(entry, dict):
+                    main_layout.addWidget(_edu_row(entry, ink_900=ink_900, ink_500=ink_500))
 
-    if experience:
-        main_layout.addWidget(_section_heading("Work Experience", accent=accent, rule=rule))
-        for entry in experience:
-            if isinstance(entry, dict):
-                main_layout.addWidget(_job_card(
-                    entry,
-                    accent=accent,
-                    accent_dark=accent_dark,
-                    rule=rule,
-                    ink_900=ink_900,
-                    ink_700=ink_700,
-                    ink_500=ink_500,
-                    accent_soft=accent_soft,
-                ))
+        if certifications:
+            main_layout.addWidget(_section_heading("Certifications & Courses", accent=accent, rule=rule))
+            for entry in certifications:
+                if isinstance(entry, dict):
+                    main_layout.addWidget(_cert_item(entry, accent_dark=accent_dark, ink_700=ink_700, ink_900=ink_900))
+        main_layout.addStretch(1)
 
-    if projects:
-        main_layout.addWidget(_section_heading("Projects", accent=accent, rule=rule))
-        for entry in projects:
-            if isinstance(entry, dict):
-                main_layout.addWidget(_project_card(
-                    entry,
-                    accent_dark=accent_dark,
-                    rule=rule,
-                    ink_700=ink_700,
-                    ink_900=ink_900,
-                ))
+    def _top_identity(*, banner: bool) -> QFrame:
+        holder = QFrame()
+        if banner:
+            holder.setStyleSheet(
+                f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {accent}, stop:1 {accent_dark});"
+                "border-top-left-radius: 6px; border-top-right-radius: 6px;"
+            )
+            margins = (24, 18, 24, 16)
+            name_color = "#FFFFFF"
+            sub_color = accent_soft
+        else:
+            holder.setStyleSheet(f"background: {paper};")
+            margins = (24, 18, 24, 8)
+            name_color = ink_900
+            sub_color = ink_500
+        layout = _vbox(spacing=3, margins=margins)
+        holder.setLayout(layout)
+        if full_name:
+            layout.addWidget(_make_label(full_name, color=name_color, size=22, weight=800))
+        role_line = " | ".join(x for x in (role_headline, role_subtitle) if x)
+        if role_line:
+            layout.addWidget(_make_label(role_line, color=sub_color, size=11, weight=500))
+        location = _safe_str(contact.get("location") if isinstance(contact, dict) else "")
+        email = _safe_str(contact.get("email") if isinstance(contact, dict) else "")
+        phone = _safe_str(contact.get("phone") if isinstance(contact, dict) else "")
+        contact_line = " | ".join(x for x in (location, email, phone) if x)
+        if contact_line:
+            layout.addWidget(_make_label(contact_line, color=sub_color, size=10, weight=500))
+        return holder
 
-    if education:
-        main_layout.addWidget(_section_heading("Education", accent=accent, rule=rule))
-        for entry in education:
-            if isinstance(entry, dict):
-                main_layout.addWidget(_edu_row(entry, ink_900=ink_900, ink_500=ink_500))
-
-    if certifications:
-        main_layout.addWidget(_section_heading("Certifications & Courses", accent=accent, rule=rule))
-        for entry in certifications:
-            if isinstance(entry, dict):
-                main_layout.addWidget(_cert_item(entry, accent_dark=accent_dark, ink_700=ink_700, ink_900=ink_900))
-    main_layout.addStretch(1)
-
+    # Paper card uses a fixed WIDTH (so the preview matches the A4 page
+    # width pixel-for-pixel) but its height grows with content. The
+    # original implementation locked the height to ``_PAPER_HEIGHT`` and
+    # the QVBoxLayout silently compressed (or clipped) overflowing
+    # widgets, which produced the "broken" preview reported in issue:
+    # work-experience cards appeared as a thin grey strip while the
+    # education / certifications sections still rendered below a giant
+    # empty area. The exported PDF was fine because Playwright
+    # paginates the HTML naturally; the in-app preview now grows
+    # downward instead of clipping.
     paper_card = QFrame()
     paper_card.setStyleSheet(f"background-color: {paper}; border-radius: 6px;")
-    paper_card.setFixedSize(_PAPER_WIDTH, _PAPER_HEIGHT)
+    paper_card.setFixedWidth(_PAPER_WIDTH)
+    paper_card.setMinimumHeight(_PAPER_HEIGHT)
+    paper_card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
     paper_layout = _hbox(spacing=0, margins=(0, 0, 0, 0))
     paper_card.setLayout(paper_layout)
-    paper_layout.addWidget(sidebar)
-    paper_layout.addWidget(main_column, 1)
+
+    if layout_slug == "two_column_sidebar":
+        sidebar_width = max(220, int(round(_PAPER_WIDTH * 0.34)))
+        sidebar = _GradientFrame(accent, accent_dark)
+        sidebar.setFixedWidth(sidebar_width)
+        sidebar.setMinimumHeight(_PAPER_HEIGHT)
+        # Vertical Ignored policy lets the sidebar match the main column's
+        # height even when content makes the paper card taller than
+        # ``_PAPER_HEIGHT`` - without this the gradient stripe would stop
+        # at 962 px and leave white space next to the longer text body.
+        sidebar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Ignored)
+        sidebar_layout = _vbox(spacing=4, margins=(20, 22, 20, 22))
+        sidebar.setLayout(sidebar_layout)
+        sidebar_layout.addWidget(_make_label(full_name, color="#FFFFFF", size=22, weight=800))
+        if role_headline:
+            sidebar_layout.addWidget(_make_label(role_headline, color=accent_soft, size=11, weight=500))
+        if role_subtitle:
+            sidebar_layout.addWidget(_make_label(role_subtitle, color=accent_soft, size=10, weight=400))
+
+        contact_rows: list[QWidget] = []
+        location = _safe_str(contact.get("location") if isinstance(contact, dict) else "")
+        email = _safe_str(contact.get("email") if isinstance(contact, dict) else "")
+        phone = _safe_str(contact.get("phone") if isinstance(contact, dict) else "")
+        if location:
+            contact_rows.append(_sidebar_contact_row("@", location, accent_soft=accent_soft))
+        if email:
+            contact_rows.append(_sidebar_contact_row("\u2709", email, accent_soft=accent_soft))
+        if phone:
+            contact_rows.append(_sidebar_contact_row("\u260E", phone, accent_soft=accent_soft))
+        if contact_rows:
+            sidebar_layout.addWidget(_sidebar_block("Contact", contact_rows, accent_soft=accent_soft))
+
+        if online_links:
+            link_rows: list[QWidget] = []
+            for link in online_links:
+                if not isinstance(link, dict):
+                    continue
+                label_text = _safe_str(link.get("label")) or _safe_str(link.get("url"))
+                icon = _safe_str(link.get("icon")) or "\u2022"
+                if not label_text:
+                    continue
+                link_rows.append(_sidebar_contact_row(icon, label_text, accent_soft=accent_soft))
+            if link_rows:
+                sidebar_layout.addWidget(_sidebar_block("Online", link_rows, accent_soft=accent_soft))
+
+        if skill_groups:
+            groups: list[QWidget] = []
+            for group in skill_groups:
+                if not isinstance(group, dict):
+                    continue
+                label_text = _safe_str(group.get("label"))
+                tags = [_safe_str(t) for t in _safe_list(group.get("tags")) if _safe_str(t)]
+                if not (label_text and tags):
+                    continue
+                block = QFrame()
+                block.setStyleSheet("background: transparent;")
+                bl = _vbox(spacing=4, margins=(0, 0, 0, 8))
+                block.setLayout(bl)
+                bl.addWidget(_make_label(
+                    label_text.upper(),
+                    color=accent_soft,
+                    size=9,
+                    weight=600,
+                    letter_spacing=0.6,
+                ))
+                bl.addWidget(_wrap_chips(tags, _skill_chip_dark))
+                groups.append(block)
+            if groups:
+                sidebar_layout.addWidget(_sidebar_block("Tech Stack", groups, accent_soft=accent_soft))
+
+        if languages:
+            lang_rows: list[QWidget] = []
+            for lang_entry in languages:
+                if not isinstance(lang_entry, dict):
+                    continue
+                name = _safe_str(lang_entry.get("name"))
+                level = _safe_str(lang_entry.get("level"))
+                if not name:
+                    continue
+                row = QFrame()
+                row.setStyleSheet("background: transparent;")
+                rl = _hbox(spacing=8, margins=(0, 0, 0, 0))
+                row.setLayout(rl)
+                rl.addWidget(_make_label(name, color="#FFFFFF", size=11, weight=500), 1)
+                rl.addWidget(_make_label(level, color=accent_soft, size=10, weight=600))
+                lang_rows.append(row)
+            if lang_rows:
+                sidebar_layout.addWidget(_sidebar_block("Languages", lang_rows, accent_soft=accent_soft))
+        sidebar_layout.addStretch(1)
+
+        main_column = QFrame()
+        main_column.setStyleSheet(f"background-color: {paper};")
+        main_column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        main_layout = _vbox(spacing=4, margins=(24, 22, 24, 22))
+        main_column.setLayout(main_layout)
+        _fill_main(main_layout)
+
+        paper_layout.addWidget(sidebar)
+        paper_layout.addWidget(main_column, 1)
+    else:
+        body = QFrame()
+        body.setStyleSheet(f"background: {paper};")
+        body.setFixedWidth(_PAPER_WIDTH)
+        body.setMinimumHeight(_PAPER_HEIGHT)
+        body.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        bl = _vbox(spacing=0, margins=(0, 0, 0, 0))
+        body.setLayout(bl)
+
+        banner_mode = layout_slug == "centered_header_band"
+        bl.addWidget(_top_identity(banner=banner_mode))
+        main = QFrame()
+        main.setStyleSheet(f"background: {paper};")
+        main_margins = (30, 18, 30, 18) if layout_slug == "single_column_serif" else (24, 14, 24, 14)
+        ml = _vbox(spacing=4, margins=main_margins)
+        main.setLayout(ml)
+        _fill_main(ml)
+        bl.addWidget(main, 1)
+        paper_layout.addWidget(body)
 
     shadow = QGraphicsDropShadowEffect(paper_card)
     shadow.setBlurRadius(18)
@@ -713,9 +799,13 @@ def render_view(theme: Theme, data: Optional[dict]) -> QWidget:
     shadow.setColor(QColor(15, 23, 42, int(0.18 * 255)))
     paper_card.setGraphicsEffect(shadow)
 
+    # Wrapper sizes itself to the paper card's preferred height so the
+    # outer scroll area in the Documents tab can scroll past tall CVs
+    # instead of clipping them at 986 px (the previous fixed height).
     wrapper = QWidget()
     wrapper.setStyleSheet("background: transparent;")
-    wrapper.setFixedHeight(_PAPER_HEIGHT + 24)
+    wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    wrapper.setMinimumWidth(0)
     wl = _hbox(spacing=0, margins=(8, 8, 8, 8))
     wl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
     wrapper.setLayout(wl)

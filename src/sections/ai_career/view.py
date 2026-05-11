@@ -175,7 +175,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     has_docs = bool(STATE.documents or STATE.modern_cv_data)
 
     menu_items: list[HeaderMenuItem] = [
-        HeaderMenuItem(icon=Icons.RESTART_ALT, label=txt["menu_new_run"], on_click=_menu_new_run),
+        HeaderMenuItem(icon=Icons.POST_ADD, label=txt["menu_new_run"], on_click=_menu_new_run),
         HeaderMenuItem(icon=Icons.SAVE_OUTLINED, label=txt["menu_save_full"], on_click=_menu_save_full, enabled=has_docs),
         HeaderMenuItem(icon=Icons.FOLDER_OPEN, label=txt["menu_open_folder"], on_click=_menu_open_folder),
         HeaderMenuItem(icon=Icons.HISTORY, label=txt["menu_show_history"], on_click=_menu_open_history),

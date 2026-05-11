@@ -115,7 +115,8 @@ class AIHubApp(QMainWindow):
     def _configure_window(self) -> None:
         self.setWindowTitle("AI Hub")
         self.resize(1280, 820)
-        self.setMinimumSize(1080, 680)
+        # Keep enough room for the three-column shell plus document preview.
+        self.setMinimumSize(1220, 760)
 
     def _apply_title_bar(self) -> None:
         """Recolour the OS title bar to match the active theme.

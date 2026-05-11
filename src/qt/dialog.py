@@ -115,6 +115,7 @@ class BaseDialog(QDialog):
 
         # body ------------------------------------------------------------
         self._body_widget = QWidget()
+        self._body_widget.setStyleSheet("background: transparent;")
         self._body_layout = vbox(spacing=12, margins=(0, 0, 0, 0))
         self._body_widget.setLayout(self._body_layout)
         self._body_widget.setSizePolicy(

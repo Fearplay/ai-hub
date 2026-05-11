@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
-    QGridLayout,
+    QProgressBar,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -63,13 +63,28 @@ _INFO_COLOR = "#3B82F6"
 
 
 class _ScoreRing(QFrame):
+    """Round score badge with a 140x140 progress ring centred in a card.
+
+    The card itself uses a fixed width but expands vertically so the
+    score ring stays visually balanced next to the multi-row category
+    bars. Without this, the categories block on the right would grow to
+    ~270 px tall while the score ring card stayed locked at 180 px,
+    leaving an awkward dark band underneath the badge.
+    """
+
+    _RING_SIZE = 140
+    _CARD_WIDTH = 180
+    _CARD_MIN_HEIGHT = 180
+
     def __init__(self, theme: Theme, score: int, label: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._theme = theme
         self._score = max(0, min(100, int(score)))
         self._label = label
         self._color = _OK_COLOR if self._score >= 80 else (_RISK_COLOR if self._score < 60 else theme.primary)
-        self.setFixedSize(180, 180)
+        self.setFixedWidth(self._CARD_WIDTH)
+        self.setMinimumHeight(self._CARD_MIN_HEIGHT)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.MinimumExpanding)
         self.setStyleSheet(
             f"""
             _ScoreRing {{
@@ -83,7 +98,13 @@ class _ScoreRing(QFrame):
     def paintEvent(self, event):  # noqa: ARG002
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(20, 20, 140, 140)
+        # Centre the ring inside the (potentially taller) card so the
+        # ring keeps looking balanced when the row height grows with the
+        # categories block on the right.
+        ring = float(self._RING_SIZE)
+        cx = (self.width() - ring) / 2.0
+        cy = (self.height() - ring) / 2.0
+        rect = QRectF(cx, cy, ring, ring)
         bg_color = QColor(self._color)
         bg_color.setAlpha(int(255 * 0.18))
         pen_bg = QPen(bg_color)
@@ -116,6 +137,42 @@ class _ScoreRing(QFrame):
         painter.end()
 
 
+class _ScoreProgressTrack(QFrame):
+    """Thin horizontal score bar that always paints an initial fill."""
+
+    def __init__(self, *, score: int, color: str, bg_color: str, height: int = 10) -> None:
+        super().__init__()
+        self._score = max(0, min(100, int(score)))
+        self._height = max(4, int(height))
+        self.setFixedHeight(self._height)
+        self.setStyleSheet(
+            f"background-color: {bg_color}; border-radius: {self._height // 2}px;"
+        )
+        self._fill = QFrame(self)
+        self._fill.setStyleSheet(
+            f"background-color: {color}; border-radius: {self._height // 2}px;"
+        )
+        self._fill.setFixedHeight(self._height)
+        self._sync_fill()
+
+    def _sync_fill(self) -> None:
+        total = max(0, self.width())
+        if total <= 0 or self._score <= 0:
+            self._fill.setGeometry(0, 0, 0, self._height)
+            return
+        fill = int(total * self._score / 100.0)
+        fill = max(6, min(total, fill))
+        self._fill.setGeometry(0, 0, fill, self._height)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._sync_fill()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._sync_fill()
+
+
 def _category_bar(theme: Theme, *, name: str, score: int, evidence: List[str]) -> QFrame:
     score = max(0, min(100, int(score)))
     color = _OK_COLOR if score >= 75 else (_RISK_COLOR if score < 55 else theme.primary)
@@ -130,7 +187,7 @@ def _category_bar(theme: Theme, *, name: str, score: int, evidence: List[str]) -
         }}
         """
     )
-    layout = vbox(spacing=6, margins=(14, 10, 14, 10))
+    layout = vbox(spacing=8, margins=(14, 12, 14, 12))
     holder.setLayout(layout)
 
     head = QFrame()
@@ -139,20 +196,27 @@ def _category_bar(theme: Theme, *, name: str, score: int, evidence: List[str]) -
     hl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     head.setLayout(hl)
     hl.addWidget(BodyLabel(name, theme=theme, size=12, weight=QFont.Weight.DemiBold), 1)
-    hl.addWidget(MutedLabel(f"{score} / 100", theme=theme, size=11, weight=QFont.Weight.Medium))
+    score_label = MutedLabel(f"{score} / 100", theme=theme, size=11, weight=QFont.Weight.Medium)
+    # Right-align the score label and reserve a fixed minimum width so
+    # long category names (Czech translations) can't squeeze it off the
+    # row. ``setWordWrap(False)`` keeps "100 / 100" on one line.
+    score_label.setWordWrap(False)
+    score_label.setMinimumWidth(60)
+    score_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    hl.addWidget(score_label)
     layout.addWidget(head)
 
-    bar_holder = QFrame()
-    bar_holder.setFixedHeight(6)
-    bar_holder.setStyleSheet(f"background-color: {rgba(color, 0.18)}; border-radius: 3px;")
-    bar_inner = QFrame(bar_holder)
-    bar_inner.setStyleSheet(f"background-color: {color}; border-radius: 3px;")
-    bar_inner.setFixedHeight(6)
-    bar_holder.resizeEvent = lambda evt, b=bar_holder, fill=bar_inner, sc=score: fill.setGeometry(0, 0, int(b.width() * sc / 100.0), 6)  # type: ignore[assignment]
-    layout.addWidget(bar_holder)
+    layout.addWidget(
+        _ScoreProgressTrack(
+            score=score,
+            color=color,
+            bg_color=rgba(color, 0.20),
+            height=10,
+        )
+    )
 
     if evidence:
-        holder.setToolTip("\n".join(f"• {e}" for e in evidence))
+        holder.setToolTip("\n".join(f"- {e}" for e in evidence))
     return holder
 
 
@@ -196,6 +260,9 @@ def _bullet_column(
             rl.addWidget(custom_label(bullet_marker, color=accent, size=14, weight=QFont.Weight.Bold))
             rl.addWidget(BodyLabel(item, theme=theme, size=12, selectable=True), 1)
             layout.addWidget(row)
+    # Trailing stretch so the bullets stay anchored at the top of the
+    # card when the cols row equalises every column to the tallest one.
+    layout.addStretch(1)
     return holder
 
 
@@ -228,31 +295,44 @@ def _ats_column(
     layout.addWidget(title_label)
 
     def _chip_row(items: List[str], color: str) -> QWidget:
-        row = QWidget()
-        row.setStyleSheet("background: transparent;")
-        gl = QGridLayout(row)
-        gl.setContentsMargins(0, 0, 0, 0)
-        gl.setHorizontalSpacing(6)
-        gl.setVerticalSpacing(6)
+        # Flow layout: chips wrap to the next row when the current one
+        # runs out of horizontal space. The previous implementation
+        # forced a 4-column QGridLayout which clipped chips past the
+        # right edge once the column got narrower than ~140 px (the
+        # ATS column on a 1080 px window). Each row is a separate
+        # ``QFrame`` holding a left-aligned ``hbox`` so the leftover
+        # space sits on the right via a trailing stretch.
+        holder = QWidget()
+        holder.setStyleSheet("background: transparent;")
+        holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        outer = vbox(spacing=6, margins=(0, 0, 0, 0))
+        holder.setLayout(outer)
         if not items:
-            gl.addWidget(SubtleLabel("—", theme=theme, size=12), 0, 0)
-            return row
-        col = 0
-        r = 0
-        for it in items:
-            chip = Pill(text=it, bg=rgba(color, 0.14), fg=color)
-            gl.addWidget(chip, r, col)
-            col += 1
-            if col >= 4:
-                col = 0
-                r += 1
-        return row
+            outer.addWidget(SubtleLabel("-", theme=theme, size=12))
+            return holder
+
+        max_per_row = 3
+        for start in range(0, len(items), max_per_row):
+            row = QFrame()
+            row.setStyleSheet("background: transparent;")
+            rl = hbox(spacing=6, margins=(0, 0, 0, 0))
+            rl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            row.setLayout(rl)
+            for it in items[start : start + max_per_row]:
+                rl.addWidget(Pill(text=it, bg=rgba(color, 0.14), fg=color))
+            rl.addStretch(1)
+            outer.addWidget(row)
+        return holder
 
     layout.addWidget(MutedLabel(present_label, theme=theme, size=11, weight=QFont.Weight.Medium))
     layout.addWidget(_chip_row(present, _OK_COLOR))
     layout.addSpacing(4)
     layout.addWidget(MutedLabel(missing_label, theme=theme, size=11, weight=QFont.Weight.Medium))
     layout.addWidget(_chip_row(missing, _RISK_COLOR))
+    # Match the bullet column - keep chips anchored at the top so an
+    # ATS column shorter than the matches/gaps cards does not float
+    # vertically when every column equalises to the tallest one.
+    layout.addStretch(1)
     return holder
 
 
@@ -284,22 +364,92 @@ def _empty_state(theme: Theme, txt: dict, on_back: Callable[[], None]) -> QWidge
 
 
 def _open_doc_lang_dialog(parent: QWidget, theme: Theme, txt: dict, *, current: str, on_confirm: Callable[[str], None]) -> None:
-    dialog = BaseDialog(parent=parent, theme=theme, title=txt["docs_lang_dialog_title"], width=420, height=240)
-    dialog.body_layout.addWidget(BodyLabel(txt["docs_lang_dialog_desc"], theme=theme, size=12))
+    # No explicit ``height=`` so the dialog hugs its content. The previous
+    # ``height=260`` set ``setMinimumHeight``, and combined with the body
+    # widget's stretch=1 inside :class:`BaseDialog` that produced a
+    # 50-80 px empty band between the EN card and the Cancel / Continue
+    # buttons.
+    dialog = BaseDialog(parent=parent, theme=theme, title=txt["docs_lang_dialog_title"], width=420)
+    desc_card = QFrame()
+    desc_card.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface_2};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        """
+    )
+    dcl = vbox(spacing=0, margins=(12, 10, 12, 10))
+    desc_card.setLayout(dcl)
+    desc = BodyLabel(txt["docs_lang_dialog_desc"], theme=theme, size=12)
+    desc.setWordWrap(True)
+    dcl.addWidget(desc)
+    dialog.body_layout.addWidget(desc_card)
 
+    # Each language is rendered as a themed clickable card that wraps a
+    # real QRadioButton. Clicking anywhere on the card toggles the
+    # underlying radio, and the radio's stylesheet still paints the
+    # standard dot - so we get a polished look without losing the
+    # native keyboard navigation / accessibility of QRadioButton.
     group = QButtonGroup(dialog)
     cs_btn = QRadioButton(txt["docs_lang_option_cs"])
     en_btn = QRadioButton(txt["docs_lang_option_en"])
-    cs_btn.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
-    en_btn.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+    radio_qss = (
+        f"QRadioButton {{ color: {theme.text}; font-size: 14px; spacing: 10px; background: transparent; }}"
+        f"QRadioButton::indicator {{ width: 16px; height: 16px; border: 1px solid {theme.border}; border-radius: 8px; background-color: {theme.surface_2}; }}"
+        f"QRadioButton::indicator:checked {{ background-color: {theme.primary}; border: 1px solid {theme.primary}; }}"
+    )
+    cs_btn.setStyleSheet(radio_qss)
+    en_btn.setStyleSheet(radio_qss)
     if current == "cs":
         cs_btn.setChecked(True)
     else:
         en_btn.setChecked(True)
     group.addButton(cs_btn)
     group.addButton(en_btn)
-    dialog.body_layout.addWidget(cs_btn)
-    dialog.body_layout.addWidget(en_btn)
+
+    def _refresh_cards() -> None:
+        for card, radio in ((cs_card, cs_btn), (en_card, en_btn)):
+            active = radio.isChecked()
+            card.setStyleSheet(
+                f"""
+                QFrame#DocLangCard {{
+                    background-color: {theme.surface_2 if not active else rgba(theme.primary, 0.12)};
+                    border: 1px solid {theme.primary if active else theme.border};
+                    border-radius: 10px;
+                }}
+                QFrame#DocLangCard:hover {{
+                    border: 1px solid {theme.primary};
+                }}
+                """
+            )
+
+    def _make_card(radio: QRadioButton) -> QFrame:
+        card = QFrame()
+        card.setObjectName("DocLangCard")
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        cl = hbox(spacing=0, margins=(14, 10, 14, 10))
+        card.setLayout(cl)
+        cl.addWidget(radio)
+        cl.addStretch(1)
+
+        # Forward click events on the card to the radio button so users
+        # can tap anywhere inside the card to select that language.
+        def _mouse_release(event, r=radio):
+            if event.button() == Qt.MouseButton.LeftButton:
+                r.setChecked(True)
+
+        card.mouseReleaseEvent = _mouse_release  # type: ignore[assignment]
+        return card
+
+    cs_card = _make_card(cs_btn)
+    en_card = _make_card(en_btn)
+    cs_btn.toggled.connect(lambda _checked: _refresh_cards())
+    en_btn.toggled.connect(lambda _checked: _refresh_cards())
+    _refresh_cards()
+    dialog.body_layout.addWidget(cs_card)
+    dialog.body_layout.addWidget(en_card)
 
     cancel_btn = QPushButton(txt["docs_lang_dialog_cancel"])
     cancel_btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {theme.text}; border: none; padding: 8px 12px; }}")
@@ -353,6 +503,15 @@ def build_match_tab(
 
     body_holder = QWidget()
     body_holder.setStyleSheet(f"background-color: {theme.bg};")
+    # ``Preferred`` horizontally + ``Minimum`` vertically lets the
+    # widget grow with the scroll viewport horizontally (so the
+    # category rows can claim the full width) but stops Qt from
+    # padding the widget vertically beyond the content's natural
+    # height. The earlier ``addStretch(1)`` + default policy combo
+    # made the QScrollArea inflate the holder to the viewport size,
+    # which the user saw as a giant empty band below the evidence
+    # card / columns.
+    body_holder.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
     body_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
     body_holder.setLayout(body_layout)
 
@@ -367,8 +526,12 @@ def build_match_tab(
 
     top_row = QFrame()
     top_row.setStyleSheet("background: transparent;")
+    # Drop the explicit ``AlignTop`` so the hbox stretches its children
+    # to a uniform row height. Combined with the ``MinimumExpanding``
+    # vertical policy on :class:`_ScoreRing`, the score badge now grows
+    # to match the categories block and we no longer get the awkward
+    # 80-90 px dark band under the score card the user reported.
     top_layout = hbox(spacing=18, margins=(0, 0, 0, 0))
-    top_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     top_row.setLayout(top_layout)
 
     top_layout.addWidget(_ScoreRing(theme, overall, txt["match_overall_label"]))
@@ -401,6 +564,10 @@ def build_match_tab(
                 score=int(c.get("score") or 0),
                 evidence=[str(x) for x in (c.get("evidence") or [])],
             ))
+    # Trailing stretch keeps the category cards anchored to the top of
+    # the row so they don't get vertically padded apart when the row
+    # height stretches.
+    cat_layout.addStretch(1)
     top_layout.addWidget(cat_holder, 1)
     body_layout.addWidget(top_row)
 
@@ -409,18 +576,51 @@ def build_match_tab(
 
     cols_row = QFrame()
     cols_row.setStyleSheet("background: transparent;")
+    # No vertical alignment override: the hbox stretches every column
+    # to the row's natural height so the three card backgrounds end at
+    # the same y-coordinate, instead of leaving a long dark band under
+    # the shorter cards.
     cols_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
     cols_row.setLayout(cols_layout)
-    cols_layout.addWidget(_bullet_column(theme, title=txt["match_matches_title"], items=[str(m) for m in matches], accent=_OK_COLOR, bullet_marker="✓"), 1)
-    cols_layout.addWidget(_bullet_column(theme, title=txt["match_gaps_title"], items=[str(g) for g in gaps], accent=_RISK_COLOR, bullet_marker="!"), 1)
-    cols_layout.addWidget(_ats_column(
+
+    matches_col = _bullet_column(
+        theme,
+        title=txt["match_matches_title"],
+        items=[str(m) for m in matches],
+        accent=_OK_COLOR,
+        bullet_marker="✓",
+    )
+    gaps_col = _bullet_column(
+        theme,
+        title=txt["match_gaps_title"],
+        items=[str(g) for g in gaps],
+        accent=_RISK_COLOR,
+        bullet_marker="!",
+    )
+    ats_col = _ats_column(
         theme,
         title=txt["match_ats_title"],
         present=[str(x) for x in ats_present],
         missing=[str(x) for x in ats_missing],
         present_label=txt["match_ats_present_label"],
         missing_label=txt["match_ats_missing_label"],
-    ), 1)
+    )
+    # The bullet columns wrap their text so they shrink gracefully, but
+    # the ATS keyword column is full of fixed-size :class:`Pill` chips
+    # that refuse to shrink below their text width. With every column
+    # at ``Expanding`` and stretch=1 the layout was giving ATS the bulk
+    # of the available width (because its minimum was much larger than
+    # the wrappable bullet columns) and the Czech "matches" / "gaps"
+    # columns ended up squeezed into 2-3-word lines. We now cap ATS at
+    # roughly a third of the row and let the bullet columns share the
+    # remainder evenly.
+    matches_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    gaps_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    ats_col.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+    ats_col.setMaximumWidth(380)
+    cols_layout.addWidget(matches_col, 1)
+    cols_layout.addWidget(gaps_col, 1)
+    cols_layout.addWidget(ats_col, 0)
     body_layout.addWidget(cols_row)
 
     evidence_card = QFrame()
@@ -462,7 +662,6 @@ def build_match_tab(
             rl.addWidget(BodyLabel(str(e), theme=theme, size=12, selectable=True), 1)
             ev_layout.addWidget(row)
     body_layout.addWidget(evidence_card)
-    body_layout.addStretch(1)
 
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
@@ -470,6 +669,7 @@ def build_match_tab(
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
     scroll.setWidget(body_holder)
+    scroll.setAlignment(Qt.AlignmentFlag.AlignTop)
     layout.addWidget(scroll, 1)
 
     footer = QFrame()
@@ -486,6 +686,25 @@ def build_match_tab(
     footer.setLayout(footer_layout)
     status_label = SubtleLabel("", theme=theme, size=11)
     footer_layout.addWidget(status_label)
+    progress_bar = QProgressBar()
+    progress_bar.setRange(0, 0)
+    progress_bar.setTextVisible(False)
+    progress_bar.setVisible(False)
+    progress_bar.setFixedHeight(6)
+    progress_bar.setStyleSheet(
+        f"""
+        QProgressBar {{
+            border: 1px solid {theme.border};
+            background-color: {theme.surface};
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {theme.primary};
+            border-radius: 3px;
+        }}
+        """
+    )
+    footer_layout.addWidget(progress_bar)
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
     br_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
@@ -516,6 +735,7 @@ def build_match_tab(
         running = _is_running()
         open_docs_btn.setEnabled(not running)
         open_docs_btn.setText(txt["match_generating_documents"] if running else txt["match_open_documents_btn"])
+        progress_bar.setVisible(running)
 
     def _start_with_lang(doc_lang: str) -> None:
         STATE.activity = "generating"

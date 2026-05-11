@@ -10,14 +10,18 @@ from PySide6.QtWidgets import (
     QFrame,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QWidget,
 )
 
 from src.qt.dialog import BaseDialog
+from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
+    HSeparator,
+    IconLabel,
     MutedLabel,
     SubtleLabel,
     custom_label,
@@ -64,12 +68,14 @@ class _QuestionRowState:
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        layout.addWidget(custom_label(
+        text = custom_label(
             label,
             color="#FFFFFF" if active else self.theme.text,
             size=12,
             weight=QFont.Weight.DemiBold if active else QFont.Weight.Medium,
-        ))
+        )
+        text.setWordWrap(False)
+        layout.addWidget(text)
 
     def toggle_option(self, idx: int) -> None:
         if self.multi_select:
@@ -118,14 +124,17 @@ def _chip_qss(theme: Theme, *, active: bool) -> str:
 def _make_chip(theme: Theme, label: str, *, active: bool) -> ClickFrame:
     chip = ClickFrame()
     chip.setStyleSheet(_chip_qss(theme, active=active))
+    chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     layout = hbox(spacing=0, margins=(12, 7, 12, 7))
     chip.setLayout(layout)
-    layout.addWidget(custom_label(
+    text = custom_label(
         label,
         color="#FFFFFF" if active else theme.text,
         size=12,
         weight=QFont.Weight.DemiBold if active else QFont.Weight.Medium,
-    ))
+    )
+    text.setWordWrap(False)
+    layout.addWidget(text)
     return chip
 
 
@@ -162,6 +171,11 @@ def open_followup_dialog(
         state = _QuestionRowState(question=q, other_label=other_label, other_hint=other_hint, theme=theme)
         states.append(state)
 
+        # Outer card holds a coloured accent rail (left) + the question
+        # body so each follow-up reads as its own "step". We paint the
+        # rail with a child ``QFrame`` rather than QSS border because
+        # the rail must fill the entire card height regardless of how
+        # tall the wrapped question / options block grows.
         card = QFrame()
         card.setObjectName("FollowupQuestionCard")
         card.setStyleSheet(
@@ -173,50 +187,101 @@ def open_followup_dialog(
             }}
             """
         )
-        card_layout = vbox(spacing=8, margins=(14, 14, 14, 14))
-        card.setLayout(card_layout)
+        outer_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        card.setLayout(outer_layout)
 
-        topic = (q.get("topic") or "—").strip()
+        rail = QFrame()
+        rail.setFixedWidth(3)
+        rail.setStyleSheet(
+            f"background-color: {theme.primary}; border-top-left-radius: 12px; border-bottom-left-radius: 12px;"
+        )
+        outer_layout.addWidget(rail)
+
+        inner = QFrame()
+        inner.setStyleSheet("background: transparent;")
+        card_layout = vbox(spacing=10, margins=(16, 14, 16, 14))
+        inner.setLayout(card_layout)
+        outer_layout.addWidget(inner, 1)
+
+        topic = (q.get("topic") or "-").strip()
         topic_holder = QFrame()
         topic_holder.setStyleSheet("background: transparent; border: none;")
-        topic_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
-        topic_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        topic_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+        topic_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         topic_holder.setLayout(topic_layout)
         topic_chip = QFrame()
         topic_chip.setStyleSheet(
             f"background-color: {rgba(theme.primary, 0.14)}; border: none; border-radius: 8px;"
         )
-        tc_layout = hbox(spacing=0, margins=(10, 4, 10, 4))
+        tc_layout = hbox(spacing=4, margins=(8, 3, 10, 3))
+        tc_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         topic_chip.setLayout(tc_layout)
-        tc_layout.addWidget(custom_label(topic, color=theme.primary, size=11, weight=QFont.Weight.Bold))
+        tc_layout.addWidget(IconLabel(Icons.LIGHTBULB_OUTLINE, color=theme.primary, size=12))
+        tc_layout.addWidget(custom_label(topic, color=theme.primary, size=10, weight=QFont.Weight.Bold))
         topic_layout.addWidget(topic_chip)
+        topic_layout.addStretch(1)
         card_layout.addWidget(topic_holder)
 
-        card_layout.addWidget(BodyLabel(q.get("question") or "", theme=theme, size=13, weight=QFont.Weight.DemiBold))
+        card_layout.addWidget(BodyLabel(q.get("question") or "", theme=theme, size=14, weight=QFont.Weight.DemiBold))
         if q.get("rationale"):
             card_layout.addWidget(SubtleLabel(q["rationale"], theme=theme, size=11, italic=True))
 
         if state.options or state.allow_free_text:
+            card_layout.addWidget(HSeparator(theme))
             chips_holder = QFrame()
             chips_holder.setStyleSheet("background: transparent; border: none;")
-            chips_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-            chips_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            chips_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            chips_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
             chips_holder.setLayout(chips_layout)
+
+            current_row_layout = {"layout": None}
+            chips_in_row = {"count": 0}
+            max_per_row = 2
+
+            def _ensure_row() -> None:
+                if current_row_layout["layout"] is not None:
+                    return
+                row = QFrame()
+                row.setStyleSheet("background: transparent; border: none;")
+                rl = hbox(spacing=8, margins=(0, 0, 0, 0))
+                rl.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                row.setLayout(rl)
+                chips_layout.addWidget(row)
+                current_row_layout["layout"] = rl
+                chips_in_row["count"] = 0
+
+            def _close_row() -> None:
+                layout_ref = current_row_layout["layout"]
+                if layout_ref is None:
+                    return
+                layout_ref.addStretch(1)
+                current_row_layout["layout"] = None
+
+            def _add_chip(chip_widget: ClickFrame) -> None:
+                _ensure_row()
+                if chips_in_row["count"] >= max_per_row:
+                    _close_row()
+                    _ensure_row()
+                row_layout = current_row_layout["layout"]
+                if row_layout is None:
+                    return
+                row_layout.addWidget(chip_widget)
+                chips_in_row["count"] += 1
 
             for idx, opt in enumerate(state.options):
                 chip = _make_chip(theme, opt, active=False)
                 state.option_chips.append(chip)
                 chip.clicked.connect(lambda i=idx, st=state: st.toggle_option(i))
-                chips_layout.addWidget(chip)
+                _add_chip(chip)
 
             if state.allow_free_text or not state.options:
                 other_chip = _make_chip(theme, other_label, active=False)
                 state.other_chip = other_chip
                 other_chip.clicked.connect(lambda st=state: st.toggle_other())
-                chips_layout.addWidget(other_chip)
+                _add_chip(other_chip)
                 if not state.options:
                     state.toggle_other()
-            chips_layout.addStretch(1)
+            _close_row()
             card_layout.addWidget(chips_holder)
 
         card_layout.addWidget(state.other_field)

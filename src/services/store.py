@@ -65,21 +65,17 @@ def _slug(text: str, max_length: int = 40) -> str:
     return text[:max_length]
 
 
-def new_run_dir(role: str) -> Path:
+def new_run_dir(role: str, company: str = "") -> Path:
     ensure_dirs()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    role_slug = _slug(role, max_length=60)
-    if role_slug:
-        folder = runs_dir() / f"{role_slug}-{stamp}"
-    else:
-        folder = runs_dir() / f"run-{stamp}"
+    role_slug = _slug(role, max_length=40) if (role or "").strip() else ""
+    company_slug = _slug(company, max_length=24) if (company or "").strip() else ""
+    base_slug = "-".join(part for part in (role_slug, company_slug) if part) or "run"
+    folder = runs_dir() / f"{base_slug}-{stamp}"
     counter = 1
     while folder.exists():
         counter += 1
-        if role_slug:
-            folder = runs_dir() / f"{role_slug}-{stamp}-{counter}"
-        else:
-            folder = runs_dir() / f"run-{stamp}-{counter}"
+        folder = runs_dir() / f"{base_slug}-{stamp}-{counter}"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

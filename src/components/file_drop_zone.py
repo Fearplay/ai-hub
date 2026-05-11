@@ -190,7 +190,7 @@ def file_drop_zone(
     extensions: Sequence[str],
     unsupported_message: str,
     on_file_resolved: Callable[[ParsedFile], None],
-    height: int = 132,
+    height: int = 160,
     paste_path_label: Optional[str] = "Paste path",
     paste_path_tooltip: Optional[str] = (
         "Tip on Windows: Shift+Right-click a file in Explorer -> Copy as path, then click here."
@@ -267,7 +267,7 @@ def file_drop_zone(
         height=height,
     )
 
-    inner_layout = vbox(spacing=6, margins=(14, 16, 14, 16))
+    inner_layout = vbox(spacing=4, margins=(12, 14, 12, 14))
     inner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     drop.setLayout(inner_layout)
 
@@ -275,15 +275,18 @@ def file_drop_zone(
                            alignment=Qt.AlignmentFlag.AlignCenter)
     title_label = BodyLabel(title, theme=theme, size=13)
     title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title_label.setWordWrap(True)
     inner_layout.addWidget(title_label)
     hint_label = MutedLabel(hint, theme=theme, size=11)
     hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    hint_label.setWordWrap(True)
     inner_layout.addWidget(hint_label)
     cta = custom_label(cta_label, color=theme.primary, size=10, weight=700)
     cta.setStyleSheet(
         f"color: {theme.primary}; background: transparent; letter-spacing: 1.2px;"
     )
     cta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    cta.setWordWrap(True)
     inner_layout.addWidget(cta)
 
     def _open_picker() -> None:

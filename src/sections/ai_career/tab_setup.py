@@ -303,7 +303,7 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
         extensions=_LINKEDIN_EXTENSIONS,
         unsupported_message=txt["resume_unsupported"],
         on_file_resolved=_on_linkedin,
-        height=104,
+        height=140,
         paste_path_label=txt["upload_paste_path_btn"],
         paste_path_tooltip=txt["upload_paste_path_tooltip"],
         cta_label=txt["upload_cta_label"],
@@ -445,10 +445,21 @@ def build_setup_tab(
     layout.addWidget(footer)
 
     def _set_status(message: str, *, error: bool = False) -> None:
-        status_label.setText(message)
-        status_label.setStyleSheet(
-            f"color: {'#EF4444' if error else theme.text_subtle}; background: transparent;"
-        )
+        # ``status_label`` is captured by closures that fire from worker
+        # threads via ``runtime_dispatch``. After a section rebuild the
+        # underlying QLabel is deleted but the queued callback still
+        # runs, raising ``RuntimeError: Internal C++ object ... already
+        # deleted``. Swallow it - the new section already rendered the
+        # right state, so dropping the late update is harmless.
+        try:
+            status_label.setText(message)
+            status_label.setStyleSheet(
+                f"color: {'#EF4444' if error else theme.text_subtle}; background: transparent;"
+            )
+        except RuntimeError:
+            logger_service.log_event(
+                "INFO", "ai_career.tab_setup", "status_label_stale",
+            )
 
     def _label_for(stage: str) -> str:
         if stage == "demo":
@@ -462,11 +473,22 @@ def build_setup_tab(
         return txt["footer_run_btn"]
 
     def _refresh_run_button() -> None:
+        # Same closure-after-rebuild story as ``_set_status``: the
+        # queued ``runtime_dispatch(_refresh_run_button)`` can fire
+        # against a deleted button after the section was re-rendered.
+        # The fresh section already rebuilt the button with the right
+        # enabled state, so dropping the stale update is safe.
         stage = STATE.run_stage
         running = bool(stage)
         enabled = STATE.can_run() and not running
-        run_btn.setText(_label_for(stage))
-        run_btn.setEnabled(enabled)
+        try:
+            run_btn.setText(_label_for(stage))
+            run_btn.setEnabled(enabled)
+        except RuntimeError:
+            logger_service.log_event(
+                "INFO", "ai_career.tab_setup", "run_btn_stale",
+                stage=stage,
+            )
 
     state_change_holder["fn"] = _refresh_run_button
     _refresh_run_button()

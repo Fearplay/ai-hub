@@ -99,14 +99,38 @@ def tab_bar(
     inner_layout = hbox(spacing=24, margins=(24, 6, 24, 6))
     inner.setLayout(inner_layout)
 
+    active_tab: Optional[ClickFrame] = None
     for i, label in enumerate(tabs):
         if on_change is None:
             handler: Optional[Callable[[], None]] = None
         else:
             handler = lambda idx=i: on_change(idx)  # noqa: E731
-        inner_layout.addWidget(_tab(theme, label, active=i == active_index, on_click=handler))
+        tab_handle = _tab(theme, label, active=i == active_index, on_click=handler)
+        if i == active_index:
+            active_tab = tab_handle
+        inner_layout.addWidget(tab_handle)
 
     inner_layout.addStretch(1)
     scroll.setWidget(inner)
+
+    # Center the active tab in the scroll viewport on the next event-loop
+    # tick (after the geometry has settled). Without this, clicking the
+    # rightmost tab (e.g. "Plan to fill gaps" in the Documents tab bar)
+    # leaves the leftmost ones hidden because they were the only ones
+    # visible before the rebuild.
+    if active_tab is not None:
+        def _scroll_to_active(scroll_area=scroll, target=active_tab) -> None:
+            try:
+                # PySide6 expects positional margins here; keyword args
+                # (xMargin/yMargin) raise AttributeError on some builds.
+                scroll_area.ensureWidgetVisible(target, 80, 0)
+            except RuntimeError:
+                # Tab bar rebuilt out from under us - the new instance
+                # will run its own scroll-into-view. Safe to ignore.
+                return
+
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, _scroll_to_active)
 
     return bar

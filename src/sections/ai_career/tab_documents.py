@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -25,9 +26,10 @@ from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
+    ElidedLabel,
     GhostButton,
     IconLabel,
-    IconOnlyButton,
     MutedLabel,
     PrimaryButton,
     SubtleLabel,
@@ -110,10 +112,10 @@ def _layout_display_name(slug: str, txt: dict) -> str:
     return txt.get(key) or slug.replace("_", " ").title()
 
 
-def _ensure_run_folder(role: str) -> str:
+def _ensure_run_folder(role: str, company: str = "") -> str:
     if STATE.last_run_folder and os.path.isdir(STATE.last_run_folder):
         return STATE.last_run_folder
-    folder = store.new_run_dir(role or "ai-career-run")
+    folder = store.new_run_dir(role or "ai-career-run", company)
     STATE.last_run_folder = str(folder)
     return STATE.last_run_folder
 
@@ -232,10 +234,13 @@ def _theme_controls(
     swatch.setFixedSize(12, 12)
     swatch.setStyleSheet(f"background-color: {palette_color}; border-radius: 6px; border: 1px solid {rgba('#000000', 0.20)};")
     pl.addWidget(swatch)
-    pl.addWidget(MutedLabel(
+    palette_label = MutedLabel(
         txt["doc_theme_color_label"].format(name=_palette_display_name(palette_slug, lang)),
-        theme=theme, size=11,
-    ))
+        theme=theme,
+        size=11,
+    )
+    palette_label.setWordWrap(False)
+    pl.addWidget(palette_label)
     layout.addWidget(palette_chip)
 
     cycle_palette = GhostButton(txt["doc_change_color_btn"], theme=theme, icon=Icons.PALETTE_OUTLINED)
@@ -261,10 +266,15 @@ def _theme_controls(
         )
         ll = hbox(spacing=6, margins=(10, 6, 10, 6))
         layout_chip.setLayout(ll)
-        ll.addWidget(MutedLabel(
+        layout_chip_label = ElidedLabel(
             txt["doc_theme_layout_label"].format(name=_layout_display_name(layout_slug, txt)),
-            theme=theme, size=11,
-        ))
+            color=theme.text_muted,
+            size=11,
+            mode=Qt.TextElideMode.ElideRight,
+        )
+        layout_chip_label.setMinimumWidth(120)
+        layout_chip_label.setMaximumWidth(220)
+        ll.addWidget(layout_chip_label, 1)
         layout.addWidget(layout_chip)
 
         cycle_layout = GhostButton(txt["doc_change_layout_btn"], theme=theme, icon=Icons.VIEW_QUILT_OUTLINED)
@@ -368,8 +378,10 @@ def _build_active_doc_panel(
 
     body_holder = QWidget()
     body_holder.setStyleSheet("background: transparent;")
+    body_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     body_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
     body_holder.setLayout(body_layout)
+    is_modern_preview = kind == DOC_MODERN_CV
 
     def _refresh_body() -> None:
         while body_layout.count():
@@ -379,7 +391,15 @@ def _build_active_doc_panel(
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        body_layout.addWidget(_document_body(theme, txt, kind))
+        doc_widget = _document_body(theme, txt, kind)
+        if is_modern_preview:
+            body_layout.addWidget(
+                doc_widget,
+                0,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter,
+            )
+        else:
+            body_layout.addWidget(doc_widget)
 
     theme_controls_holder = QWidget()
     theme_controls_holder.setStyleSheet("background: transparent;")
@@ -451,6 +471,25 @@ def _build_active_doc_panel(
     br_layout.addStretch(1)
     br_layout.addWidget(refine_btn)
     rc_layout.addWidget(btn_row)
+    progress_bar = QProgressBar()
+    progress_bar.setRange(0, 0)
+    progress_bar.setTextVisible(False)
+    progress_bar.setVisible(False)
+    progress_bar.setFixedHeight(6)
+    progress_bar.setStyleSheet(
+        f"""
+        QProgressBar {{
+            border: 1px solid {theme.border};
+            background-color: {theme.surface_2};
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {theme.primary};
+            border-radius: 3px;
+        }}
+        """
+    )
+    rc_layout.addWidget(progress_bar)
     layout.addWidget(refine_card)
 
     def _refresh_buttons() -> None:
@@ -468,6 +507,7 @@ def _build_active_doc_panel(
             )
         )
         refine_btn.setText(txt["refine_running"] if running else txt["refine_btn"])
+        progress_bar.setVisible(running)
 
     _refresh_buttons()
 
@@ -480,7 +520,11 @@ def _build_active_doc_panel(
 
         def _worker() -> None:
             try:
-                result = pipeline.generate_document(kind, output_lang=doc_lang)
+                result = pipeline.generate_document(
+                    kind,
+                    output_lang=doc_lang,
+                    refresh_ui=False,
+                )
                 if result.ok:
                     runtime_dispatch(lambda: show_status("", False))
                     runtime_dispatch(_refresh_body)
@@ -504,7 +548,12 @@ def _build_active_doc_panel(
 
         def _worker() -> None:
             try:
-                result = pipeline.refine_document(kind, output_lang=doc_lang, problems=problems)
+                result = pipeline.refine_document(
+                    kind,
+                    output_lang=doc_lang,
+                    problems=problems,
+                    refresh_ui=False,
+                )
                 if result.ok:
                     runtime_dispatch(lambda: show_status("", False))
                     runtime_dispatch(_refresh_body)
@@ -614,14 +663,18 @@ def build_documents_tab(
             return
 
         role = ""
+        company = ""
         if STATE.job_spec:
             role = str(STATE.job_spec.get("title") or "")
-        folder = _ensure_run_folder(role)
+            company = str(STATE.job_spec.get("company") or "")
+        folder = ""
+        if action != "all":
+            folder = _ensure_run_folder(role, company)
+        footer_progress.setVisible(True)
         _show_status(txt["export_running"], False)
 
         def _worker() -> None:
             try:
-                folder_path = Path(folder)
                 if action == "all":
                     save = pipeline.save_full_analysis()
                     if save.ok:
@@ -631,6 +684,7 @@ def build_documents_tab(
                         runtime_dispatch(lambda: _show_status(txt["doc_empty_title"], True))
                     return
 
+                folder_path = Path(folder)
                 basename = _DOC_FILE_BASENAMES.get(kind, kind)
                 title = basename.replace("_", " ")
                 style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
@@ -716,6 +770,8 @@ def build_documents_tab(
                     "ai_career.tab_documents", "export_failed", exc, kind=kind, action=action,
                 )
                 runtime_dispatch(lambda e=exc: _show_status(txt["export_failed_template"].format(error=str(e)), True))
+            finally:
+                runtime_dispatch(lambda: footer_progress.setVisible(False))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -732,6 +788,25 @@ def build_documents_tab(
     footer_layout = vbox(spacing=8, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
     footer_layout.addWidget(status_label)
+    footer_progress = QProgressBar()
+    footer_progress.setRange(0, 0)
+    footer_progress.setTextVisible(False)
+    footer_progress.setVisible(False)
+    footer_progress.setFixedHeight(6)
+    footer_progress.setStyleSheet(
+        f"""
+        QProgressBar {{
+            border: 1px solid {theme.border};
+            background-color: {theme.surface};
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {theme.primary};
+            border-radius: 3px;
+        }}
+        """
+    )
+    footer_layout.addWidget(footer_progress)
 
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
@@ -744,27 +819,43 @@ def build_documents_tab(
     br_layout.addWidget(back_btn)
     br_layout.addStretch(1)
 
-    # Per-format export buttons collapse to icon-only with a tooltip:
-    # six labelled buttons in this row truncated at 1080 px in Czech.
-    # The labelled Back + Save-complete buttons on each end keep a
-    # descriptive label (the user reaches for them most often).
-    def _icon_export(icon_name: str, tooltip: str, action: str):
-        btn = IconOnlyButton(
-            icon_name,
-            color=theme.text,
-            size=18,
-            bg=rgba(theme.text, 0.04),
-            bg_hover=rgba(theme.text, 0.10),
-            radius=10,
-            tooltip=tooltip,
+    # Per-format export pills: short uppercase format label (MD / HTML /
+    # DOCX / PDF) so the user can identify each at a glance without
+    # widening the footer with the long localised "Export MD" label.
+    # The localised label still surfaces in the tooltip.
+    def _pill_export(label: str, tooltip: str, action: str) -> ClickFrame:
+        pill = ClickFrame()
+        pill.setObjectName("DocExportPill")
+        pill.setStyleSheet(
+            f"""
+            ClickFrame#DocExportPill {{
+                background-color: {rgba(theme.text, 0.04)};
+                border: 1px solid {theme.border};
+                border-radius: 10px;
+            }}
+            ClickFrame#DocExportPill:hover {{
+                background-color: {rgba(theme.primary, 0.12)};
+                border: 1px solid {theme.primary};
+            }}
+            """
         )
-        btn.clicked.connect(lambda _=False, a=action: _export(a))
-        return btn
+        pl = hbox(spacing=0, margins=(12, 6, 12, 6))
+        pl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.setLayout(pl)
+        pl.addWidget(custom_label(
+            label,
+            color=theme.text,
+            size=11,
+            weight=QFont.Weight.Bold,
+        ))
+        pill.setToolTip(tooltip)
+        pill.clicked.connect(lambda a=action: _export(a))
+        return pill
 
-    br_layout.addWidget(_icon_export(Icons.NOTES, txt["export_md_btn"], "md"))
-    br_layout.addWidget(_icon_export(Icons.HTML, txt["export_html_btn"], "html"))
-    br_layout.addWidget(_icon_export(Icons.DESCRIPTION, txt["export_docx_btn"], "docx"))
-    br_layout.addWidget(_icon_export(Icons.PICTURE_AS_PDF, txt["export_pdf_btn"], "pdf"))
+    br_layout.addWidget(_pill_export("MD", txt["export_md_btn"], "md"))
+    br_layout.addWidget(_pill_export("HTML", txt["export_html_btn"], "html"))
+    br_layout.addWidget(_pill_export("DOCX", txt["export_docx_btn"], "docx"))
+    br_layout.addWidget(_pill_export("PDF", txt["export_pdf_btn"], "pdf"))
     all_btn = PrimaryButton(txt["export_all_btn"], theme=theme, icon=Icons.SAVE_OUTLINED)
     all_btn.clicked.connect(lambda: _export("all"))
     br_layout.addWidget(all_btn)

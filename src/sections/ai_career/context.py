@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
 from src.qt.widgets import (
     BodyLabel,
@@ -194,7 +195,7 @@ def _quick_actions_body(theme: Theme, lang: str, txt: dict) -> QFrame:
         from src.sections.ai_career.how_to import open_career_how_to
         open_career_how_to(get_main_window(), theme, lang)
 
-    layout.addWidget(_row(Icons.RESTART_ALT, txt["ctx_qa_new_run"], _new_run))
+    layout.addWidget(_row(Icons.POST_ADD, txt["ctx_qa_new_run"], _new_run))
     layout.addWidget(_row(Icons.HISTORY, txt["ctx_qa_show_history"], _open_history))
     layout.addWidget(_row(Icons.MENU_BOOK_OUTLINED, txt["ctx_qa_open_how_to"], _open_how_to))
     return holder
@@ -226,14 +227,17 @@ def build_context(theme: Theme, lang: str) -> QWidget:
             section_card(theme, icon=Icons.PAYMENTS_OUTLINED, title=txt["ctx_cost_title"], body=_cost_body(theme, txt)),
         ]
         if STATE.mode == MODE_CHAT:
-            cards.append(section_card(theme, icon=Icons.ATTACH_FILE, title=txt["chat_mode_attached_docs_title"], body=_attachments_body(theme, txt)))
-        cards.append(section_card(theme, icon=Icons.RADIO_BUTTON_CHECKED, title=txt["ctx_activity_title"], body=_activity_body(theme, txt)))
+            cards.append(section_card(theme, icon=Icons.DESCRIPTION_OUTLINED, title=txt["chat_mode_attached_docs_title"], body=_attachments_body(theme, txt)))
+        cards.append(section_card(theme, icon=Icons.INSIGHTS_OUTLINED, title=txt["ctx_activity_title"], body=_activity_body(theme, txt)))
         cards.append(section_card(theme, icon=Icons.BOLT_OUTLINED, title=txt["ctx_quick_actions_title"], body=_quick_actions_body(theme, lang, txt)))
         shell = context_panel_shell(theme, *cards)
         panel_layout.addWidget(shell)
 
     def _on_cost_change() -> None:
-        _render()
+        # COST updates can arrive from worker threads; re-render the
+        # context panel on the GUI thread to avoid cross-thread Qt
+        # warnings ("Cannot set parent, new parent is in a different thread").
+        runtime_dispatch(_render)
 
     prev = _PREV_UNSUBSCRIBE.get("fn")
     if callable(prev):
