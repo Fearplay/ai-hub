@@ -28,9 +28,19 @@ This project depends on the following open-source libraries. Their licenses
 remain in effect for the corresponding portions of the work and are
 compatible with the MIT License above.
 
-- Flet (https://flet.dev) - Apache License 2.0
-  Copyright (c) Appveyor Systems Inc.
-  https://github.com/flet-dev/flet/blob/main/LICENSE
+- PySide6 (https://doc.qt.io/qtforpython-6/) - LGPL-3.0 (with the
+  dynamic-linking exception PyInstaller relies on)
+  Copyright (c) The Qt Company Ltd.
+  https://www.qt.io/licensing
+
+- Material Symbols Rounded font (https://github.com/google/material-design-icons)
+  Apache License 2.0. The bundled
+  ``assets/fonts/MaterialSymbolsRounded-Regular.otf`` is a glyph-subset
+  of the upstream variable font (only the icon names referenced in
+  ``src/qt/icons.py`` are kept). The accompanying
+  ``MaterialSymbolsRounded-Regular.codepoints`` index file is unmodified.
+  Copyright (c) Google Inc.
+  https://github.com/google/material-design-icons/blob/master/LICENSE
 
 - openai (https://github.com/openai/openai-python) - Apache License 2.0
 - anthropic (https://github.com/anthropics/anthropic-sdk-python) - MIT License
@@ -43,7 +53,9 @@ compatible with the MIT License above.
 - python-docx (https://github.com/python-openxml/python-docx) - MIT License
 - markdown2 (https://github.com/trentm/python-markdown2) - MIT License
 - reportlab (https://www.reportlab.com) - BSD-3-Clause License
+- pyperclip (https://github.com/asweigart/pyperclip) - BSD-3-Clause License
 
-All listed licenses are permissive and compatible with the MIT License above.
-Each library retains its own copyright notice; consult the linked
-repositories for the full text.
+All listed licenses are permissive (Apache-2.0, BSD, MIT) or copyleft with
+a dynamic-linking exception (LGPL-3.0 for PySide6 / Qt) and compatible
+with the MIT License above. Each library retains its own copyright
+notice; consult the linked repositories for the full text.

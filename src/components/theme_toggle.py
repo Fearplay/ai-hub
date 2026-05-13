@@ -1,12 +1,16 @@
-"""Sidebar light / dark mode switch."""
+"""Theme toggle row in the sidebar footer (icon + label + switch)."""
 
 from __future__ import annotations
 
 from typing import Callable
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QSizePolicy
 
+from src.components.language_toggle import _PillSwitch  # reuse the same pill widget
 from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.widgets import BodyLabel, IconLabel, hbox
 from src.theme import Theme
 
 
@@ -16,25 +20,23 @@ def theme_toggle(
     *,
     theme_mode: str,
     on_toggle: Callable[[], None],
-) -> ft.Container:
-    is_light = theme_mode == "light"
-    icon = ft.Icons.WB_SUNNY_OUTLINED if is_light else ft.Icons.NIGHTLIGHT_ROUND
-    label = t("light_mode" if is_light else "dark_mode", lang)
+) -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet("background: transparent;")
+    frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(icon, color=theme.text_muted, size=18),
-                ft.Text(label, color=theme.text_muted, size=13, expand=True),
-                ft.Switch(
-                    value=is_light,
-                    active_color=theme.primary,
-                    on_change=lambda e: on_toggle(),
-                    scale=0.85,
-                ),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=4),
-    )
+    layout = hbox(spacing=10, margins=(20, 6, 20, 6))
+    frame.setLayout(layout)
+
+    icon_name = Icons.AUTO_AWESOME if theme_mode == "light" else Icons.AUTO_AWESOME
+    icon = IconLabel(icon_name, color=theme.text_muted, size=18)
+    layout.addWidget(icon)
+
+    label_key = "dark_mode" if theme_mode == "light" else "dark_mode"
+    label = BodyLabel(t(label_key, lang), theme=theme, size=13)
+    layout.addWidget(label, 1)
+
+    switch = _PillSwitch(theme, active=theme_mode == "dark", on_toggle=on_toggle)
+    layout.addWidget(switch)
+
+    return frame

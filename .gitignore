@@ -61,14 +61,13 @@ coverage.xml
 profile_default/
 ipython_config.py
 
-# ===== Flet build outputs =====
-.flet/
-storage/
-flet_build/
+# ===== PyInstaller / Qt build outputs =====
 build_output/
 *.apk
 *.ipa
 *.aab
+# Pre-compiled Qt cache files
+.pyside_genshiboken_cache/
 
 # ===== IDE / editor =====
 .idea/

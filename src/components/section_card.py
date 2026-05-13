@@ -1,66 +1,72 @@
-"""Generic card with a header + content (used in the right context panel)."""
+"""Reusable section card (icon + title + body) for the right context panel."""
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QSizePolicy, QWidget
 
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    Card,
+    IconLabel,
+    MutedLabel,
+    TitleLabel,
+    hbox,
+    vbox,
+    wrap_label_slot,
+)
 from src.theme import Theme
 
 
 def section_card(
     theme: Theme,
+    *,
     icon: str,
     title: str,
-    content: ft.Control,
-    *,
-    action_label: Optional[str] = None,
-    on_action: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    header_controls: list[ft.Control] = [
-        ft.Icon(icon, color=theme.text_muted, size=18),
-        ft.Text(
-            title,
-            color=theme.text,
-            size=14,
-            weight=ft.FontWeight.W_600,
-            expand=True,
-        ),
-    ]
-
-    if action_label:
-        header_controls.append(
-            ft.TextButton(
-                content=ft.Text(
-                    action_label,
-                    color=theme.primary,
-                    size=12,
-                    weight=ft.FontWeight.W_600,
-                ),
-                style=ft.ButtonStyle(
-                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
-                    overlay_color=ft.Colors.with_opacity(0.08, theme.primary),
-                ),
-                on_click=on_action,
-            )
-        )
-
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Row(
-                    controls=header_controls,
-                    spacing=8,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                content,
-            ],
-            spacing=14,
-            tight=True,
-        ),
-        padding=16,
-        bgcolor=theme.surface,
-        border_radius=14,
-        border=ft.border.all(1, theme.border),
+    description: Optional[str] = None,
+    body: Optional[QWidget] = None,
+) -> QFrame:
+    card = Card(
+        bg=theme.surface,
+        border_color=theme.border,
+        radius=14,
+        padding=(16, 16, 16, 16),
     )
+    layout = card.content_layout
+    layout.setSpacing(12)
+
+    head_row = hbox(spacing=10, margins=(0, 0, 0, 0))
+    head_row.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+    icon_box = QFrame()
+    icon_box.setFixedSize(34, 34)
+    icon_box.setStyleSheet(
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 10px;"
+    )
+    icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    icon_box.setLayout(icon_layout)
+    icon_layout.addWidget(
+        IconLabel(icon, color=theme.primary, size=18),
+        alignment=Qt.AlignmentFlag.AlignCenter,
+    )
+    head_row.addWidget(icon_box)
+
+    text_holder = QFrame()
+    text_holder.setStyleSheet("background: transparent;")
+    wrap_label_slot(text_holder)
+    text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    text_holder.setLayout(text_layout)
+    text_layout.addWidget(TitleLabel(title, theme=theme, size=14))
+    if description:
+        text_layout.addWidget(MutedLabel(description, theme=theme, size=11))
+    head_row.addWidget(text_holder, 1)
+
+    layout.addLayout(head_row)
+
+    if body is not None:
+        layout.addWidget(body)
+
+    return card

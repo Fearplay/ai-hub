@@ -8,7 +8,15 @@ mock panels.
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QScrollArea,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.chat_input import chat_input
 from src.components.chat_message import chat_message
@@ -16,6 +24,17 @@ from src.components.header import header
 from src.components.mock_panel import mock_card_grid_panel, mock_form_panel
 from src.components.tabbed_panel import tabbed_panel
 from src.i18n import t
+from src.qt.icons import Icons
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    AccentLabel,
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    hbox,
+    vbox,
+)
 from src.sections.ai_study.data import (
     SECTION_ICON,
     assistant_actions,
@@ -27,334 +46,307 @@ from src.services import logger as logger_service
 from src.theme import Theme
 
 
-def _section_heading(theme: Theme, icon: str, title: str) -> ft.Row:
-    return ft.Row(
-        controls=[
-            ft.Icon(icon, color=theme.primary, size=16),
-            ft.Text(
-                title,
-                color=theme.primary,
-                size=13,
-                weight=ft.FontWeight.W_700,
-            ),
-        ],
-        spacing=6,
-        tight=True,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+def _section_heading(theme: Theme, icon: str, title: str) -> QFrame:
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=6, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.primary, size=16))
+    layout.addWidget(AccentLabel(title, theme=theme, size=13, weight=QFont.Weight.Bold))
+    layout.addStretch(1)
+    return holder
 
 
-def _bullet_row(theme: Theme, text: str) -> ft.Row:
-    return ft.Row(
-        controls=[
-            ft.Container(
-                content=ft.Text("•", color=theme.text, size=14, weight=ft.FontWeight.W_700),
-                width=14,
-                alignment=ft.Alignment.CENTER,
-            ),
-            ft.Text(text, color=theme.text, size=14, expand=True, selectable=True),
-        ],
-        spacing=6,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
+def _bullet_row(theme: Theme, text: str) -> QFrame:
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=6, margins=(0, 0, 0, 0))
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    row.setLayout(layout)
+
+    bullet = BodyLabel("\u2022", theme=theme, size=14, weight=QFont.Weight.Bold)
+    bullet.setFixedWidth(14)
+    bullet.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(bullet)
+
+    body = BodyLabel(text, theme=theme, size=14, selectable=True)
+    body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout.addWidget(body, 1)
+    return row
 
 
-def _particles_artwork(theme: Theme) -> ft.Container:
-    """Small decorative purple-particle illustration (no asset, pure flet)."""
+def _particles_artwork(theme: Theme) -> QFrame:
+    """Decorative two-orb illustration painted with QFrames + radii."""
     primary = theme.primary
 
-    def orb(size: int, color: str, opacity: float) -> ft.Container:
-        return ft.Container(
-            width=size,
-            height=size,
-            border_radius=size // 2,
-            bgcolor=ft.Colors.with_opacity(opacity, color),
+    def _orb(size: int, opacity: float) -> QFrame:
+        orb = QFrame()
+        orb.setFixedSize(size, size)
+        orb.setStyleSheet(
+            f"background-color: {rgba(primary, opacity)}; border-radius: {size // 2}px;"
         )
+        return orb
 
-    halo_a = ft.Container(
-        width=58,
-        height=58,
-        border_radius=29,
-        bgcolor=ft.Colors.with_opacity(0.18, primary),
-        alignment=ft.Alignment.CENTER,
-        content=orb(26, primary, 0.95),
+    def _halo() -> QFrame:
+        halo = QFrame()
+        halo.setFixedSize(58, 58)
+        halo.setStyleSheet(
+            f"background-color: {rgba(primary, 0.18)}; border-radius: 29px;"
+        )
+        layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        halo.setLayout(layout)
+        layout.addWidget(_orb(26, 0.95), alignment=Qt.AlignmentFlag.AlignCenter)
+        return halo
+
+    artwork = QFrame()
+    artwork.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=2, margins=(12, 8, 12, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    artwork.setLayout(layout)
+
+    layout.addWidget(_halo())
+
+    connector = QFrame()
+    connector.setFixedSize(44, 2)
+    connector.setStyleSheet(
+        f"background-color: {rgba(primary, 0.55)}; border-radius: 1px;"
     )
-    halo_b = ft.Container(
-        width=58,
-        height=58,
-        border_radius=29,
-        bgcolor=ft.Colors.with_opacity(0.18, primary),
-        alignment=ft.Alignment.CENTER,
-        content=orb(26, primary, 0.95),
-    )
+    layout.addWidget(connector)
 
-    connector = ft.Container(
-        width=44,
-        height=2,
-        bgcolor=ft.Colors.with_opacity(0.55, primary),
-        border_radius=1,
-    )
+    layout.addWidget(_halo())
 
-    return ft.Container(
-        content=ft.Row(
-            controls=[halo_a, connector, halo_b],
-            spacing=2,
-            alignment=ft.MainAxisAlignment.CENTER,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        alignment=ft.Alignment.CENTER,
-    )
+    return artwork
 
 
-def _simple_block(theme: Theme, lang: str) -> ft.Container:
+def _simple_block(theme: Theme, lang: str) -> QFrame:
     txt = s(lang)
 
-    text_col = ft.Column(
-        controls=[
-            _section_heading(theme, ft.Icons.LIGHTBULB_OUTLINE, txt["section_simple_title"]),
-            ft.Text(
-                txt["section_simple_text"],
-                color=theme.text,
-                size=13,
-                selectable=True,
-            ),
-        ],
-        spacing=8,
-        tight=True,
-        expand=True,
+    block = QFrame()
+    block.setObjectName("StudySimpleBlock")
+    block.setStyleSheet(
+        f"""
+        QFrame#StudySimpleBlock {{
+            background-color: {rgba(theme.primary_tint, 0.35)};
+            border: 1px solid {rgba(theme.primary, 0.35)};
+            border-radius: 12px;
+        }}
+        """
     )
+    layout = hbox(spacing=14, margins=(14, 14, 14, 14))
+    block.setLayout(layout)
 
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Container(content=text_col, expand=True),
-                _particles_artwork(theme),
-            ],
-            spacing=14,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=14,
-        bgcolor=ft.Colors.with_opacity(0.35, theme.primary_tint),
-        border_radius=12,
-        border=ft.border.all(1, ft.Colors.with_opacity(0.35, theme.primary)),
-    )
+    text_holder = QFrame()
+    text_holder.setStyleSheet("background: transparent;")
+    text_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    text_layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    text_holder.setLayout(text_layout)
+    text_layout.addWidget(_section_heading(theme, Icons.LIGHTBULB_OUTLINE, txt["section_simple_title"]))
+    text_layout.addWidget(BodyLabel(txt["section_simple_text"], theme=theme, size=13, selectable=True))
+    layout.addWidget(text_holder, 1)
+    layout.addWidget(_particles_artwork(theme))
+
+    return block
 
 
-def _keypoints_block(theme: Theme, lang: str) -> ft.Column:
+def _keypoints_block(theme: Theme, lang: str) -> QFrame:
     txt = s(lang)
-    return ft.Column(
-        controls=[
-            _section_heading(theme, ft.Icons.PUSH_PIN_OUTLINED, txt["section_keypoints_title"]),
-            ft.Column(
-                controls=[
-                    _bullet_row(theme, txt["key_bullet1"]),
-                    _bullet_row(theme, txt["key_bullet2"]),
-                    _bullet_row(theme, txt["key_bullet3"]),
-                    _bullet_row(theme, txt["key_bullet4"]),
-                ],
-                spacing=4,
-                tight=True,
-            ),
-        ],
-        spacing=8,
-        tight=True,
-    )
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    layout.addWidget(_section_heading(theme, Icons.PUSH_PIN_OUTLINED, txt["section_keypoints_title"]))
+    body_holder = QFrame()
+    body_holder.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    body_holder.setLayout(body_layout)
+    body_layout.addWidget(_bullet_row(theme, txt["key_bullet1"]))
+    body_layout.addWidget(_bullet_row(theme, txt["key_bullet2"]))
+    body_layout.addWidget(_bullet_row(theme, txt["key_bullet3"]))
+    body_layout.addWidget(_bullet_row(theme, txt["key_bullet4"]))
+    layout.addWidget(body_holder)
+    return holder
 
 
-def _example_block(theme: Theme, lang: str) -> ft.Column:
+def _example_block(theme: Theme, lang: str) -> QFrame:
     txt = s(lang)
-    return ft.Column(
-        controls=[
-            _section_heading(theme, ft.Icons.AUTO_STORIES_OUTLINED, txt["section_example_title"]),
-            ft.Text(
-                txt["section_example_text"],
-                color=theme.text,
-                size=14,
-                selectable=True,
-            ),
-        ],
-        spacing=8,
-        tight=True,
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+    layout.addWidget(_section_heading(theme, Icons.AUTO_STORIES_OUTLINED, txt["section_example_title"]))
+    layout.addWidget(BodyLabel(txt["section_example_text"], theme=theme, size=14, selectable=True))
+    return holder
+
+
+def _action_chip(theme: Theme, icon: str, label: str) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 20px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    layout = hbox(spacing=6, margins=(12, 8, 12, 8))
+    chip.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.primary, size=14))
+    layout.addWidget(BodyLabel(label, theme=theme, size=12))
+    return chip
 
 
-def _action_chip(theme: Theme, icon: str, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(icon, color=theme.primary, size=14),
-                ft.Text(label, color=theme.text, size=12, weight=ft.FontWeight.W_500),
-            ],
-            spacing=6,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=theme.surface,
-        border_radius=20,
-        border=ft.border.all(1, theme.border),
-        ink=True,
-        on_click=lambda e: None,
-    )
-
-
-def _assistant_message(theme: Theme, lang: str) -> ft.Row:
+def _assistant_message(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    bubble_children: list[ft.Control] = [
-        ft.Text(txt["msg2_intro"], color=theme.text, size=14, selectable=True),
-        _simple_block(theme, lang),
-        _keypoints_block(theme, lang),
-        _example_block(theme, lang),
-    ]
+    avatar = QFrame()
+    avatar.setFixedSize(36, 36)
+    avatar.setStyleSheet(f"background-color: {theme.primary}; border-radius: 10px;")
+    avatar_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    avatar_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(avatar_layout)
+    avatar_layout.addWidget(IconLabel(SECTION_ICON, color="#FFFFFF", size=18),
+                            alignment=Qt.AlignmentFlag.AlignCenter)
 
-    bubble = ft.Container(
-        content=ft.Column(
-            controls=bubble_children,
-            spacing=14,
-            tight=True,
-        ),
-        padding=16,
-        bgcolor=theme.assistant_bubble,
-        border_radius=14,
+    bubble = QFrame()
+    bubble.setStyleSheet(
+        f"background-color: {theme.assistant_bubble}; border-radius: 14px;"
     )
+    bubble_layout = vbox(spacing=14, margins=(16, 16, 16, 16))
+    bubble.setLayout(bubble_layout)
+    bubble_layout.addWidget(BodyLabel(txt["msg2_intro"], theme=theme, size=14, selectable=True))
+    bubble_layout.addWidget(_simple_block(theme, lang))
+    bubble_layout.addWidget(_keypoints_block(theme, lang))
+    bubble_layout.addWidget(_example_block(theme, lang))
 
-    actions_row = ft.Row(
-        controls=[_action_chip(theme, a["icon"], a["label"]) for a in assistant_actions(lang)],
-        spacing=8,
-        wrap=True,
-        run_spacing=8,
+    actions = QFrame()
+    actions.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    actions.setLayout(actions_layout)
+    for a in assistant_actions(lang):
+        actions_layout.addWidget(_action_chip(theme, a["icon"], a["label"]))
+    actions_layout.addStretch(1)
+
+    body = QFrame()
+    body.setStyleSheet("background: transparent;")
+    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+    body_layout.addWidget(MutedLabel("10:24", theme=theme, size=11))
+    body_layout.addWidget(bubble)
+    body_layout.addWidget(actions)
+
+    wrapper = QWidget()
+    wrapper.setStyleSheet("background: transparent;")
+    wrap_layout = QHBoxLayout(wrapper)
+    wrap_layout.setContentsMargins(0, 0, 0, 0)
+    wrap_layout.setSpacing(12)
+    wrap_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    wrap_layout.addWidget(avatar)
+    wrap_layout.addWidget(body, 1)
+    return wrapper
+
+
+def _source_card(theme: Theme, source: dict) -> ClickFrame:
+    card = ClickFrame()
+    card.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    card.setFixedWidth(200)
+    layout = hbox(spacing=10, margins=(10, 10, 10, 10))
+    card.setLayout(layout)
 
-    avatar = ft.Container(
-        content=ft.Icon(SECTION_ICON, color=ft.Colors.WHITE, size=18),
-        width=36,
-        height=36,
-        bgcolor=theme.primary,
-        border_radius=10,
-        alignment=ft.Alignment.CENTER,
+    badge = QFrame()
+    badge.setFixedSize(32, 32)
+    badge.setStyleSheet(
+        f"background-color: {source['color']}; border-radius: 8px;"
     )
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(IconLabel(source["icon"], color="#FFFFFF", size=16),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(badge)
 
-    body = ft.Column(
-        controls=[
-            ft.Container(
-                content=ft.Text("10:24", color=theme.text_muted, size=11),
-                padding=ft.padding.only(left=4),
-            ),
-            bubble,
-            actions_row,
-        ],
-        spacing=10,
-        expand=True,
-        tight=True,
+    info = QFrame()
+    info.setStyleSheet("background: transparent;")
+    info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    info_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    info.setLayout(info_layout)
+    info_layout.addWidget(BodyLabel(source["title"], theme=theme, size=12))
+    info_layout.addWidget(MutedLabel(source["domain"], theme=theme, size=10))
+    layout.addWidget(info, 1)
+
+    return card
+
+
+def _show_more(theme: Theme, label: str) -> ClickFrame:
+    chip = ClickFrame()
+    chip.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
-
-    return ft.Row(
-        controls=[avatar, body],
-        spacing=12,
-        vertical_alignment=ft.CrossAxisAlignment.START,
-    )
-
-
-def _source_card(theme: Theme, source: dict) -> ft.Container:
-    badge = ft.Container(
-        content=ft.Icon(source["icon"], color=ft.Colors.WHITE, size=16),
-        width=32,
-        height=32,
-        bgcolor=source["color"],
-        border_radius=8,
-        alignment=ft.Alignment.CENTER,
-    )
-    info = ft.Column(
-        controls=[
-            ft.Text(
-                source["title"],
-                color=theme.text,
-                size=12,
-                weight=ft.FontWeight.W_600,
-                overflow=ft.TextOverflow.ELLIPSIS,
-                max_lines=2,
-            ),
-            ft.Text(
-                source["domain"],
-                color=theme.text_muted,
-                size=10,
-                overflow=ft.TextOverflow.ELLIPSIS,
-                max_lines=1,
-            ),
-        ],
-        spacing=2,
-        tight=True,
-        expand=True,
-    )
-    return ft.Container(
-        content=ft.Row(
-            controls=[badge, info],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=10,
-        bgcolor=theme.surface,
-        border_radius=10,
-        border=ft.border.all(1, theme.border),
-        width=200,
-        ink=True,
-        on_click=lambda e: None,
-    )
+    layout = hbox(spacing=4, margins=(12, 8, 12, 8))
+    chip.setLayout(layout)
+    layout.addWidget(BodyLabel(label, theme=theme, size=12))
+    layout.addWidget(IconLabel(Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16))
+    return chip
 
 
-def _show_more(theme: Theme, label: str) -> ft.Container:
-    return ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Text(label, color=theme.text, size=12, weight=ft.FontWeight.W_500),
-                ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16),
-            ],
-            spacing=4,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=theme.surface,
-        border_radius=10,
-        border=ft.border.all(1, theme.border),
-        ink=True,
-        on_click=lambda e: None,
-    )
-
-
-def _sources_card(theme: Theme, lang: str) -> ft.Container:
+def _sources_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     sources = recommended_sources(lang)
 
-    cards_row = ft.Row(
-        controls=[_source_card(theme, src) for src in sources] + [_show_more(theme, txt["source_show_more"])],
-        spacing=10,
-        scroll=ft.ScrollMode.HIDDEN,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(24, 4, 24, 8))
+    holder.setLayout(layout)
 
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    txt["sources_title"],
-                    color=theme.text_muted,
-                    size=12,
-                    weight=ft.FontWeight.W_500,
-                ),
-                cards_row,
-            ],
-            spacing=8,
-            tight=True,
-        ),
-        padding=ft.padding.only(left=24, right=24, top=4, bottom=8),
-    )
+    layout.addWidget(MutedLabel(txt["sources_title"], theme=theme, size=12))
+
+    row_holder = QFrame()
+    row_holder.setStyleSheet("background: transparent;")
+    row = hbox(spacing=10, margins=(0, 0, 0, 0))
+    row_holder.setLayout(row)
+    for src in sources:
+        row.addWidget(_source_card(theme, src))
+    row.addWidget(_show_more(theme, txt["source_show_more"]))
+    row.addStretch(1)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+    scroll.setMaximumHeight(70)
+    scroll.setWidget(row_holder)
+    layout.addWidget(scroll)
+
+    return holder
 
 
-def _chat_panel(theme: Theme, lang: str) -> ft.Control:
+def _chat_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     user_msg = chat_message(
         theme,
@@ -365,28 +357,35 @@ def _chat_panel(theme: Theme, lang: str) -> ft.Control:
         text=txt["msg1_user"],
     )
 
-    messages_list = ft.ListView(
-        controls=[user_msg, _assistant_message(theme, lang)],
-        spacing=22,
-        padding=ft.padding.symmetric(horizontal=24, vertical=20),
-        expand=True,
-        auto_scroll=False,
-    )
+    messages_holder = QWidget()
+    messages_layout = vbox(spacing=22, margins=(24, 20, 24, 20))
+    messages_holder.setLayout(messages_layout)
+    messages_layout.addWidget(user_msg)
+    messages_layout.addWidget(_assistant_message(theme, lang))
+    messages_layout.addStretch(1)
 
-    return ft.Column(
-        controls=[messages_list, _sources_card(theme, lang)],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(messages_holder)
+
+    panel = QWidget()
+    panel_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    panel.setLayout(panel_layout)
+    panel_layout.addWidget(scroll, 1)
+    panel_layout.addWidget(_sources_card(theme, lang))
+    return panel
 
 
-def _summary_panel(theme: Theme, lang: str) -> ft.Control:
+def _summary_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.SHORT_TEXT,
+        icon=Icons.SHORT_TEXT,
         title=txt["summary_title"],
         description=txt["summary_desc"],
         fields=[
@@ -399,12 +398,12 @@ def _summary_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _explain_panel(theme: Theme, lang: str) -> ft.Control:
+def _explain_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.LIGHTBULB_OUTLINE,
+        icon=Icons.LIGHTBULB_OUTLINE,
         title=txt["explain_title"],
         description=txt["explain_desc"],
         fields=[
@@ -416,12 +415,12 @@ def _explain_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _tasks_panel(theme: Theme, lang: str) -> ft.Control:
+def _tasks_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.EVENT_NOTE,
+        icon=Icons.EVENT_NOTE,
         title=txt["tasks_panel_title"],
         description=txt["tasks_panel_desc"],
         fields=[
@@ -434,54 +433,23 @@ def _tasks_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def _quizzes_panel(theme: Theme, lang: str) -> ft.Control:
+def _quizzes_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     cards = [
-        {
-            "icon": ft.Icons.SCIENCE_OUTLINED,
-            "title": txt["quiz_physics_title"],
-            "description": txt["quiz_physics_desc"],
-            "action_label": txt["quiz_use"],
-            "color": "#7C5CFC",
-        },
-        {
-            "icon": ft.Icons.FUNCTIONS,
-            "title": txt["quiz_math_title"],
-            "description": txt["quiz_math_desc"],
-            "action_label": txt["quiz_use"],
-            "color": "#38BDF8",
-        },
-        {
-            "icon": ft.Icons.CODE,
-            "title": txt["quiz_code_title"],
-            "description": txt["quiz_code_desc"],
-            "action_label": txt["quiz_use"],
-            "color": "#22C55E",
-        },
-        {
-            "icon": ft.Icons.TRENDING_UP,
-            "title": txt["quiz_econ_title"],
-            "description": txt["quiz_econ_desc"],
-            "action_label": txt["quiz_use"],
-            "color": "#F59E0B",
-        },
+        {"icon": Icons.SCIENCE_OUTLINED, "title": txt["quiz_physics_title"], "description": txt["quiz_physics_desc"], "action_label": txt["quiz_use"], "color": "#7C5CFC"},
+        {"icon": Icons.FUNCTIONS, "title": txt["quiz_math_title"], "description": txt["quiz_math_desc"], "action_label": txt["quiz_use"], "color": "#38BDF8"},
+        {"icon": Icons.CODE, "title": txt["quiz_code_title"], "description": txt["quiz_code_desc"], "action_label": txt["quiz_use"], "color": "#22C55E"},
+        {"icon": Icons.TRENDING_UP, "title": txt["quiz_econ_title"], "description": txt["quiz_econ_desc"], "action_label": txt["quiz_use"], "color": "#F59E0B"},
     ]
-    return mock_card_grid_panel(
-        theme,
-        lang,
-        icon=ft.Icons.QUIZ_OUTLINED,
-        title=txt["quizzes_panel_title"],
-        description=txt["quizzes_panel_desc"],
-        cards=cards,
-    )
+    return mock_card_grid_panel(theme, lang, icon=Icons.QUIZ_OUTLINED, title=txt["quizzes_panel_title"], description=txt["quizzes_panel_desc"], cards=cards)
 
 
-def _sources_panel(theme: Theme, lang: str) -> ft.Control:
+def _sources_panel(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
     return mock_form_panel(
         theme,
         lang,
-        icon=ft.Icons.MENU_BOOK_OUTLINED,
+        icon=Icons.MENU_BOOK_OUTLINED,
         title=txt["sources_panel_title"],
         description=txt["sources_panel_desc"],
         fields=[
@@ -493,9 +461,8 @@ def _sources_panel(theme: Theme, lang: str) -> ft.Control:
     )
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-
     try:
         panels = [
             _chat_panel(theme, lang),
@@ -506,24 +473,16 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
             _sources_panel(theme, lang),
         ]
     except Exception as exc:
-        logger_service.log_exception(
-            "ai_study.view", "build_panels_failed", exc,
-        )
+        logger_service.log_exception("ai_study.view", "build_panels_failed", exc)
         raise
 
-    return ft.Column(
-        controls=[
-            header(
-                theme,
-                lang,
-                icon=SECTION_ICON,
-                title=txt["title"],
-                subtitle=txt["subtitle"],
-            ),
-            tabbed_panel(theme, tabs=tabs(lang), panels=panels),
-            chat_input(theme, lang),
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
+
+    layout.addWidget(header(theme, lang, icon=SECTION_ICON, title=txt["title"], subtitle=txt["subtitle"]))
+    layout.addWidget(tabbed_panel(theme, tabs=tabs(lang), panels=panels), 1)
+    layout.addWidget(chat_input(theme, lang))
+
+    return container

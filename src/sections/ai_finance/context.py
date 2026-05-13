@@ -2,19 +2,35 @@
 
 Four cards:
 
-1. Rychlé akce - 5 link-style rows with chevrons.
-2. Přehled trhů - 5 ticker rows with inline sparklines (canvas Path).
-3. Nedávné analýzy - 4 history-like rows.
-4. Tip dne - icon + paragraph.
+1. Quick actions - 5 link-style rows with chevrons.
+2. Markets overview - 5 ticker rows with QPainter sparklines.
+3. Recent analyses - 4 history-like rows.
+4. Daily tip - icon + paragraph.
 """
 
 from __future__ import annotations
 
-import flet as ft
-from flet import canvas as cv
+from typing import Sequence
 
-from src.components.context_panel import context_panel_shell, history_row, quick_action_row
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QWidget
+
+from src.components.context_panel import (
+    context_panel_shell,
+    history_row,
+    quick_action_row,
+)
 from src.components.section_card import section_card
+from src.qt.icons import Icons
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    IconLabel,
+    MutedLabel,
+    hbox,
+    vbox,
+)
 from src.sections.ai_finance.data import (
     TREND_DOWN,
     TREND_UP,
@@ -31,153 +47,136 @@ SPARK_WIDTH = 64
 SPARK_HEIGHT = 26
 
 
-def _quick_actions_card(theme: Theme, lang: str) -> ft.Container:
+class _Sparkline(QWidget):
+    """Tiny line chart painted via ``QPainter``.
+
+    Antialiased + rounded caps so the line still reads at 26 px tall.
+    """
+
+    def __init__(self, values: Sequence[float], *, color: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._values = list(values)
+        self._color = QColor(color)
+        self.setFixedSize(SPARK_WIDTH, SPARK_HEIGHT)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if not self._values:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        lo = min(self._values)
+        hi = max(self._values)
+        span = (hi - lo) or 1.0
+
+        margin_y = 3
+        plot_h = SPARK_HEIGHT - 2 * margin_y
+        step_x = SPARK_WIDTH / max(1, len(self._values) - 1)
+
+        points = QPolygonF()
+        for i, v in enumerate(self._values):
+            x = i * step_x
+            y = margin_y + (1 - (v - lo) / span) * plot_h
+            points.append(QPointF(x, y))
+
+        pen = QPen(self._color, 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPolyline(points)
+
+
+def _quick_actions_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    rows = [quick_action_row(theme, a["icon"], a["label"]) for a in quick_actions(lang)]
-    return section_card(
-        theme,
-        ft.Icons.BOLT_OUTLINED,
-        txt["quick_title"],
-        ft.Column(controls=rows, spacing=2, tight=True),
-    )
+    rows = QFrame()
+    rows.setStyleSheet("background: transparent;")
+    rows_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    rows.setLayout(rows_layout)
+    for a in quick_actions(lang):
+        rows_layout.addWidget(quick_action_row(theme, a["icon"], a["label"]))
+    return section_card(theme, icon=Icons.BOLT_OUTLINED, title=txt["quick_title"], body=rows)
 
 
-def _sparkline(values: list[float], *, color: str) -> cv.Canvas:
-    if not values:
-        return cv.Canvas(shapes=[], width=SPARK_WIDTH, height=SPARK_HEIGHT)
-
-    lo = min(values)
-    hi = max(values)
-    span = (hi - lo) or 1.0
-
-    margin_y = 3
-    plot_h = SPARK_HEIGHT - 2 * margin_y
-    step_x = SPARK_WIDTH / max(1, len(values) - 1)
-
-    elements: list[cv.Path.PathElement] = []
-    for i, v in enumerate(values):
-        x = i * step_x
-        y = margin_y + (1 - (v - lo) / span) * plot_h
-        if i == 0:
-            elements.append(cv.Path.MoveTo(x, y))
-        else:
-            elements.append(cv.Path.LineTo(x, y))
-
-    line = cv.Path(
-        elements=elements,
-        paint=ft.Paint(
-            color=color,
-            style=ft.PaintingStyle.STROKE,
-            stroke_width=1.6,
-            stroke_cap=ft.StrokeCap.ROUND,
-            stroke_join=ft.StrokeJoin.ROUND,
-        ),
-    )
-    return cv.Canvas(shapes=[line], width=SPARK_WIDTH, height=SPARK_HEIGHT)
-
-
-def _ticker_row(theme: Theme, ticker: dict) -> ft.Container:
+def _ticker_row(theme: Theme, ticker: dict) -> ClickFrame:
     trend_color = TREND_UP if ticker["trend"] == "up" else TREND_DOWN
 
-    icon_box = ft.Container(
-        content=ft.Icon(ticker["icon"], color=ft.Colors.WHITE, size=14),
-        width=28,
-        height=28,
-        bgcolor=ticker["icon_color"],
-        border_radius=8,
-        alignment=ft.Alignment.CENTER,
+    row = ClickFrame()
+    row.setStyleSheet(
+        f"""
+        ClickFrame {{
+            background-color: transparent;
+            border-radius: 8px;
+        }}
+        ClickFrame:hover {{
+            background-color: {theme.surface_2};
+        }}
+        """
     )
+    layout = hbox(spacing=10, margins=(4, 6, 4, 6))
+    row.setLayout(layout)
 
-    name_value = ft.Column(
-        controls=[
-            ft.Text(
-                ticker["symbol"],
-                color=theme.text,
-                size=12,
-                weight=ft.FontWeight.W_600,
-                overflow=ft.TextOverflow.ELLIPSIS,
-                max_lines=1,
-            ),
-            ft.Text(
-                ticker["value"],
-                color=theme.text_muted,
-                size=11,
-                weight=ft.FontWeight.W_500,
-            ),
-        ],
-        spacing=2,
-        tight=True,
-        expand=True,
+    icon_box = QFrame()
+    icon_box.setFixedSize(28, 28)
+    icon_box.setStyleSheet(
+        f"background-color: {ticker['icon_color']}; border-radius: 8px;"
     )
+    ib = hbox(spacing=0, margins=(0, 0, 0, 0))
+    ib.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    icon_box.setLayout(ib)
+    ib.addWidget(IconLabel(ticker["icon"], color="#FFFFFF", size=14),
+                 alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_box)
 
-    spark = _sparkline(ticker["spark"], color=trend_color)
+    name_value = QFrame()
+    name_value.setStyleSheet("background: transparent;")
+    name_value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    nv_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    name_value.setLayout(nv_layout)
+    nv_layout.addWidget(BodyLabel(ticker["symbol"], theme=theme, size=12))
+    nv_layout.addWidget(MutedLabel(ticker["value"], theme=theme, size=11))
+    layout.addWidget(name_value, 1)
 
-    change = ft.Text(
-        ticker["change"],
-        color=trend_color,
-        size=11,
-        weight=ft.FontWeight.W_700,
-    )
+    layout.addWidget(_Sparkline(ticker["spark"], color=trend_color))
 
-    return ft.Container(
-        content=ft.Row(
-            controls=[icon_box, name_value, spark, change],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.symmetric(horizontal=4, vertical=6),
-        border_radius=8,
-        ink=True,
-        on_click=lambda e: None,
-    )
+    change_label = QLabel(ticker["change"])
+    change_font = QFont()
+    change_font.setPixelSize(11)
+    change_font.setWeight(QFont.Weight.Bold)
+    change_label.setFont(change_font)
+    change_label.setStyleSheet(f"color: {trend_color}; background: transparent;")
+    layout.addWidget(change_label)
+    return row
 
 
-def _markets_card(theme: Theme, lang: str) -> ft.Container:
+def _markets_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    rows = [_ticker_row(theme, t) for t in market_tickers(lang)]
-    content = ft.Column(controls=rows, spacing=4, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.SHOW_CHART,
-        txt["markets_title"],
-        content,
-        action_label=txt["markets_show_detail"],
-    )
+    rows = QFrame()
+    rows.setStyleSheet("background: transparent;")
+    rows_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    rows.setLayout(rows_layout)
+    for ticker in market_tickers(lang):
+        rows_layout.addWidget(_ticker_row(theme, ticker))
+    return section_card(theme, icon=Icons.SHOW_CHART, title=txt["markets_title"], body=rows)
 
 
-def _analyses_card(theme: Theme, lang: str) -> ft.Container:
+def _analyses_card(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
-    rows = [
-        history_row(theme, item["title"], item["time"])
-        for item in recent_analyses(lang)
-    ]
-    content = ft.Column(controls=rows, spacing=4, tight=True)
-    return section_card(
-        theme,
-        ft.Icons.HISTORY,
-        txt["analyses_title"],
-        content,
-        action_label=txt["analyses_show_all"],
-    )
+    rows = QFrame()
+    rows.setStyleSheet("background: transparent;")
+    rows_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    rows.setLayout(rows_layout)
+    for item in recent_analyses(lang):
+        rows_layout.addWidget(history_row(theme, item["title"], item["time"]))
+    return section_card(theme, icon=Icons.HISTORY, title=txt["analyses_title"], body=rows)
 
 
-def _tip_card(theme: Theme, lang: str) -> ft.Container:
+def _tip_card(theme: Theme, lang: str) -> QWidget:
     tip = daily_tip(lang)
-    body = ft.Text(
-        tip["text"],
-        color=theme.text,
-        size=12,
-        selectable=True,
-    )
-    return section_card(
-        theme,
-        ft.Icons.LIGHTBULB_OUTLINE,
-        tip["title"],
-        body,
-    )
+    body = BodyLabel(tip["text"], theme=theme, size=12, selectable=True)
+    return section_card(theme, icon=Icons.LIGHTBULB_OUTLINE, title=tip["title"], body=body)
 
 
-def build_context(theme: Theme, lang: str) -> ft.Container:
+def build_context(theme: Theme, lang: str) -> QWidget:
     return context_panel_shell(
         theme,
         _quick_actions_card(theme, lang),

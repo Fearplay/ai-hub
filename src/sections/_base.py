@@ -7,14 +7,14 @@ all subfolders, so adding a new section never touches a shared file.
 
 ``nav_group`` controls where the section renders in the sidebar:
 
-* ``"primary"`` (default) — main feature list under the "+ New chat" button.
-* ``"secondary"`` — auxiliary list under the divider (History, Favorites,
+* ``"primary"`` (default) - main feature list under the "+ New chat" button.
+* ``"secondary"`` - auxiliary list under the divider (History, Favorites,
   Settings). Same auto-discovery rules apply.
 
 ``wide_layout`` lets a section opt out of the 336 px right context
 panel so it can use the full window width (sidebar minus). Used by
 sections without a ``build_context`` whose body benefits from the extra
-horizontal space (Settings, Debug logs, History, …).
+horizontal space (Settings, Debug logs, History, ...).
 """
 
 from __future__ import annotations
@@ -22,12 +22,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Literal, Optional
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from src.theme import Theme
 
 
-ViewBuilder = Callable[[Theme, str], ft.Control]
+ViewBuilder = Callable[[Theme, str], QWidget]
 NavGroup = Literal["primary", "secondary"]
 
 
@@ -47,7 +49,7 @@ class Section:
     def label(self, lang: str) -> str:
         return self.labels.get(lang) or self.labels.get("en") or self.key
 
-    def safe_build_view(self, theme: Theme, lang: str) -> ft.Control:
+    def safe_build_view(self, theme: Theme, lang: str) -> QWidget:
         """Wrap ``build_view`` so a crash never leaves the slot blank."""
         from src.services import logger as logger_service
 
@@ -57,36 +59,45 @@ class Section:
             logger_service.log_exception(
                 f"{self.key}.view", "build_view_crashed", exc, lang=lang,
             )
-            return ft.Container(
-                content=ft.Column(
-                    controls=[
-                        ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=28),
-                        ft.Text(
-                            f"[{self.key}] build_view failed: {exc}",
-                            color="#EF4444",
-                            size=12,
-                            selectable=True,
-                        ),
-                    ],
-                    spacing=8,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                alignment=ft.Alignment.CENTER,
-                expand=True,
-                padding=20,
-            )
+            return _error_panel(theme, key=self.key, message=str(exc))
 
-    def safe_build_context(self, theme: Theme, lang: str) -> ft.Control:
+    def safe_build_context(self, theme: Theme, lang: str) -> QWidget:
         """Wrap ``build_context`` so a crash never leaves the slot blank."""
         from src.services import logger as logger_service
 
         if self.build_context is None:
-            return ft.Container()
+            return QWidget()
         try:
             return self.build_context(theme, lang)
         except Exception as exc:
             logger_service.log_exception(
                 f"{self.key}.context", "build_context_crashed", exc, lang=lang,
             )
-            return ft.Container()
+            return QWidget()
+
+
+def _error_panel(theme: Theme, *, key: str, message: str) -> QWidget:
+    """Red error frame matching the old Flet safety-net look."""
+    from src.qt.widgets import IconLabel, vbox
+
+    container = QWidget()
+    layout = vbox(spacing=8, margins=(20, 20, 20, 20))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    container.setLayout(layout)
+    container.setStyleSheet(f"background-color: {theme.bg};")
+
+    icon = IconLabel("error_outline", color="#EF4444", size=28)
+    icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+    text = QLabel(f"[{key}] build_view failed: {message}")
+    font = QFont()
+    font.setPixelSize(12)
+    text.setFont(font)
+    text.setStyleSheet("color: #EF4444; background: transparent;")
+    text.setWordWrap(True)
+    text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(text)
+
+    return container

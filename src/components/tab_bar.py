@@ -1,18 +1,25 @@
 """Generic tab bar under the header.
 
-The component is purely visual by default - it draws a row of labels and
-underlines the one whose index matches ``active_index``. Sections that
-need real navigation pass ``on_change``; clicking any tab then invokes
-the callback with the clicked index. Sections that don't pass it (career,
-marketing) still get a static, decorative tab bar.
+Renders a horizontal row of tab labels with a 2 px underline beneath the
+active one. Sections that need real navigation pass ``on_change`` with
+the clicked index; sections without it (decorative bars) just see the
+visual underline. Long bars scroll horizontally inside a ``QScrollArea``.
 """
 
 from __future__ import annotations
 
 from typing import Callable, Optional, Sequence
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+)
 
+from src.qt.widgets import ClickFrame, hbox, vbox
 from src.theme import Theme
 
 
@@ -21,36 +28,40 @@ def _tab(
     label: str,
     *,
     active: bool,
-    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    # Larger horizontal padding gives the click area real width even
-    # for short labels like "Setup" / "Match" - the previous 2 px on
-    # each side meant the user had to land squarely on the text.
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Container(
-                    content=ft.Text(
-                        label,
-                        color=theme.text if active else theme.text_muted,
-                        size=14,
-                        weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_500,
-                    ),
-                    padding=ft.padding.only(bottom=8),
-                ),
-                ft.Container(
-                    height=2,
-                    bgcolor=theme.primary if active else "transparent",
-                    border_radius=1,
-                ),
-            ],
-            spacing=0,
-            tight=True,
-        ),
-        padding=ft.padding.only(top=8, bottom=2, left=12, right=12),
-        ink=on_click is not None,
-        on_click=on_click,
+    on_click: Optional[Callable[[], None]] = None,
+) -> ClickFrame:
+    container = ClickFrame()
+    container.setStyleSheet("background: transparent; border: none;")
+    container.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    if on_click is None:
+        container.set_clickable(False)
+
+    layout = vbox(spacing=0, margins=(12, 8, 12, 2))
+    container.setLayout(layout)
+
+    text_label = QLabel(label)
+    font = QFont()
+    font.setPixelSize(13)
+    font.setWeight(QFont.Weight.DemiBold if active else QFont.Weight.Normal)
+    text_label.setFont(font)
+    text_label.setStyleSheet(
+        f"color: {theme.text if active else theme.text_muted}; background: transparent;"
     )
+    text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(text_label)
+
+    underline = QFrame()
+    underline.setFixedHeight(2)
+    underline.setStyleSheet(
+        f"background-color: {theme.primary if active else 'transparent'};"
+        " border-radius: 1px;"
+    )
+    layout.addWidget(underline)
+
+    if on_click is not None:
+        container.clicked.connect(on_click)
+
+    return container
 
 
 def tab_bar(
@@ -59,32 +70,67 @@ def tab_bar(
     tabs: Sequence[str],
     active_index: int = 0,
     on_change: Optional[Callable[[int], None]] = None,
-) -> ft.Container:
-    def _make_handler(idx: int) -> Optional[Callable[[ft.ControlEvent], None]]:
-        if on_change is None:
-            return None
-        return lambda e, i=idx: on_change(i)
-
-    children = [
-        _tab(theme, label, active=i == active_index, on_click=_make_handler(i))
-        for i, label in enumerate(tabs)
-    ]
-    return ft.Container(
-        content=ft.Row(
-            controls=children,
-            spacing=24,
-            # AUTO renders a horizontal scrollbar when the row overflows.
-            # HIDDEN was clipping the right-most tabs (e.g. "Evidence
-            # (GitHub only)") on narrow widths and the user could not
-            # drag to reveal them. AUTO keeps the wheel + drag gestures
-            # working, so the Documents sub-tab strip stays fully usable
-            # at 1024 px widths.
-            scroll=ft.ScrollMode.AUTO,
-        ),
-        # ``bottom=4`` keeps the AUTO scroll bar (when present) from
-        # overlapping the active-tab underline; without it the scrollbar
-        # rendered right on top of the 2 px underline, making click
-        # feedback look fuzzy on narrow widths.
-        padding=ft.padding.only(left=24, right=24, top=4, bottom=4),
-        border=ft.border.only(bottom=ft.BorderSide(1, theme.border)),
+) -> QFrame:
+    bar = QFrame()
+    bar.setObjectName("SectionTabBar")
+    bar.setStyleSheet(
+        f"""
+        QFrame#SectionTabBar {{
+            background-color: {theme.bg};
+            border-bottom: 1px solid {theme.border};
+        }}
+        """
     )
+    bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+    outer = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bar.setLayout(outer)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+    outer.addWidget(scroll)
+
+    inner = QFrame()
+    inner.setStyleSheet("background: transparent; border: none;")
+    inner_layout = hbox(spacing=24, margins=(24, 6, 24, 6))
+    inner.setLayout(inner_layout)
+
+    active_tab: Optional[ClickFrame] = None
+    for i, label in enumerate(tabs):
+        if on_change is None:
+            handler: Optional[Callable[[], None]] = None
+        else:
+            handler = lambda idx=i: on_change(idx)  # noqa: E731
+        tab_handle = _tab(theme, label, active=i == active_index, on_click=handler)
+        if i == active_index:
+            active_tab = tab_handle
+        inner_layout.addWidget(tab_handle)
+
+    inner_layout.addStretch(1)
+    scroll.setWidget(inner)
+
+    # Center the active tab in the scroll viewport on the next event-loop
+    # tick (after the geometry has settled). Without this, clicking the
+    # rightmost tab (e.g. "Plan to fill gaps" in the Documents tab bar)
+    # leaves the leftmost ones hidden because they were the only ones
+    # visible before the rebuild.
+    if active_tab is not None:
+        def _scroll_to_active(scroll_area=scroll, target=active_tab) -> None:
+            try:
+                # PySide6 expects positional margins here; keyword args
+                # (xMargin/yMargin) raise AttributeError on some builds.
+                scroll_area.ensureWidgetVisible(target, 80, 0)
+            except RuntimeError:
+                # Tab bar rebuilt out from under us - the new instance
+                # will run its own scroll-into-view. Safe to ignore.
+                return
+
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, _scroll_to_active)
+
+    return bar

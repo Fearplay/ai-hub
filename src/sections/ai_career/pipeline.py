@@ -19,7 +19,7 @@ provider, so the entire UI flow can be explored offline.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from src.services import logger as logger_service
 from src.services.cost_tracker import COST
 from src.sections.ai_career import data as career_data
 from src.sections.ai_career import modern_cv_render, prompts, schema, themes
-from src.sections.ai_career.refs import REFS, safe
+from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
     DOC_EVIDENCE,
@@ -50,6 +50,44 @@ from src.sections.ai_career.state import (
 class PipelineResult:
     ok: bool
     error: str = ""
+
+
+# Text post-processing --------------------------------------------------------
+
+
+def _clean_ai_text(text: str) -> str:
+    """Replace em-dash (U+2014) and en-dash (U+2013) with a plain hyphen.
+
+    LLMs love peppering their output with ``—`` even when the prompt
+    asks for ASCII; users report the dashes look out of place against
+    the rest of the codebase (demo data, headings, hand-written
+    fragments) which all use ``-``. Normalising here means the saved
+    Markdown / HTML / PDF files match what the user sees in the
+    preview without us having to chase every prompt template.
+
+    Spaces around the dash are preserved (`"A - B"` in, `"A - B"` out;
+    `"A—B"` becomes `"A-B"`).
+    """
+    if not text:
+        return text
+    return text.replace("\u2014", "-").replace("\u2013", "-")
+
+
+def _clean_ai_json(payload: Any) -> Any:
+    """Recursively apply :func:`_clean_ai_text` to every string in a JSON-y tree.
+
+    The Modern CV payload, Candidate / JobSpec / MatchAnalysis JSONs
+    all flow through this so the dash normalisation reaches structured
+    output too (the user spotted em-dashes in the Modern CV preview
+    and the "Save complete analysis" output).
+    """
+    if isinstance(payload, str):
+        return _clean_ai_text(payload)
+    if isinstance(payload, list):
+        return [_clean_ai_json(item) for item in payload]
+    if isinstance(payload, dict):
+        return {key: _clean_ai_json(value) for key, value in payload.items()}
+    return payload
 
 
 def _request_full_refresh() -> None:
@@ -181,7 +219,7 @@ def extract_candidate(
 
     if not isinstance(result.data, dict):
         return _set_error("Provider did not return a Candidate JSON.")
-    STATE.candidate = result.data
+    STATE.candidate = _clean_ai_json(result.data)
     STATE.candidate["linkedin_present"] = bool(STATE.linkedin and STATE.linkedin.text)
     STATE.candidate["github_present"] = bool(STATE.github_profile and STATE.github_profile.ok)
     return PipelineResult(ok=True)
@@ -212,7 +250,7 @@ def extract_job_spec(*, output_lang: str) -> PipelineResult:
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
         return _set_error("Provider did not return a JobSpec JSON.")
-    STATE.job_spec = result.data
+    STATE.job_spec = _clean_ai_json(result.data)
     return PipelineResult(ok=True)
 
 
@@ -256,13 +294,13 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
     for q in questions:
         if not isinstance(q, dict):
             continue
-        topic = (q.get("topic") or "").strip()
-        question = (q.get("question") or "").strip()
+        topic = _clean_ai_text((q.get("topic") or "").strip())
+        question = _clean_ai_text((q.get("question") or "").strip())
         if not topic or not question:
             continue
         raw_options = q.get("options") or []
         options = [
-            str(opt).strip()
+            _clean_ai_text(str(opt).strip())
             for opt in raw_options
             if isinstance(opt, (str, int, float)) and str(opt).strip()
         ]
@@ -270,7 +308,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
             {
                 "topic": topic,
                 "question": question,
-                "rationale": (q.get("rationale") or "").strip(),
+                "rationale": _clean_ai_text((q.get("rationale") or "").strip()),
                 "options": options,
                 "multi_select": bool(q.get("multi_select", False)),
                 "allow_free_text": bool(q.get("allow_free_text", True)),
@@ -318,7 +356,7 @@ def analyze_match(*, output_lang: str) -> PipelineResult:
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
         return _set_error("Provider did not return a MatchAnalysis JSON.")
-    STATE.match = result.data
+    STATE.match = _clean_ai_json(result.data)
     return PipelineResult(ok=True)
 
 
@@ -361,12 +399,22 @@ def generate_all_documents(*, output_lang: str) -> PipelineResult:
         DOC_SKILL_GAP,
     ]
 
+    _set_activity("generating")
     for kind in kinds:
-        res = generate_document(kind, output_lang=output_lang)
+        res = generate_document(
+            kind,
+            output_lang=output_lang,
+            refresh_ui=False,
+            keep_activity=True,
+        )
         if not res.ok:
             return res
 
-    res = generate_modern_cv_data(output_lang=output_lang)
+    res = generate_modern_cv_data(
+        output_lang=output_lang,
+        refresh_ui=False,
+        keep_activity=True,
+    )
     if not res.ok:
         return res
 
@@ -379,13 +427,17 @@ def generate_all_documents(*, output_lang: str) -> PipelineResult:
         if evidence_md:
             STATE.documents[DOC_EVIDENCE] = evidence_md
 
-    STATE.activity = "ready"
-    safe(REFS.rerender_context)
+    _set_activity("ready")
     REFS.dispatch(_request_full_refresh)
     return PipelineResult(ok=True)
 
 
-def generate_modern_cv_data(*, output_lang: str) -> PipelineResult:
+def generate_modern_cv_data(
+    *,
+    output_lang: str,
+    refresh_ui: bool = True,
+    keep_activity: bool = False,
+) -> PipelineResult:
     """Run the Modern CV JSON generator and store the result on STATE.
 
     Demo mode short-circuits with a hand-curated payload built from
@@ -394,7 +446,8 @@ def generate_modern_cv_data(*, output_lang: str) -> PipelineResult:
     """
     if STATE.demo_mode:
         STATE.modern_cv_data = career_data.demo_modern_cv(output_lang)
-        REFS.dispatch(_request_full_refresh)
+        if refresh_ui:
+            REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
     if not (STATE.candidate and STATE.job_spec and STATE.match):
@@ -419,14 +472,22 @@ def generate_modern_cv_data(*, output_lang: str) -> PipelineResult:
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
         return _set_error("Provider did not return a Modern CV JSON.")
-    STATE.modern_cv_data = result.data
-    STATE.activity = "ready"
-    safe(REFS.rerender_context)
-    REFS.dispatch(_request_full_refresh)
+    STATE.modern_cv_data = _clean_ai_json(result.data)
+    if not keep_activity:
+        _set_activity("ready")
+    if refresh_ui:
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
     return PipelineResult(ok=True)
 
 
-def refine_modern_cv(*, output_lang: str, problems: list[str]) -> PipelineResult:
+def refine_modern_cv(
+    *,
+    output_lang: str,
+    problems: list[str],
+    refresh_ui: bool = True,
+    keep_activity: bool = False,
+) -> PipelineResult:
     """Re-run the Modern CV JSON generator with the candidate's problems."""
     cleaned = [p for p in problems if p and p.strip()]
     if not cleaned:
@@ -442,7 +503,8 @@ def refine_modern_cv(*, output_lang: str, problems: list[str]) -> PipelineResult
             0,
             "**Demo refinement:** would address the listed problems.",
         )
-        REFS.dispatch(_request_full_refresh)
+        if refresh_ui:
+            REFS.dispatch(_request_full_refresh)
         return PipelineResult(ok=True)
 
     if not (STATE.candidate and STATE.job_spec and STATE.match):
@@ -469,10 +531,12 @@ def refine_modern_cv(*, output_lang: str, problems: list[str]) -> PipelineResult
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
         return _set_error("Provider did not return a refined Modern CV JSON.")
-    STATE.modern_cv_data = result.data
-    STATE.activity = "ready"
-    safe(REFS.rerender_context)
-    REFS.dispatch(_request_full_refresh)
+    STATE.modern_cv_data = _clean_ai_json(result.data)
+    if not keep_activity:
+        _set_activity("ready")
+    if refresh_ui:
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
     return PipelineResult(ok=True)
 
 
@@ -542,7 +606,7 @@ def build_evidence_document(*, output_lang: str) -> str:
                 if stars:
                     meta.append(("⭐ " if not is_cs else "Hvězdy: ") + str(stars))
                 if meta:
-                    line += f" — {' · '.join(meta)}"
+                    line += f" - {' · '.join(meta)}"
                 if desc:
                     line += f"\n  {desc}"
                 parts.append(line)
@@ -563,7 +627,13 @@ def build_evidence_document(*, output_lang: str) -> str:
     return "\n".join(parts).strip() + "\n"
 
 
-def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
+def generate_document(
+    kind: str,
+    *,
+    output_lang: str,
+    refresh_ui: bool = True,
+    keep_activity: bool = False,
+) -> PipelineResult:
     logger_service.log_event(
         "INFO",
         "ai_career.pipeline",
@@ -577,9 +647,11 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
         if not text:
             return _set_error("No evidence available - load GitHub data first.")
         STATE.documents[DOC_EVIDENCE] = text
-        STATE.activity = "ready"
-        safe(REFS.rerender_context)
-        REFS.dispatch(_request_full_refresh)
+        if not keep_activity:
+            _set_activity("ready")
+        if refresh_ui:
+            REFS.request_context_refresh()
+            REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
             "INFO",
             "ai_career.pipeline",
@@ -592,13 +664,18 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
     if kind == DOC_MODERN_CV:
         # Modern CV is structured JSON + custom renderer (teal sidebar
         # layout); the markdown-document path doesn't apply here.
-        return generate_modern_cv_data(output_lang=output_lang)
+        return generate_modern_cv_data(
+            output_lang=output_lang,
+            refresh_ui=refresh_ui,
+            keep_activity=keep_activity,
+        )
 
     if kind not in _DOC_SYSTEM_BY_KIND:
         return _set_error(f"Unknown document kind: {kind}")
     if STATE.demo_mode:
         STATE.documents[kind] = _demo_document(kind, output_lang)
-        REFS.dispatch(_request_full_refresh)
+        if refresh_ui:
+            REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
             "INFO",
             "ai_career.pipeline",
@@ -634,13 +711,15 @@ def generate_document(kind: str, *, output_lang: str) -> PipelineResult:
             kind=kind,
         )
         return _set_error(str(exc))
-    text = (result.text or "").strip()
+    text = _clean_ai_text((result.text or "").strip())
     if not text:
         return _set_error("Provider returned an empty document.")
     STATE.documents[kind] = text
-    STATE.activity = "ready"
-    safe(REFS.rerender_context)
-    REFS.dispatch(_request_full_refresh)
+    if not keep_activity:
+        _set_activity("ready")
+    if refresh_ui:
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
     logger_service.log_event(
         "INFO",
         "ai_career.pipeline",
@@ -659,6 +738,8 @@ def refine_document(
     *,
     output_lang: str,
     problems: list[str],
+    refresh_ui: bool = True,
+    keep_activity: bool = False,
 ) -> PipelineResult:
     logger_service.log_event(
         "INFO",
@@ -673,7 +754,12 @@ def refine_document(
         # Modern CV: regenerate the JSON payload from scratch with the
         # candidate's notes applied, then re-render. There is no
         # markdown body to patch in place.
-        return refine_modern_cv(output_lang=output_lang, problems=problems)
+        return refine_modern_cv(
+            output_lang=output_lang,
+            problems=problems,
+            refresh_ui=refresh_ui,
+            keep_activity=keep_activity,
+        )
 
     if kind not in _DOC_SYSTEM_BY_KIND:
         return _set_error(f"Unknown document kind: {kind}")
@@ -689,7 +775,8 @@ def refine_document(
             bullets = "\n".join(f"- {p}" for p in cleaned_problems)
             refreshed = f"{refreshed}\n\n## {heading}\n{bullets}\n"
         STATE.documents[kind] = refreshed
-        REFS.dispatch(_request_full_refresh)
+        if refresh_ui:
+            REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
             "INFO",
             "ai_career.pipeline",
@@ -721,13 +808,15 @@ def refine_document(
             kind=kind,
         )
         return _set_error(str(exc))
-    text = (result.text or "").strip()
+    text = _clean_ai_text((result.text or "").strip())
     if not text:
         return _set_error("Provider returned an empty refined document.")
     STATE.documents[kind] = text
-    STATE.activity = "ready"
-    safe(REFS.rerender_context)
-    REFS.dispatch(_request_full_refresh)
+    if not keep_activity:
+        _set_activity("ready")
+    if refresh_ui:
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
     logger_service.log_event(
         "INFO",
         "ai_career.pipeline",
@@ -807,7 +896,7 @@ def send_chat_message(
             "ai_career.pipeline", "send_chat_provider_error", exc
         )
         return "", str(exc)
-    text = (result.text or "").strip()
+    text = _clean_ai_text((result.text or "").strip())
     if not text:
         logger_service.log_event(
             "ERROR", "ai_career.pipeline", "send_chat_empty_response"
@@ -1048,9 +1137,11 @@ def save_full_analysis() -> SaveResult:
         return SaveResult(ok=False, error="no_documents")
 
     role = ""
+    company = ""
     if STATE.job_spec:
         role = str(STATE.job_spec.get("title") or "")
-    folder_path = Path(store.new_run_dir(role or "ai-career-run"))
+        company = str(STATE.job_spec.get("company") or "")
+    folder_path = Path(store.new_run_dir(role or "ai-career-run", company))
     STATE.last_run_folder = str(folder_path)
     logger_service.log_event(
         "INFO",
@@ -1246,9 +1337,6 @@ def save_full_analysis() -> SaveResult:
     try:
         from datetime import datetime
 
-        company = ""
-        if STATE.job_spec:
-            company = str(STATE.job_spec.get("company") or "")
         score = int((STATE.match or {}).get("overall_score") or 0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         # Modern CV ships outside the markdown ``STATE.documents`` dict
@@ -1366,7 +1454,7 @@ def load_demo(*, output_lang: str) -> None:
     STATE.documents = {kind: _demo_document(kind, output_lang) for kind in _DOC_SYSTEM_BY_KIND}
     STATE.modern_cv_data = career_data.demo_modern_cv(output_lang)
     STATE.activity = "ready"
-    safe(REFS.rerender_context)
+    REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
 
 

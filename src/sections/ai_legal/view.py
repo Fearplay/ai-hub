@@ -2,20 +2,29 @@
 
 Layout:
 
-* :func:`src.components.header.header` wrapped in a Stack with the
-  ``warning_pill`` overlaid in the top-right corner.
+* Compact :func:`src.components.header.header` (no ``How to use this``
+  / ``...`` trailing buttons) so the title and subtitle have the floor.
+* Inline ``warning_pill`` banner directly under the header, full-width
+  but ``AlignLeft``-anchored, calling out that the assistant does not
+  replace a lawyer.
 * Interactive :func:`src.components.tab_bar.tab_bar` with four tabs;
-  clicking swaps the body container in-place without a global rebuild.
-* A ``content_container`` whose ``content`` mutates as the active tab
-  changes (state lives in :data:`STATE.active_tab`).
+  clicking swaps the body widget in-place without a global rebuild.
+* A ``content_holder`` whose child changes as the active tab changes
+  (state lives in :data:`STATE.active_tab`).
 """
 
 from __future__ import annotations
 
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QFrame,
+    QStackedLayout,
+    QWidget,
+)
 
 from src.components.header import header
 from src.components.tab_bar import tab_bar
+from src.qt.widgets import hbox, vbox
 from src.sections.ai_legal.data import SECTION_ICON, tabs
 from src.sections.ai_legal.refs import REFS
 from src.sections.ai_legal.state import STATE
@@ -29,7 +38,11 @@ from src.services import logger as logger_service
 from src.theme import Theme
 
 
-def _build_tab_body(theme: Theme, lang: str, on_request_rerender) -> ft.Control:
+def _build_tab_body(
+    theme: Theme,
+    lang: str,
+    on_request_rerender,
+) -> QWidget:
     try:
         if STATE.active_tab == 0:
             return build_chat_tab(theme, lang)
@@ -45,37 +58,89 @@ def _build_tab_body(theme: Theme, lang: str, on_request_rerender) -> ft.Control:
             "ai_legal.view", "build_tab_body_failed", exc,
             active_tab=STATE.active_tab,
         )
-        return ft.Container()
+        return QWidget()
 
 
-def build_view(theme: Theme, lang: str) -> ft.Column:
+def _warning_banner(theme: Theme, lang: str) -> QWidget:
+    """Wrap the warning pill so it sits left-aligned below the header.
+
+    The pill itself caps at ``setMaximumWidth(360)`` so on wide windows
+    it stays close to the title block instead of stretching across the
+    whole bar — which would have weakened the visual hierarchy.
+    """
+    holder = QFrame()
+    holder.setStyleSheet(f"background-color: {theme.bg};")
+    layout = hbox(spacing=0, margins=(24, 0, 24, 8))
+    layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    holder.setLayout(layout)
+    layout.addWidget(warning_pill(theme, lang), 0, Qt.AlignmentFlag.AlignLeft)
+    layout.addStretch(1)
+    return holder
+
+
+def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
-    content_holder = ft.Container(expand=True)
-    tab_bar_holder = ft.Container()
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
+
+    header_widget = header(
+        theme,
+        lang,
+        icon=SECTION_ICON,
+        title=txt["title"],
+        subtitle=txt["subtitle"],
+        show_help_button=False,
+        show_menu_button=False,
+        compact=True,
+    )
+    layout.addWidget(header_widget)
+    layout.addWidget(_warning_banner(theme, lang))
+
+    tab_bar_holder = QWidget()
+    tab_bar_holder.setStyleSheet(f"background-color: {theme.bg};")
+    tab_bar_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    tab_bar_holder.setLayout(tab_bar_layout)
+    layout.addWidget(tab_bar_holder)
+
+    body_holder = QWidget()
+    body_holder.setStyleSheet(f"background-color: {theme.bg};")
+    body_stack = QStackedLayout(body_holder)
+    body_stack.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(body_holder, 1)
+
+    def _clear(layout_obj) -> None:
+        while layout_obj.count():
+            item = layout_obj.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
     def _rerender_tab_body() -> None:
+        while body_stack.count():
+            w = body_stack.widget(0)
+            body_stack.removeWidget(w)
+            w.deleteLater()
         try:
-            content_holder.content = _build_tab_body(theme, lang, _rerender_tab_body)
+            body_stack.addWidget(_build_tab_body(theme, lang, _rerender_tab_body))
         except Exception as exc:
-            logger_service.log_exception(
-                "ai_legal.view", "rerender_tab_body_failed", exc,
-            )
-        logger_service.try_update(content_holder)
+            logger_service.log_exception("ai_legal.view", "rerender_tab_body_failed", exc)
 
     def _rerender_main() -> None:
+        _clear(tab_bar_layout)
         try:
-            tab_bar_holder.content = tab_bar(
-                theme,
-                tabs=tabs(lang),
-                active_index=STATE.active_tab,
-                on_change=_on_tab_change,
+            tab_bar_layout.addWidget(
+                tab_bar(
+                    theme,
+                    tabs=tabs(lang),
+                    active_index=STATE.active_tab,
+                    on_change=_on_tab_change,
+                )
             )
         except Exception as exc:
-            logger_service.log_exception(
-                "ai_legal.view", "rerender_main_tab_bar_failed", exc,
-            )
-        logger_service.try_update(tab_bar_holder)
+            logger_service.log_exception("ai_legal.view", "rerender_main_tab_bar_failed", exc)
         _rerender_tab_body()
 
     def _on_tab_change(index: int) -> None:
@@ -91,41 +156,14 @@ def build_view(theme: Theme, lang: str) -> ft.Column:
     REFS.rerender_main = _rerender_main
     REFS.rerender_tab_body = _rerender_tab_body
 
-    tab_bar_holder.content = tab_bar(
-        theme,
-        tabs=tabs(lang),
-        active_index=STATE.active_tab,
-        on_change=_on_tab_change,
+    tab_bar_layout.addWidget(
+        tab_bar(
+            theme,
+            tabs=tabs(lang),
+            active_index=STATE.active_tab,
+            on_change=_on_tab_change,
+        )
     )
+    body_stack.addWidget(_build_tab_body(theme, lang, _rerender_tab_body))
 
-    content_holder.content = _build_tab_body(theme, lang, _rerender_tab_body)
-
-    header_control = header(
-        theme,
-        lang,
-        icon=SECTION_ICON,
-        title=txt["title"],
-        subtitle=txt["subtitle"],
-    )
-
-    header_with_pill = ft.Stack(
-        controls=[
-            header_control,
-            ft.Container(
-                content=warning_pill(theme, lang),
-                right=24,
-                top=22,
-            ),
-        ],
-    )
-
-    return ft.Column(
-        controls=[
-            header_with_pill,
-            tab_bar_holder,
-            content_holder,
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    return container

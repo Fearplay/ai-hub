@@ -1,32 +1,48 @@
-"""Documents tab - generated CV, cover letter, interview prep, exports.
-
-Sub-tabs are document kinds. Each one renders the markdown body, a list of
-"Problem N" inputs, a Refine button (which runs an LLM follow-up), and a
-footer with export buttons. Generation and refinement run on a daemon
-thread so the UI does not freeze; status feedback flows through inline
-text and the right context panel's activity counter.
-
-The Evidence document is hidden when no GitHub data is loaded - we don't
-have anything truthful to put there.
-"""
+"""Documents tab - generated CV, cover letter, interview prep, exports (PySide6 port)."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import threading
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Callable, List, Optional
 
-import json
-
-import flet as ft
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame,
+    QProgressBar,
+    QScrollArea,
+    QSizePolicy,
+    QWidget,
+)
 
 from src.components.tab_bar import tab_bar
+from src.qt.icons import Icons
+from src.qt.runtime import dispatch as runtime_dispatch
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    BodyLabel,
+    ClickFrame,
+    ElidedLabel,
+    GhostButton,
+    IconLabel,
+    MutedLabel,
+    PrimaryButton,
+    SubtleLabel,
+    TitleLabel,
+    custom_label,
+    hbox,
+    themed_line_edit,
+    vbox,
+)
 from src.services import exporter, store
 from src.services import logger as logger_service
 from src.sections.ai_career import modern_cv_render, pipeline, themes
-from src.sections.ai_career.refs import REFS, safe
+from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
     DOC_COVER_LETTER,
     DOC_EVIDENCE,
@@ -43,12 +59,8 @@ from src.sections.ai_career.strings import s
 from src.theme import Theme
 
 
-# Document kinds whose preview / PDF should expose the palette cycle button.
 _THEME_PALETTE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
-
-# Document kinds whose preview / PDF should expose the layout cycle button.
 _THEME_LAYOUT_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV})
-
 
 _DOC_TAB_LABEL_KEYS = {
     DOC_TAILORED_CV: "doc_tab_tailored_cv",
@@ -70,25 +82,6 @@ _DOC_FILE_BASENAMES = {
     DOC_EVIDENCE: "Evidence_Report",
 }
 
-# Per-kind export plan used by "Save complete analysis".
-#
-# The CVs ship as both HTML (open-in-browser preview) and PDF (the file
-# the candidate sends to the recruiter). The Cover Letter is PDF-only by
-# design - prose document; HTML markup tends to look worse than the PDF.
-# The remaining narrative documents (match report, interview prep, etc.)
-# get HTML + Markdown so the candidate can read them in a browser and
-# also edit / quote from them in their notes.
-_EXPORT_PLAN: dict[str, tuple[str, ...]] = {
-    DOC_TAILORED_CV: ("html", "pdf"),
-    DOC_MODERN_CV: ("html", "pdf"),
-    DOC_COVER_LETTER: ("pdf",),
-    DOC_MATCH_REPORT: ("html", "md"),
-    DOC_INTERVIEW_PREP: ("html", "md"),
-    DOC_SKILL_GAP: ("html", "md"),
-    DOC_EVIDENCE: ("html", "md"),
-}
-
-# Document kinds that should render with the "modern" CSS / PDF style.
 _MODERN_STYLE_DOCS: frozenset[str] = frozenset({DOC_MODERN_CV, DOC_COVER_LETTER})
 
 
@@ -104,36 +97,7 @@ def _visible_doc_kinds() -> list[str]:
     return [k for k in DOC_KINDS if k != DOC_EVIDENCE or has_github]
 
 
-def _flat_button(
-    theme: Theme,
-    label: str,
-    *,
-    icon: str | None = None,
-    primary: bool = False,
-    enabled: bool = True,
-    on_click: Optional[Callable[[ft.ControlEvent], None]] = None,
-) -> ft.Container:
-    color = ft.Colors.WHITE if (primary and enabled) else (theme.text if enabled else theme.text_subtle)
-    bg = theme.primary if (primary and enabled) else theme.surface_2
-    border = None if (primary and enabled) else ft.border.all(1, theme.border)
-    children: list[ft.Control] = []
-    if icon:
-        children.append(ft.Icon(icon, color=color, size=14))
-    children.append(ft.Text(label, color=color, size=12, weight=ft.FontWeight.W_600))
-    return ft.Container(
-        content=ft.Row(controls=children, spacing=6, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=bg,
-        border=border,
-        border_radius=10,
-        ink=enabled,
-        on_click=(on_click if enabled else None),
-        opacity=1.0 if enabled else 0.55,
-    )
-
-
 def _palette_display_name(slug: str, lang: str) -> str:
-    """Localised display name for the active palette."""
     palette = themes.PALETTES.get(slug)
     if palette is None:
         palette = themes.PALETTES[themes.DEFAULT_PALETTE]
@@ -144,134 +108,14 @@ def _palette_display_name(slug: str, lang: str) -> str:
 
 
 def _layout_display_name(slug: str, txt: dict) -> str:
-    """Localised display name for the active layout."""
     key = f"doc_layout_{slug}"
     return txt.get(key) or slug.replace("_", " ").title()
 
 
-def _build_theme_controls(
-    theme: Theme,
-    lang: str,
-    txt: dict,
-    kind: str,
-    *,
-    on_changed: Callable[[], None],
-) -> ft.Control | None:
-    """Return a small chip-styled strip with palette / layout cycle buttons.
-
-    Only Modern CV exposes both axes; the cover letter strip just lets
-    the user cycle the palette so the banner colour matches the CV.
-    Returns ``None`` for any other doc kind so the panel doesn't get a
-    stray empty row.
-    """
-    if kind not in _THEME_PALETTE_DOCS:
-        return None
-
-    state_theme = STATE.modern_cv_theme or {}
-    palette_slug = (state_theme.get("palette") or themes.DEFAULT_PALETTE).strip().lower()
-    layout_slug = (state_theme.get("layout") or themes.DEFAULT_LAYOUT).strip().lower()
-    if palette_slug not in themes.PALETTES:
-        palette_slug = themes.DEFAULT_PALETTE
-    if layout_slug not in themes.LAYOUTS:
-        layout_slug = themes.DEFAULT_LAYOUT
-
-    palette_color = themes.PALETTES[palette_slug].accent
-
-    def _cycle_palette(_e: ft.ControlEvent) -> None:
-        current = (STATE.modern_cv_theme or {}).get("palette") or themes.DEFAULT_PALETTE
-        next_slug = themes.pick_next_palette(current)
-        STATE.modern_cv_theme = {
-            **(STATE.modern_cv_theme or {}),
-            "palette": next_slug,
-        }
-        on_changed()
-
-    def _cycle_layout(_e: ft.ControlEvent) -> None:
-        current = (STATE.modern_cv_theme or {}).get("layout") or themes.DEFAULT_LAYOUT
-        next_slug = themes.pick_next_layout(current)
-        STATE.modern_cv_theme = {
-            **(STATE.modern_cv_theme or {}),
-            "layout": next_slug,
-        }
-        on_changed()
-
-    controls: list[ft.Control] = [
-        ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Container(
-                        width=12,
-                        height=12,
-                        bgcolor=palette_color,
-                        border_radius=6,
-                        border=ft.border.all(1, ft.Colors.with_opacity(0.20, "#000000")),
-                    ),
-                    ft.Text(
-                        txt["doc_theme_color_label"].format(
-                            name=_palette_display_name(palette_slug, lang),
-                        ),
-                        color=theme.text_muted,
-                        size=11,
-                    ),
-                ],
-                spacing=6,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                tight=True,
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=6),
-            bgcolor=theme.surface_2,
-            border=ft.border.all(1, theme.border),
-            border_radius=10,
-        ),
-        _flat_button(
-            theme,
-            txt["doc_change_color_btn"],
-            icon=ft.Icons.PALETTE_OUTLINED,
-            on_click=_cycle_palette,
-        ),
-    ]
-
-    if kind in _THEME_LAYOUT_DOCS:
-        controls.append(
-            ft.Container(
-                content=ft.Text(
-                    txt["doc_theme_layout_label"].format(
-                        name=_layout_display_name(layout_slug, txt),
-                    ),
-                    color=theme.text_muted,
-                    size=11,
-                ),
-                padding=ft.padding.symmetric(horizontal=10, vertical=6),
-                bgcolor=theme.surface_2,
-                border=ft.border.all(1, theme.border),
-                border_radius=10,
-            )
-        )
-        controls.append(
-            _flat_button(
-                theme,
-                txt["doc_change_layout_btn"],
-                icon=ft.Icons.VIEW_QUILT_OUTLINED,
-                on_click=_cycle_layout,
-            )
-        )
-
-    return ft.Container(
-        content=ft.Row(
-            controls=controls,
-            spacing=8,
-            run_spacing=8,
-            wrap=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=ft.padding.only(bottom=10),
-    )
-
-
-def _ensure_run_folder(role: str) -> str:
+def _ensure_run_folder(role: str, company: str = "") -> str:
     if STATE.last_run_folder and os.path.isdir(STATE.last_run_folder):
         return STATE.last_run_folder
-    folder = store.new_run_dir(role or "ai-career-run")
+    folder = store.new_run_dir(role or "ai-career-run", company)
     STATE.last_run_folder = str(folder)
     return STATE.last_run_folder
 
@@ -286,166 +130,236 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["xdg-open", path])
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_documents", "open_in_explorer_failed", exc, path=path
+            "ai_career.tab_documents", "open_in_explorer_failed", exc, path=path,
         )
 
 
-def _document_body(theme: Theme, txt: dict, kind: str) -> ft.Control:
+def _empty_card(theme: Theme, txt: dict, icon: str, *, title_key: str, desc_key: str) -> QWidget:
+    holder = QWidget()
+    holder.setStyleSheet(f"background-color: {theme.bg};")
+    holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    layout = vbox(spacing=10, margins=(40, 40, 40, 40))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    holder.setLayout(layout)
+    layout.addWidget(IconLabel(icon, color=theme.text_muted, size=36),
+                     alignment=Qt.AlignmentFlag.AlignHCenter)
+    title_label = TitleLabel(txt[title_key], theme=theme, size=15, weight=QFont.Weight.Bold)
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title_label.setMinimumWidth(360)
+    layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+    desc = MutedLabel(txt[desc_key], theme=theme, size=12)
+    desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    desc.setMinimumWidth(360)
+    layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
+    return holder
+
+
+def _markdown_card(theme: Theme, body_text: str) -> QFrame:
+    card = QFrame()
+    card.setObjectName("DocMarkdownCard")
+    card.setStyleSheet(
+        f"""
+        QFrame#DocMarkdownCard {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 12px;
+        }}
+        """
+    )
+    layout = vbox(spacing=0, margins=(18, 18, 18, 18))
+    card.setLayout(layout)
+    label = BodyLabel(body_text, theme=theme, size=13, selectable=True)
+    label.setTextFormat(Qt.TextFormat.MarkdownText)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    return card
+
+
+def _document_body(theme: Theme, txt: dict, kind: str) -> QWidget:
     if kind == DOC_EVIDENCE and not (STATE.candidate and STATE.candidate.get("github_present")):
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Icon(ft.Icons.LOCK_OUTLINE, color=theme.text_muted, size=36),
-                    ft.Text(txt["doc_no_evidence_title"], color=theme.text, size=15, weight=ft.FontWeight.W_700),
-                    ft.Text(txt["doc_no_evidence_desc"], color=theme.text_muted, size=12, text_align=ft.TextAlign.CENTER),
-                ],
-                spacing=10,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            padding=40,
-            alignment=ft.Alignment.CENTER,
-        )
+        return _empty_card(theme, txt, Icons.LOCK_OUTLINE, title_key="doc_no_evidence_title", desc_key="doc_no_evidence_desc")
 
     if kind == DOC_MODERN_CV:
-        # Modern CV is the structured JSON payload + the dedicated
-        # two-column renderer. Falls back to the empty placeholder when
-        # the user hasn't generated it yet.
         if STATE.modern_cv_data:
             return modern_cv_render.render_view(theme, STATE.modern_cv_data)
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Icon(ft.Icons.HOURGLASS_EMPTY_ROUNDED, color=theme.text_muted, size=36),
-                    ft.Text(txt["doc_empty_title"], color=theme.text, size=15, weight=ft.FontWeight.W_700),
-                    ft.Text(txt["doc_empty_desc"], color=theme.text_muted, size=12, text_align=ft.TextAlign.CENTER),
-                ],
-                spacing=10,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            padding=30,
-            alignment=ft.Alignment.CENTER,
-        )
+        return _empty_card(theme, txt, Icons.HOURGLASS_EMPTY_ROUNDED, title_key="doc_empty_title", desc_key="doc_empty_desc")
 
     body_text = STATE.documents.get(kind) or ""
     if not body_text:
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Icon(ft.Icons.HOURGLASS_EMPTY_ROUNDED, color=theme.text_muted, size=36),
-                    ft.Text(txt["doc_empty_title"], color=theme.text, size=15, weight=ft.FontWeight.W_700),
-                    ft.Text(txt["doc_empty_desc"], color=theme.text_muted, size=12, text_align=ft.TextAlign.CENTER),
-                ],
-                spacing=10,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            padding=30,
-            alignment=ft.Alignment.CENTER,
-        )
-    return ft.Container(
-        content=ft.Markdown(
-            body_text,
-            extension_set=ft.MarkdownExtensionSet.GITHUB_FLAVORED,
-            selectable=True,
-        ),
-        padding=18,
-        bgcolor=theme.surface,
-        border=ft.border.all(1, theme.border),
-        border_radius=12,
-    )
+        return _empty_card(theme, txt, Icons.HOURGLASS_EMPTY_ROUNDED, title_key="doc_empty_title", desc_key="doc_empty_desc")
+    return _markdown_card(theme, body_text)
 
 
-def _problem_inputs(
+def _theme_controls(
     theme: Theme,
+    lang: str,
     txt: dict,
     kind: str,
     *,
-    on_dirty: Callable[[], None],
-) -> tuple[ft.Container, Callable[[], list[str]]]:
+    on_changed: Callable[[], None],
+) -> Optional[QFrame]:
+    if kind not in _THEME_PALETTE_DOCS:
+        return None
+
+    state_theme = STATE.modern_cv_theme or {}
+    palette_slug = (state_theme.get("palette") or themes.DEFAULT_PALETTE).strip().lower()
+    layout_slug = (state_theme.get("layout") or themes.DEFAULT_LAYOUT).strip().lower()
+    if palette_slug not in themes.PALETTES:
+        palette_slug = themes.DEFAULT_PALETTE
+    if layout_slug not in themes.LAYOUTS:
+        layout_slug = themes.DEFAULT_LAYOUT
+    palette_color = themes.PALETTES[palette_slug].accent
+
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=8, margins=(0, 0, 0, 10))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    holder.setLayout(layout)
+
+    palette_chip = QFrame()
+    palette_chip.setObjectName("DocPaletteChip")
+    palette_chip.setStyleSheet(
+        f"""
+        QFrame#DocPaletteChip {{
+            background-color: {theme.surface_2};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        """
+    )
+    pl = hbox(spacing=6, margins=(10, 6, 10, 6))
+    pl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    palette_chip.setLayout(pl)
+    swatch = QFrame()
+    swatch.setFixedSize(12, 12)
+    swatch.setStyleSheet(f"background-color: {palette_color}; border-radius: 6px; border: 1px solid {rgba('#000000', 0.20)};")
+    pl.addWidget(swatch)
+    palette_label = MutedLabel(
+        txt["doc_theme_color_label"].format(name=_palette_display_name(palette_slug, lang)),
+        theme=theme,
+        size=11,
+    )
+    palette_label.setWordWrap(False)
+    pl.addWidget(palette_label)
+    layout.addWidget(palette_chip)
+
+    cycle_palette = GhostButton(txt["doc_change_color_btn"], theme=theme, icon=Icons.PALETTE_OUTLINED)
+    def _do_cycle_palette() -> None:
+        current = (STATE.modern_cv_theme or {}).get("palette") or themes.DEFAULT_PALETTE
+        next_slug = themes.pick_next_palette(current)
+        STATE.modern_cv_theme = {**(STATE.modern_cv_theme or {}), "palette": next_slug}
+        on_changed()
+    cycle_palette.clicked.connect(_do_cycle_palette)
+    layout.addWidget(cycle_palette)
+
+    if kind in _THEME_LAYOUT_DOCS:
+        layout_chip = QFrame()
+        layout_chip.setObjectName("DocLayoutChip")
+        layout_chip.setStyleSheet(
+            f"""
+            QFrame#DocLayoutChip {{
+                background-color: {theme.surface_2};
+                border: 1px solid {theme.border};
+                border-radius: 10px;
+            }}
+            """
+        )
+        ll = hbox(spacing=6, margins=(10, 6, 10, 6))
+        layout_chip.setLayout(ll)
+        layout_chip_label = ElidedLabel(
+            txt["doc_theme_layout_label"].format(name=_layout_display_name(layout_slug, txt)),
+            color=theme.text_muted,
+            size=11,
+            mode=Qt.TextElideMode.ElideRight,
+        )
+        layout_chip_label.setMinimumWidth(120)
+        layout_chip_label.setMaximumWidth(220)
+        ll.addWidget(layout_chip_label, 1)
+        layout.addWidget(layout_chip)
+
+        cycle_layout = GhostButton(txt["doc_change_layout_btn"], theme=theme, icon=Icons.VIEW_QUILT_OUTLINED)
+        def _do_cycle_layout() -> None:
+            current = (STATE.modern_cv_theme or {}).get("layout") or themes.DEFAULT_LAYOUT
+            next_slug = themes.pick_next_layout(current)
+            STATE.modern_cv_theme = {**(STATE.modern_cv_theme or {}), "layout": next_slug}
+            on_changed()
+        cycle_layout.clicked.connect(_do_cycle_layout)
+        layout.addWidget(cycle_layout)
+    layout.addStretch(1)
+    return holder
+
+
+def _problem_inputs(theme: Theme, txt: dict, kind: str) -> tuple[QFrame, Callable[[], List[str]]]:
     problems = STATE.refine_problems.setdefault(kind, [""])
     if not problems:
         problems.append("")
 
-    fields_holder = ft.Column(spacing=8, tight=True)
-    field_refs: list[ft.TextField] = []
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
 
-    def _build_field(idx: int, value: str) -> ft.Row:
-        field = ft.TextField(
-            value=value,
-            hint_text=txt["problem_hint"].format(n=idx + 1),
-            text_style=ft.TextStyle(color=theme.text, size=12),
-            hint_style=ft.TextStyle(color=theme.text_subtle, size=12),
-            bgcolor=theme.surface_2,
-            border=ft.InputBorder.NONE,
-            filled=True,
-            cursor_color=theme.primary,
-            content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
-            border_radius=10,
-            expand=True,
-            on_change=lambda e, i=idx: _update_value(i, e.control.value or ""),
+    fields: list[QFrame] = []
+
+    def _build_field(idx: int, value: str) -> QFrame:
+        row = QFrame()
+        row.setStyleSheet("background: transparent;")
+        rl = hbox(spacing=8, margins=(0, 0, 0, 0))
+        rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.setLayout(rl)
+
+        label_chip = QFrame()
+        label_chip.setObjectName("DocProblemLabelChip")
+        label_chip.setStyleSheet(
+            f"""
+            QFrame#DocProblemLabelChip {{
+                background-color: {theme.surface_2};
+                border: 1px solid {theme.border};
+                border-radius: 8px;
+            }}
+            """
         )
-        field_refs.append(field)
-        return ft.Row(
-            controls=[
-                ft.Container(
-                    content=ft.Text(txt["problem_label_template"].format(n=idx + 1), color=theme.text, size=11, weight=ft.FontWeight.W_700),
-                    padding=ft.padding.symmetric(horizontal=10, vertical=6),
-                    bgcolor=theme.surface_2,
-                    border_radius=8,
-                    border=ft.border.all(1, theme.border),
-                ),
-                field,
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
+        ll = hbox(spacing=0, margins=(10, 6, 10, 6))
+        label_chip.setLayout(ll)
+        ll.addWidget(BodyLabel(txt["problem_label_template"].format(n=idx + 1), theme=theme, size=11, weight=QFont.Weight.Bold))
+        rl.addWidget(label_chip)
+
+        field = themed_line_edit(theme, placeholder=txt["problem_hint"].format(n=idx + 1))
+        field.setText(value)
+        def _update(text_value: str, i=idx) -> None:
+            if 0 <= i < len(problems):
+                problems[i] = text_value
+        field.textChanged.connect(_update)
+        rl.addWidget(field, 1)
+        return row
 
     def _rebuild() -> None:
-        fields_holder.controls = [
-            _build_field(i, v) for i, v in enumerate(problems)
-        ]
-        logger_service.try_update(fields_holder)
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        fields.clear()
+        for i, v in enumerate(problems):
+            row = _build_field(i, v)
+            fields.append(row)
+            layout.addWidget(row)
+        add_btn = GhostButton(txt["add_problem_btn"], theme=theme, icon=Icons.ADD)
+        add_btn.clicked.connect(_on_add)
+        layout.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
-    def _update_value(idx: int, value: str) -> None:
-        if 0 <= idx < len(problems):
-            problems[idx] = value
-
-    def _add_problem(_e: ft.ControlEvent) -> None:
+    def _on_add() -> None:
         problems.append("")
         _rebuild()
-        on_dirty()
-
-    add_btn = ft.Container(
-        content=ft.Text(
-            txt["add_problem_btn"],
-            color=theme.primary,
-            size=12,
-            weight=ft.FontWeight.W_600,
-        ),
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        ink=True,
-        on_click=_add_problem,
-    )
 
     _rebuild()
-
-    body = ft.Container(
-        content=ft.Column(
-            controls=[
-                fields_holder,
-                add_btn,
-            ],
-            spacing=8,
-            tight=True,
-        ),
-    )
 
     def _values() -> list[str]:
         return [p for p in problems if p.strip()]
 
-    return body, _values
+    return holder, _values
 
 
 def _build_active_doc_panel(
@@ -456,41 +370,72 @@ def _build_active_doc_panel(
     *,
     on_request_rerender: Callable[[], None],
     show_status: Callable[[str, bool], None],
-) -> ft.Control:
-    body_holder = ft.Container(content=_document_body(theme, txt, kind))
-    body_scroll = ft.ListView(
-        controls=[body_holder],
-        expand=True,
-        spacing=0,
-        padding=0,
-    )
-    theme_controls_holder = ft.Container(
-        content=_build_theme_controls(
-            theme, lang, txt, kind, on_changed=lambda: _refresh_body_and_controls()
-        )
-    )
+) -> QWidget:
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
+
+    body_holder = QWidget()
+    body_holder.setStyleSheet("background: transparent;")
+    body_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    body_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    body_holder.setLayout(body_layout)
+    is_modern_preview = kind == DOC_MODERN_CV
 
     def _refresh_body() -> None:
-        body_holder.content = _document_body(theme, txt, kind)
-        logger_service.try_update(body_holder)
+        while body_layout.count():
+            item = body_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        doc_widget = _document_body(theme, txt, kind)
+        if is_modern_preview:
+            body_layout.addWidget(
+                doc_widget,
+                0,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter,
+            )
+        else:
+            body_layout.addWidget(doc_widget)
+
+    theme_controls_holder = QWidget()
+    theme_controls_holder.setStyleSheet("background: transparent;")
+    tch_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    theme_controls_holder.setLayout(tch_layout)
 
     def _refresh_theme_controls() -> None:
-        theme_controls_holder.content = _build_theme_controls(
-            theme, lang, txt, kind, on_changed=lambda: _refresh_body_and_controls()
-        )
-        logger_service.try_update(theme_controls_holder)
+        while tch_layout.count():
+            item = tch_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        ctrl = _theme_controls(theme, lang, txt, kind, on_changed=_refresh_body_and_controls)
+        if ctrl is not None:
+            tch_layout.addWidget(ctrl)
 
     def _refresh_body_and_controls() -> None:
-        # The theme cycle buttons mutate ``STATE.modern_cv_theme`` and
-        # then call this hook so we redraw the paper preview AND the
-        # chip strip (so the chip's colour swatch + label match the
-        # newly-active palette).
         _refresh_body()
         _refresh_theme_controls()
 
+    _refresh_body()
+    _refresh_theme_controls()
+
+    layout.addWidget(theme_controls_holder)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(body_holder)
+    layout.addWidget(scroll, 1)
+
     if kind == DOC_MODERN_CV:
-        # Modern CV is keyed off ``STATE.modern_cv_data`` (structured
-        # JSON), not ``STATE.documents`` which holds markdown bodies.
         has_text = bool(STATE.modern_cv_data)
     else:
         has_text = bool(STATE.documents.get(kind))
@@ -499,60 +444,95 @@ def _build_active_doc_panel(
         and not (STATE.candidate and STATE.candidate.get("github_present"))
     )
 
-    refine_problems_block, get_problem_values = _problem_inputs(theme, txt, kind, on_dirty=lambda: None)
+    refine_block, get_problem_values = _problem_inputs(theme, txt, kind)
+    refine_running = {"value": False}
 
-    refine_running: dict[str, bool] = {"value": False}
-    refine_button_holder = ft.Container()
-    generate_button_holder = ft.Container()
+    refine_card = QFrame()
+    refine_card.setObjectName("DocRefineCard")
+    refine_card.setStyleSheet(
+        f"""
+        QFrame#DocRefineCard {{
+            background-color: {theme.surface};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
+    rc_layout = vbox(spacing=10, margins=(18, 12, 18, 12))
+    refine_card.setLayout(rc_layout)
+    rc_layout.addWidget(refine_block)
+    btn_row = QFrame()
+    btn_row.setStyleSheet("background: transparent;")
+    br_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    br_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    btn_row.setLayout(br_layout)
+    generate_btn = PrimaryButton(txt["doc_generate_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
+    refine_btn = PrimaryButton(txt["refine_btn"], theme=theme, icon=Icons.AUTO_FIX_HIGH)
+    br_layout.addWidget(generate_btn)
+    br_layout.addStretch(1)
+    br_layout.addWidget(refine_btn)
+    rc_layout.addWidget(btn_row)
+    progress_bar = QProgressBar()
+    progress_bar.setRange(0, 0)
+    progress_bar.setTextVisible(False)
+    progress_bar.setVisible(False)
+    progress_bar.setFixedHeight(6)
+    progress_bar.setStyleSheet(
+        f"""
+        QProgressBar {{
+            border: 1px solid {theme.border};
+            background-color: {theme.surface_2};
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {theme.primary};
+            border-radius: 3px;
+        }}
+        """
+    )
+    rc_layout.addWidget(progress_bar)
+    layout.addWidget(refine_card)
 
-    def _render_buttons() -> None:
+    def _refresh_buttons() -> None:
         running = refine_running["value"]
-        refine_button_holder.content = _flat_button(
-            theme,
-            txt["refine_running"] if running else txt["refine_btn"],
-            icon=ft.Icons.AUTO_FIX_HIGH,
-            primary=True,
-            enabled=has_text and not running and not is_evidence_locked,
-            on_click=lambda e: _start_refine(),
+        nonlocal has_text
+        if kind == DOC_MODERN_CV:
+            has_text = bool(STATE.modern_cv_data)
+        else:
+            has_text = bool(STATE.documents.get(kind))
+        generate_btn.setEnabled(not running and not is_evidence_locked)
+        refine_btn.setEnabled(has_text and not running and not is_evidence_locked)
+        generate_btn.setText(
+            txt["doc_running"] if running else (
+                txt["doc_regenerate_btn"] if has_text else txt["doc_generate_btn"]
+            )
         )
-        logger_service.try_update(refine_button_holder)
-        generate_label = txt["doc_running"] if running else (
-            txt["doc_regenerate_btn"] if has_text else txt["doc_generate_btn"]
-        )
-        generate_button_holder.content = _flat_button(
-            theme,
-            generate_label,
-            icon=ft.Icons.AUTO_AWESOME,
-            primary=not has_text,
-            enabled=not running and not is_evidence_locked,
-            on_click=lambda e: _start_generate(),
-        )
-        logger_service.try_update(generate_button_holder)
+        refine_btn.setText(txt["refine_running"] if running else txt["refine_btn"])
+        progress_bar.setVisible(running)
+
+    _refresh_buttons()
 
     def _start_generate() -> None:
         refine_running["value"] = True
         show_status(txt["doc_running"], False)
-        _render_buttons()
+        runtime_dispatch(_refresh_buttons)
         doc_lang = _resolved_output_lang(lang)
         STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.generate_document(kind, output_lang=doc_lang)
+                result = pipeline.generate_document(
+                    kind,
+                    output_lang=doc_lang,
+                    refresh_ui=False,
+                )
                 if result.ok:
-                    show_status("", False)
-                    nonlocal has_text
-                    if kind == DOC_MODERN_CV:
-                        has_text = bool(STATE.modern_cv_data)
-                    else:
-                        has_text = bool(STATE.documents.get(kind))
-                    _refresh_body()
+                    runtime_dispatch(lambda: show_status("", False))
+                    runtime_dispatch(_refresh_body)
                 else:
-                    show_status(result.error, True)
+                    runtime_dispatch(lambda: show_status(result.error, True))
             finally:
                 refine_running["value"] = False
-                _render_buttons()
-
+                runtime_dispatch(_refresh_buttons)
         threading.Thread(target=_worker, daemon=True).start()
 
     def _start_refine() -> None:
@@ -562,58 +542,31 @@ def _build_active_doc_panel(
             return
         refine_running["value"] = True
         show_status(txt["refine_running"], False)
-        _render_buttons()
+        runtime_dispatch(_refresh_buttons)
         doc_lang = _resolved_output_lang(lang)
         STATE.document_output_lang = doc_lang
 
         def _worker() -> None:
             try:
-                result = pipeline.refine_document(kind, output_lang=doc_lang, problems=problems)
+                result = pipeline.refine_document(
+                    kind,
+                    output_lang=doc_lang,
+                    problems=problems,
+                    refresh_ui=False,
+                )
                 if result.ok:
-                    show_status("", False)
-                    _refresh_body()
+                    runtime_dispatch(lambda: show_status("", False))
+                    runtime_dispatch(_refresh_body)
                 else:
-                    show_status(result.error, True)
+                    runtime_dispatch(lambda: show_status(result.error, True))
             finally:
                 refine_running["value"] = False
-                _render_buttons()
-
+                runtime_dispatch(_refresh_buttons)
         threading.Thread(target=_worker, daemon=True).start()
 
-    _render_buttons()
-
-    return ft.Column(
-        controls=[
-            theme_controls_holder,
-            ft.Container(content=body_scroll, expand=True),
-            ft.Container(
-                content=ft.Column(
-                    controls=[
-                        refine_problems_block,
-                        ft.Row(
-                            controls=[
-                                generate_button_holder,
-                                ft.Container(expand=True),
-                                refine_button_holder,
-                            ],
-                            spacing=8,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                    ],
-                    spacing=10,
-                    tight=True,
-                ),
-                padding=ft.padding.symmetric(horizontal=18, vertical=12),
-                bgcolor=theme.surface,
-                border=ft.border.only(top=ft.BorderSide(1, theme.border)),
-                border_radius=12,
-                margin=ft.margin.only(top=12),
-            ),
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    generate_btn.clicked.connect(_start_generate)
+    refine_btn.clicked.connect(_start_refine)
+    return container
 
 
 def build_documents_tab(
@@ -622,7 +575,7 @@ def build_documents_tab(
     *,
     on_request_rerender: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
-) -> ft.Control:
+) -> QWidget:
     txt = s(lang)
 
     visible_kinds = _visible_doc_kinds()
@@ -633,53 +586,62 @@ def build_documents_tab(
 
     tab_labels = [txt[_DOC_TAB_LABEL_KEYS[k]] for k in visible_kinds]
 
-    body_holder = ft.Container(expand=True)
-    status_text = ft.Text("", color=theme.text_muted, size=11)
+    container = QWidget()
+    container.setStyleSheet(f"background-color: {theme.bg};")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
+
+    tab_holder = QWidget()
+    tab_holder.setStyleSheet("background: transparent;")
+    tab_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    tab_holder.setLayout(tab_layout)
+
+    body_holder = QWidget()
+    body_holder.setStyleSheet(f"background-color: {theme.bg};")
+    body_layout = vbox(spacing=0, margins=(18, 14, 18, 14))
+    body_holder.setLayout(body_layout)
+    layout.addWidget(tab_holder)
+    layout.addWidget(body_holder, 1)
+
+    status_label = SubtleLabel("", theme=theme, size=11)
 
     def _show_status(message: str, is_error: bool) -> None:
-        status_text.value = message
-        status_text.color = "#EF4444" if (is_error and message) else theme.text_muted
-        logger_service.try_update(status_text)
+        status_label.setText(message)
+        status_label.setStyleSheet(
+            f"color: {'#EF4444' if (is_error and message) else theme.text_muted}; background: transparent;"
+        )
 
     def _refresh_body() -> None:
-        # In-place swap of the doc panel - cheaper than a full section
-        # rebuild when the user is just flipping between sub-tabs and
-        # everything else (header, stage tab bar, footer) is unchanged.
-        body_holder.content = _build_active_doc_panel(
-            theme,
-            lang,
-            txt,
-            STATE.active_document,
+        while body_layout.count():
+            item = body_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        body_layout.addWidget(_build_active_doc_panel(
+            theme, lang, txt, STATE.active_document,
             on_request_rerender=on_request_rerender,
             show_status=_show_status,
-        )
-        logger_service.try_update(body_holder)
-
-    tab_bar_holder = ft.Container()
+        ))
 
     def _refresh_tab_bar() -> None:
-        # Rebuilding the whole tab_bar widget is the cheapest way to move
-        # the active-state highlight to the clicked tab; the underlying
-        # ``_tab`` controls bake the bold + underline into their initial
-        # render and don't reactively update when ``active_index`` changes.
-        tab_bar_holder.content = tab_bar(
+        while tab_layout.count():
+            item = tab_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        tab_layout.addWidget(tab_bar(
             theme,
             tabs=tab_labels,
             active_index=visible_kinds.index(STATE.active_document),
             on_change=_on_doc_tab,
-        )
-        logger_service.try_update(tab_bar_holder)
+        ))
 
     def _on_doc_tab(idx: int) -> None:
         new_doc = visible_kinds[idx]
-        logger_service.log_event(
-            "INFO",
-            "ai_career.tab_documents",
-            "doc_tab_change",
-            index=idx,
-            prev_doc=STATE.active_document,
-            new_doc=new_doc,
-        )
         STATE.active_document = new_doc
         _refresh_tab_bar()
         _refresh_body()
@@ -687,16 +649,8 @@ def build_documents_tab(
     _refresh_tab_bar()
     _refresh_body()
 
-    def _export(kind_action: str) -> None:
+    def _export(action: str) -> None:
         kind = STATE.active_document
-        logger_service.log_event(
-            "INFO",
-            "ai_career.tab_documents",
-            "export_start",
-            kind=kind,
-            action=kind_action,
-        )
-        # Modern CV is structured JSON, the others are markdown bodies.
         if kind == DOC_MODERN_CV:
             has_payload = bool(STATE.modern_cv_data)
             text = ""
@@ -704,89 +658,65 @@ def build_documents_tab(
             text = STATE.documents.get(kind, "")
             has_payload = bool(text)
 
-        if not has_payload and kind_action != "all":
-            logger_service.log_event(
-                "WARNING",
-                "ai_career.tab_documents",
-                "export_no_payload",
-                kind=kind,
-                action=kind_action,
-            )
+        if not has_payload and action != "all":
             _show_status(txt["doc_empty_title"], True)
             return
+
         role = ""
+        company = ""
         if STATE.job_spec:
             role = str(STATE.job_spec.get("title") or "")
-        folder = _ensure_run_folder(role)
-
+            company = str(STATE.job_spec.get("company") or "")
+        folder = ""
+        if action != "all":
+            folder = _ensure_run_folder(role, company)
+        footer_progress.setVisible(True)
         _show_status(txt["export_running"], False)
 
         def _worker() -> None:
             try:
-                from pathlib import Path
-
-                folder_path = Path(folder)
-                if kind_action == "all":
+                if action == "all":
                     save = pipeline.save_full_analysis()
                     if save.ok:
-                        _show_status(
-                            txt["export_ok_template"].format(path=save.folder),
-                            False,
-                        )
+                        runtime_dispatch(lambda: _show_status(
+                            txt["export_ok_template"].format(path=save.folder), False))
                     else:
-                        _show_status(txt["doc_empty_title"], True)
+                        runtime_dispatch(lambda: _show_status(txt["doc_empty_title"], True))
                     return
+
+                folder_path = Path(folder)
                 basename = _DOC_FILE_BASENAMES.get(kind, kind)
                 title = basename.replace("_", " ")
                 style = "modern" if kind in _MODERN_STYLE_DOCS else "ats"
 
-                # Modern CV ships from the dedicated two-column renderer
-                # so the HTML / PDF look exactly like the in-app preview.
                 if kind == DOC_MODERN_CV:
                     target_html = folder_path / f"{basename}.html"
                     target_pdf = folder_path / f"{basename}.pdf"
-                    if kind_action == "html":
+                    if action == "html":
                         target_html.parent.mkdir(parents=True, exist_ok=True)
-                        target_html.write_text(
-                            modern_cv_render.render_html(STATE.modern_cv_data),
-                            encoding="utf-8",
-                        )
+                        target_html.write_text(modern_cv_render.render_html(STATE.modern_cv_data), encoding="utf-8")
                         path = target_html
-                    elif kind_action == "pdf":
+                    elif action == "pdf":
                         path = modern_cv_render.render_pdf(STATE.modern_cv_data, target_pdf)
-                    elif kind_action == "md":
-                        # Escape hatch: dump the structured payload as
-                        # JSON so the user can grab the raw fields.
+                    elif action == "md":
                         target_md = folder_path / f"{basename}.json"
                         target_md.parent.mkdir(parents=True, exist_ok=True)
-                        target_md.write_text(
-                            json.dumps(STATE.modern_cv_data or {}, indent=2, ensure_ascii=False),
-                            encoding="utf-8",
-                        )
+                        target_md.write_text(json.dumps(STATE.modern_cv_data or {}, indent=2, ensure_ascii=False), encoding="utf-8")
                         path = target_md
-                    elif kind_action == "docx":
-                        _show_status(
-                            txt["export_failed_template"].format(
-                                error="DOCX is not supported for the Modern CV - export HTML or PDF instead."
-                            ),
+                    elif action == "docx":
+                        runtime_dispatch(lambda: _show_status(
+                            txt["export_failed_template"].format(error="DOCX is not supported for the Modern CV - export HTML or PDF instead."),
                             True,
-                        )
+                        ))
                         return
                     else:
                         return
-                    _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                    runtime_dispatch(lambda p=path: _show_status(txt["export_ok_template"].format(path=str(p)), False))
                     return
 
-                # Cover letter exports go through the themed Playwright
-                # renderer so the saved PDF carries the user's chosen
-                # accent colour. Markdown / DOCX still flow through the
-                # legacy exporter because that is what those formats
-                # are good for (plain text + Word).
-                if kind == DOC_COVER_LETTER and kind_action in ("pdf", "html"):
+                if kind == DOC_COVER_LETTER and action in ("pdf", "html"):
                     state_theme = STATE.modern_cv_theme or {}
-                    active_theme = themes.resolve_theme(
-                        state_theme.get("palette"), state_theme.get("layout")
-                    )
+                    active_theme = themes.resolve_theme(state_theme.get("palette"), state_theme.get("layout"))
                     cover_lang = _resolved_output_lang(lang)
                     name = ""
                     contact: dict[str, str] = {}
@@ -808,101 +738,127 @@ def build_documents_tab(
                         theme=active_theme,
                         output_lang=cover_lang,
                     )
-                    if kind_action == "html":
+                    if action == "html":
                         target_html = folder_path / f"{basename}.html"
                         target_html.parent.mkdir(parents=True, exist_ok=True)
                         target_html.write_text(cover_html, encoding="utf-8")
                         path = target_html
                     else:
                         from src.services import html_pdf
-
                         target_pdf = folder_path / f"{basename}.pdf"
                         try:
                             html_pdf.render_html_to_pdf(cover_html, target_pdf)
                             path = target_pdf
                         except html_pdf.PdfRendererUnavailableError:
-                            path = exporter.export_pdf(
-                                text,
-                                target_pdf,
-                                title=title,
-                                style=style,
-                            )
-                    _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                            path = exporter.export_pdf(text, target_pdf, title=title, style=style)
+                    runtime_dispatch(lambda p=path: _show_status(txt["export_ok_template"].format(path=str(p)), False))
                     return
 
-                if kind_action == "md":
+                if action == "md":
                     path = exporter.export_markdown(text, folder_path / f"{basename}.md")
-                elif kind_action == "html":
-                    path = exporter.export_html(
-                        text, folder_path / f"{basename}.html", title=title, style=style
-                    )
-                elif kind_action == "docx":
+                elif action == "html":
+                    path = exporter.export_html(text, folder_path / f"{basename}.html", title=title, style=style)
+                elif action == "docx":
                     path = exporter.export_docx(text, folder_path / f"{basename}.docx", title=title)
-                elif kind_action == "pdf":
-                    path = exporter.export_pdf(
-                        text, folder_path / f"{basename}.pdf", title=title, style=style
-                    )
+                elif action == "pdf":
+                    path = exporter.export_pdf(text, folder_path / f"{basename}.pdf", title=title, style=style)
                 else:
                     return
-                logger_service.log_event(
-                    "INFO",
-                    "ai_career.tab_documents",
-                    "export_done",
-                    kind=kind,
-                    action=kind_action,
-                    path=str(path),
-                )
-                _show_status(txt["export_ok_template"].format(path=str(path)), False)
+                runtime_dispatch(lambda p=path: _show_status(txt["export_ok_template"].format(path=str(p)), False))
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_documents",
-                    "export_failed",
-                    exc,
-                    kind=kind,
-                    action=kind_action,
+                    "ai_career.tab_documents", "export_failed", exc, kind=kind, action=action,
                 )
-                _show_status(txt["export_failed_template"].format(error=str(exc)), True)
+                runtime_dispatch(lambda e=exc: _show_status(txt["export_failed_template"].format(error=str(e)), True))
+            finally:
+                runtime_dispatch(lambda: footer_progress.setVisible(False))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    footer = ft.Container(
-        content=ft.Column(
-            controls=[
-                status_text,
-                ft.Row(
-                    controls=[
-                        _flat_button(
-                            theme,
-                            txt["doc_back_btn"],
-                            icon=ft.Icons.ARROW_BACK,
-                            on_click=lambda e: on_navigate_tab(TAB_MATCH),
-                        ),
-                        ft.Container(expand=True),
-                        _flat_button(theme, txt["export_md_btn"], icon=ft.Icons.NOTES, on_click=lambda e: _export("md")),
-                        _flat_button(theme, txt["export_html_btn"], icon=ft.Icons.HTML, on_click=lambda e: _export("html")),
-                        _flat_button(theme, txt["export_docx_btn"], icon=ft.Icons.DESCRIPTION, on_click=lambda e: _export("docx")),
-                        _flat_button(theme, txt["export_pdf_btn"], icon=ft.Icons.PICTURE_AS_PDF, on_click=lambda e: _export("pdf")),
-                        _flat_button(theme, txt["export_all_btn"], icon=ft.Icons.SAVE_OUTLINED, primary=True, on_click=lambda e: _export("all")),
-                    ],
-                    spacing=8,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-            ],
-            spacing=8,
-            tight=True,
-        ),
-        padding=ft.padding.symmetric(horizontal=24, vertical=12),
-        border=ft.border.only(top=ft.BorderSide(1, theme.border)),
-        bgcolor=theme.bg,
+    footer = QFrame()
+    footer.setObjectName("DocFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#DocFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
     )
+    footer_layout = vbox(spacing=8, margins=(24, 12, 24, 12))
+    footer.setLayout(footer_layout)
+    footer_layout.addWidget(status_label)
+    footer_progress = QProgressBar()
+    footer_progress.setRange(0, 0)
+    footer_progress.setTextVisible(False)
+    footer_progress.setVisible(False)
+    footer_progress.setFixedHeight(6)
+    footer_progress.setStyleSheet(
+        f"""
+        QProgressBar {{
+            border: 1px solid {theme.border};
+            background-color: {theme.surface};
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {theme.primary};
+            border-radius: 3px;
+        }}
+        """
+    )
+    footer_layout.addWidget(footer_progress)
 
-    return ft.Column(
-        controls=[
-            tab_bar_holder,
-            ft.Container(content=body_holder, expand=True, padding=ft.padding.symmetric(horizontal=18, vertical=14)),
-            footer,
-        ],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    btn_row = QFrame()
+    btn_row.setStyleSheet("background: transparent;")
+    br_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    br_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    btn_row.setLayout(br_layout)
+
+    back_btn = GhostButton(txt["doc_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+    back_btn.clicked.connect(lambda: on_navigate_tab(TAB_MATCH))
+    br_layout.addWidget(back_btn)
+    br_layout.addStretch(1)
+
+    # Per-format export pills: short uppercase format label (MD / HTML /
+    # DOCX / PDF) so the user can identify each at a glance without
+    # widening the footer with the long localised "Export MD" label.
+    # The localised label still surfaces in the tooltip.
+    def _pill_export(label: str, tooltip: str, action: str) -> ClickFrame:
+        pill = ClickFrame()
+        pill.setObjectName("DocExportPill")
+        pill.setStyleSheet(
+            f"""
+            ClickFrame#DocExportPill {{
+                background-color: {rgba(theme.text, 0.04)};
+                border: 1px solid {theme.border};
+                border-radius: 10px;
+            }}
+            ClickFrame#DocExportPill:hover {{
+                background-color: {rgba(theme.primary, 0.12)};
+                border: 1px solid {theme.primary};
+            }}
+            """
+        )
+        pl = hbox(spacing=0, margins=(12, 6, 12, 6))
+        pl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.setLayout(pl)
+        pl.addWidget(custom_label(
+            label,
+            color=theme.text,
+            size=11,
+            weight=QFont.Weight.Bold,
+        ))
+        pill.setToolTip(tooltip)
+        pill.clicked.connect(lambda a=action: _export(a))
+        return pill
+
+    br_layout.addWidget(_pill_export("MD", txt["export_md_btn"], "md"))
+    br_layout.addWidget(_pill_export("HTML", txt["export_html_btn"], "html"))
+    br_layout.addWidget(_pill_export("DOCX", txt["export_docx_btn"], "docx"))
+    br_layout.addWidget(_pill_export("PDF", txt["export_pdf_btn"], "pdf"))
+    all_btn = PrimaryButton(txt["export_all_btn"], theme=theme, icon=Icons.SAVE_OUTLINED)
+    all_btn.clicked.connect(lambda: _export("all"))
+    br_layout.addWidget(all_btn)
+    footer_layout.addWidget(btn_row)
+    layout.addWidget(footer)
+    return container

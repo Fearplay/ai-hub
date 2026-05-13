@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import flet as ft
+from src.qt.icons import Icons
 
 from src.services import secrets
 
 
-SECTION_ICON = ft.Icons.SETTINGS_OUTLINED
+SECTION_ICON = Icons.SETTINGS_OUTLINED
 
 
 def key_rows(txt: dict) -> list[dict]:
@@ -15,7 +15,7 @@ def key_rows(txt: dict) -> list[dict]:
     return [
         {
             "name": secrets.OPENAI_API_KEY,
-            "icon": ft.Icons.AUTO_AWESOME,
+            "icon": Icons.AUTO_AWESOME,
             "label_key": "key_openai_label",
             "hint_key": "key_openai_hint",
             "label": txt["key_openai_label"],
@@ -24,7 +24,7 @@ def key_rows(txt: dict) -> list[dict]:
         },
         {
             "name": secrets.ANTHROPIC_API_KEY,
-            "icon": ft.Icons.PSYCHOLOGY_OUTLINED,
+            "icon": Icons.PSYCHOLOGY_OUTLINED,
             "label_key": "key_anthropic_label",
             "hint_key": "key_anthropic_hint",
             "label": txt["key_anthropic_label"],
@@ -33,7 +33,7 @@ def key_rows(txt: dict) -> list[dict]:
         },
         {
             "name": secrets.GITHUB_TOKEN,
-            "icon": ft.Icons.CODE,
+            "icon": Icons.CODE,
             "label_key": "key_github_label",
             "hint_key": "key_github_hint",
             "label": txt["key_github_label"],

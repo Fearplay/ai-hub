@@ -102,6 +102,12 @@ POLICY (binding rules - never break these):
     icons, or graphical elements. Standard headings ("Work Experience",
     "Education", "Skills"). Mirror the EXACT terminology from the job
     description for tools and skills - synonyms hurt parsing in 2026 ATS.
+
+21. ASCII PUNCTUATION. Never use em-dashes (U+2014) or en-dashes (U+2013).
+    Always use a plain hyphen (-) instead, even between two words or in a
+    date range. The downstream UI normalises any leftovers, but starting
+    from ASCII keeps the rendered text consistent with the rest of the
+    application.
 """
 
 
@@ -289,8 +295,9 @@ MODERN_CV_SYSTEM = (
     "  technologies, grouped by domain ('Frontend: React · TypeScript ·\n"
     "  Next.js | Tooling: Cypress · GitHub Actions').\n"
     "* You MAY use small unicode markers in headings ONLY when they read\n"
-    "  cleanly in plain text (·, —, /). NO emojis, NO icons, NO images -\n"
-    "  Markdown still has to render in any reader.\n"
+    "  cleanly in plain text (·, /). NO emojis, NO icons, NO images, and\n"
+    "  NO em-dashes / en-dashes (use plain '-' per rule 21). Markdown\n"
+    "  still has to render in any reader.\n"
     "* Single column. ATS-safe even though the audience is human - the\n"
     "  recruiter often pastes both CVs into the same tool.\n\n"
     "CONTENT RULES:\n"
@@ -590,7 +597,7 @@ def _format_followup_qa(qa_pairs: list[dict]) -> str:
         return ""
     lines: list[str] = ["=== ADDITIONAL CLARIFICATIONS FROM CANDIDATE ==="]
     for pair in qa_pairs:
-        topic = (pair.get("topic") or "").strip() or "—"
+        topic = (pair.get("topic") or "").strip() or "-"
         question = (pair.get("question") or "").strip()
         answer = (pair.get("answer") or "").strip()
         if not answer:

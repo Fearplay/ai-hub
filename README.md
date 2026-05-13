@@ -8,24 +8,25 @@
 > [.cursor/rules/](.cursor/rules/) define how new sections, AI calls,
 > and the `.exe` build are added so contributions stay consistent.
 
-A desktop AI Hub built in Python with [Flet](https://flet.dev). Three-column
-layout: navigation in the left sidebar, the main workspace in the middle,
-and a context panel on the right. **AI CV / Career** and the new
-**AI LinkedIn Profile Builder** are fully wired to OpenAI / Anthropic;
-other sections share the same architecture and are being filled in as
-we go.
+A desktop AI Hub built in Python with
+[PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
+Three-column layout: navigation in the left sidebar, the main workspace
+in the middle, and a context panel on the right. **AI CV / Career** and
+the new **AI LinkedIn Profile Builder** are fully wired to OpenAI /
+Anthropic; other sections share the same architecture and are being
+filled in as we go.
 
 ## Requirements
 
 - Python 3.10+
-- Flet >= 0.25.0 (tested on 0.84.0)
+- PySide6 >= 6.7.0 (Qt 6.x, ships its own Qt runtime - no extra SDK)
 - API keys (optional - without them the app runs in Demo mode):
   - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`) under **Settings**
   - **GitHub** personal access token (optional, lifts the rate limit for AI Career)
 
-> No Flutter SDK or Visual Studio C++ workload is required. Builds run
-> through `flet pack` (PyInstaller), which only needs a plain Python on
-> `PATH`.
+> No Flutter SDK, Qt SDK, or Visual Studio C++ workload is required.
+> Builds run through `pyinstaller` (driven by `build_exe.bat`), which
+> only needs a plain Python on `PATH`.
 
 ## Install (development)
 
@@ -51,28 +52,24 @@ The upload zones in **AI Legal assistant**, **AI CV / Career**,
 component (`src/components/file_drop_zone.py`) that:
 
 * Renders a dashed-border drop zone with a prominent "Click to browse"
-  call-to-action - clicking opens the native file picker (the
-  guaranteed code path on every supported platform).
+  call-to-action - clicking opens the native file picker. There is no
+  separate "Upload" button - the dashed zone *is* the button, which
+  keeps the UI from having two redundant ways to do the same thing.
 * Always shows a **Paste path** button beneath the zone. On Windows you
   can `Shift+Right-click` a file in Explorer -> *Copy as path*, then
   click the button - the file is loaded immediately.
-* Best-effort wires `page.on_drop` / `page.on_files_drop` so OS-level
-  drag-and-drop will start working transparently the moment a future
-  Flet release adds those events to the `flet pack` runtime; today
-  click + paste are the supported paths.
-
-OS-level drag-and-drop via `flet-dropzone` + `flet build` would add a
-Flutter SDK + Visual Studio C++ dependency - we deliberately avoid
-that because it would break the one-click build flow for collaborators
-(see `build_exe.bat`).
+* Accepts real **OS drag-and-drop** thanks to Qt's `dragEnterEvent` /
+  `dropEvent` plumbing - drop a file from Explorer / Finder / Files
+  directly onto the zone and it loads instantly.
+* Accepts **PDF / DOCX / HTML / HTM / TXT / MD** files - the extracted
+  text body is what feeds the AI prompts in **AI Legal**, **AI Career**
+  and friends.
 
 The clipboard handling itself is centralised in
 `src/services/clipboard.py`. It is a thin synchronous wrapper around
 [pyperclip](https://pypi.org/project/pyperclip/) (with `win32clipboard`
-/ `pbcopy` / `xclip` / `tkinter` fallbacks) that bypasses Flet's
-async `Clipboard` service - the latter could die with
-`RuntimeError("Session closed")` after a navigation, which used to
-silently break Copy / Paste buttons.
+/ `pbcopy` / `xclip` / `tkinter` fallbacks) so Copy / Paste buttons stay
+robust regardless of the Qt session state.
 
 ## Build the .exe (Windows)
 
@@ -87,7 +84,9 @@ What the script does:
    available either, it prints a python.org link and exits.
 2. If `.venv\` doesn't exist, it creates one.
 3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
-4. Runs `flet pack main.py --name AIHub` and produces `dist\AIHub.exe`.
+4. Runs `pyinstaller --onefile --windowed --name AIHub` (with the
+   bundled Material Symbols Rounded icon font subset under
+   `assets\fonts\` baked in) and produces `dist\AIHub.exe`.
 
 Usage:
 
@@ -96,11 +95,10 @@ build_exe.bat            REM standard build (skipped when the exe is newer than 
 build_exe.bat --force    REM always rebuild, even when nothing changed
 ```
 
-Trade-off: `flet pack` (unlike `flet build windows`) **does not need the
-Flutter SDK or Visual Studio C++**, so the build works on a clean
-Windows machine. The price is that real OS file drag-and-drop is not
-available - upload zones react to click and open the native file picker
-instead.
+Trade-off: PyInstaller bundles PySide6's Qt 6 runtime into the .exe -
+no Flutter SDK, no Qt SDK, no Visual Studio C++ workload required.
+Real OS drag-and-drop **is** available because Qt handles the events
+natively.
 
 The Cursor rule [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc)
 makes the agent run `build_exe.bat` at the end of every task, so
@@ -121,9 +119,9 @@ The script:
 - Installs Python via `winget` if missing.
 - Creates a local `.venv\` and installs `requirements.txt` exactly as you
   see it (commit-pinned).
-- `flet pack` generates **its own** `AIHub.spec` (the one you might see
-  locally is just an artefact of the last build, it doesn't belong in
-  git).
+- `pyinstaller` generates **its own** `AIHub.spec` (the one you might
+  see locally is just an artefact of the last build, it doesn't belong
+  in git).
 - Produces `dist\AIHub.exe`.
 
 If you only want dev mode (no exe), steps 1-2 plus
@@ -153,6 +151,30 @@ When `keyring` has no available backend (typically headless Linux without
 `gnome-keyring`), the Settings UI flips to read-only and explains what to
 install.
 
+### HTTPS via the OS trust store
+
+Every OpenAI / Anthropic / GitHub call ultimately flows through `httpx`,
+which by default validates server certificates against the bundled
+`certifi` CA list. On corporate / school networks (Zscaler, Netskope,
+antivirus MITM, custom internal roots), the chain is only present in
+the **OS** trust store, not in `certifi`, and the request fails with
+`SSL: CERTIFICATE_VERIFY_FAILED`. To make HTTPS Just Work on those
+machines, `main.py` calls
+[`truststore.inject_into_ssl()`](https://truststore.readthedocs.io/) as
+the very first runtime statement, which patches Python's `ssl.SSLContext`
+to use:
+
+| OS | Backend |
+| --- | --- |
+| Windows | CryptoAPI (Trusted Root Certification Authorities) |
+| macOS | Security framework |
+| Linux | OpenSSL system roots |
+
+`truststore` is added to `requirements.txt` and bundled into the .exe via
+`--collect-submodules truststore` in `build_exe.bat`. No section / library
+code calls `inject_into_ssl()` - per the upstream warning, only the
+application entry point is allowed to.
+
 ### Demo mode (offline, no tokens)
 
 Every AI section has a **Try demo data** button in Setup which walks the
@@ -173,11 +195,11 @@ save), the app keeps a small log file:
   `CRITICAL`). The bytes on disk stay plain text - the colours live
   only in the viewer. The Settings page also uses the full window
   width so the column-aligned rows do not wrap.
-- The viewer wraps the rows in a Flet `SelectionArea`, so you can
-  drag-select across multiple rows with the mouse and press `Ctrl+C`,
-  or use the **Copy** button at the top to grab the whole file. Copy
-  goes through the OS clipboard (pyperclip) - no Flet session, no
-  more `Session closed` failures.
+- The viewer renders the tail in a `QPlainTextEdit` with a
+  `QSyntaxHighlighter`, so you can drag-select across multiple rows
+  with the mouse and press `Ctrl+C`, or use the **Copy** button at the
+  top to grab the whole file. Copy goes through the OS clipboard
+  (pyperclip) for cross-platform reliability.
 - No personal data is logged - only what was clicked, what succeeded,
   and the stack trace of any caught exception.
 - Format is column-aligned for fast skimming:
@@ -203,11 +225,22 @@ ai-hub/
 ├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
+├── assets/
+│   └── fonts/                     # bundled Material Symbols Rounded subset + codepoints
 └── src/
     ├── theme.py                  # design tokens (dark + light)
     ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
     ├── i18n.py                   # global EN/CS strings + t(key, lang)
-    ├── components/               # shared UI primitives
+    ├── qt/                        # PySide6 building blocks
+    │   ├── theme.py              # QSS emitter + rgba helper
+    │   ├── icons.py              # Material Symbols Rounded font loader + codepoint registry
+    │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typography / buttons / Pill
+    │   ├── effects.py            # drop shadow + opacity helpers
+    │   ├── markdown.py           # bold-spans helper for plain QLabel
+    │   ├── dialog.py             # BaseDialog (themed modal scaffold)
+    │   ├── runtime.py             # cross-thread UI dispatcher (worker -> GUI)
+    │   └── window_chrome.py      # Win32 DWM helper - tints the OS title bar to match the theme
+    ├── components/               # shared UI primitives (PySide6)
     │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
     │   ├── user_card.py
@@ -219,7 +252,7 @@ ai-hub/
     │   ├── chat_message.py
     │   ├── chat_input.py
     │   ├── context_panel.py      # shell + helpers for the right panel
-    │   ├── file_drop_zone.py     # shared upload zone (click + best-effort OS drop + paste-path)
+    │   ├── file_drop_zone.py     # shared upload zone (real OS drag-drop + click + paste-path)
     │   ├── language_toggle.py    # EN / CS toggle
     │   ├── theme_toggle.py       # dark / light toggle
     │   └── placeholder.py        # default "coming soon" view
@@ -242,7 +275,7 @@ ai-hub/
     │   ├── dashboard/
     │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter)
     │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
-    │   ├── ai_legal/              # fully built (4 working tabs + drag-drop)
+    │   ├── ai_legal/              # AI-wired chat (multi-format upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # designed mock UI
     │   ├── ai_finance/           # placeholder
@@ -273,7 +306,16 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
 - Three-column layout, scrollable sidebar (header / scroll / footer).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
 - Section auto-discovery (primary + secondary; History / Favorites / Settings live in secondary).
-- Light / dark mode toggle.
+- Light / dark mode toggle - the **Windows OS title bar** (caption strip with
+  X / minimise / maximise + app name) is tinted to match the active theme via
+  the DWM API, so dark mode no longer leaves a bright white strip on top of
+  the dark sidebar (`src/qt/window_chrome.py`, no-op on macOS / Linux).
+- **Snappy theme + language switch** - flipping the sidebar pill reapplies
+  the global QSS, rebuilds the sidebar widget, and rebuilds **only** the
+  active section's center + right column (other sections pick up the new
+  language on their next click). The full window is no longer torn down on
+  every toggle, so the previously-3-second freeze on the AI Career section
+  is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, demo flags, debug logs.
 - **AI CV / Career** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
@@ -296,7 +338,12 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - Save the complete profile to `outputs/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
   - Demo mode (offline showcase) populates a curated end-to-end example in seconds.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
-- **AI Legal assistant** - 4 working tabs (Chat, Document analysis, Document drafts, Templates), OS drag-drop PDF, mock LLM.
+- **AI Legal assistant** - fully AI-wired chat with a legal document:
+  - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
+  - **Four quick-action chips** - Summarise / Find risks / Explain legal terms / Suggest changes - each opens a tailored prompt and streams the reply back into the chat. Plain typing in the input field also works.
+  - **No-lawyer disclaimer** - inline banner under the header reminds the user the assistant does not replace legal advice; every long reply re-states it in plain language.
+  - **Demo mode** - turn the global Demo flag on in **Settings** to walk the same UI without any provider call (returns a stubbed answer).
+  - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
 - Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
 
@@ -359,12 +406,13 @@ Want to help? Branch / commit conventions are documented in
 
 This project is licensed under the **MIT License** - see [LICENSE](LICENSE).
 
-Libraries used:
+Libraries and assets used:
 
-| Library | License | Link |
+| Item | License | Link |
 | --- | --- | --- |
-| [Flet](https://flet.dev) | Apache License 2.0 | https://github.com/flet-dev/flet/blob/main/LICENSE |
+| [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
+| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 
-Apache 2.0 is fully compatible with MIT, so we can distribute this
-project under MIT as long as we keep the upstream attribution (see
-[LICENSE](LICENSE)).
+LGPL-3.0 and Apache-2.0 are both compatible with MIT redistribution as
+long as we keep the upstream attribution (see [LICENSE](LICENSE)).

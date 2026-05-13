@@ -9,7 +9,9 @@ The user wants a single `dist\AIHub.exe` that they can double-click on a
 clean Windows machine. The `build_exe.bat` in the repo root takes care
 of everything (auto-installs Python via winget if missing, creates a
 `.venv\`, installs `requirements.txt` + `pyinstaller`, then runs
-`flet pack`).
+`pyinstaller --onefile --windowed`). The PySide6 / Qt 6 runtime ships
+inside the bundle - no Flutter SDK, no Qt SDK, no Visual Studio C++
+workload required.
 
 **At the end of a Cursor task you MUST:**
 
@@ -19,23 +21,26 @@ of everything (auto-installs Python via winget if missing, creates a
    will crash at runtime even though dev mode worked.
 2. Make sure every new data file that needs to be inside the .exe
    (icons, fonts, prompt JSONs, …) is wired into `build_exe.bat` via
-   the `flet pack ... --add-data <src>;<dst>` flag (Windows uses `;` as
-   the separator). Code-only changes do not need this.
+   the `pyinstaller ... --add-data "<src>;<dst>"` flag (Windows uses
+   `;` as the separator; macOS / Linux use `:`). Code-only changes do
+   not need this.
 3. Run `build_exe.bat` via the Shell tool as the **last** step of the
    task. The script is idempotent and a no-op when `dist\AIHub.exe`
    is newer than every `.py` under `main.py` and `src\` (use
    `build_exe.bat --force` if a forced rebuild is genuinely needed).
-4. If `flet pack` fails, fix the cause (missing data file, missing pip
-   dep, broken import, …) and rerun. The task is **not** done until
-   `build_exe.bat` exits with code 0 and `dist\AIHub.exe` exists.
+4. If `pyinstaller` fails, fix the cause (missing data file, missing
+   pip dep, broken import, …) and rerun. The task is **not** done
+   until `build_exe.bat` exits with code 0 and `dist\AIHub.exe`
+   exists.
 
 ## Hard rules - never break these
 
 - Do **not** delete `build_exe.bat` or any of its self-bootstrap steps
   ("works on a clean Windows machine" is the entire point).
-- Do **not** swap `flet pack` for `flet build windows` - the latter
-  needs the Flutter SDK + Visual Studio C++ workload, which violates
-  the "no prerequisites" promise.
+- Do **not** swap `pyinstaller` for `flet pack` / `flet build windows`
+  - the project no longer depends on Flet, and the latter needs the
+  Flutter SDK + Visual Studio C++ workload, which violates the
+  "no prerequisites" promise.
 - Do **not** commit `build\`, `dist\`, `.venv\`, or `*.spec` (they are
   in `.gitignore`).
 - Do **not** hard-code an absolute path inside `build_exe.bat`. The
@@ -55,12 +60,25 @@ In every other case, rebuild.
 
 1. Drop the file under `assets\` (or another folder that is **not**
    `src\`).
-2. Open `build_exe.bat` and append the asset to the `flet pack` line:
+2. Open `build_exe.bat` and append the asset to the `pyinstaller` line:
 
    ```bat
-   flet pack main.py --name AIHub ^
-       --product-name "AI Hub" --product-version 0.1.0 --copyright "MIT" ^
+   pyinstaller --noconfirm --onefile --windowed --name AIHub ^
+       --add-data "assets\fonts;assets\fonts" ^
        --add-data "assets\icon.ico;assets" ^
-       %ICON_ARG%
+       --hidden-import pyperclip ^
+       --collect-submodules PySide6 ^
+       %ICON_ARG% ^
+       main.py
    ```
 3. Re-run the script. The asset is now embedded in the produced exe.
+
+## How the bundled font / icon system works
+
+The Material Icons font (under `assets\fonts\`) is loaded at startup by
+`src.qt.icons.icon_font(...)`. When running from the bundled .exe,
+PyInstaller extracts the assets to the path stored in `sys._MEIPASS`,
+and `src.qt.icons._bundled_root()` already handles both source-mode and
+frozen-mode lookups. If you add another bundled font or asset folder,
+follow the same pattern - read paths through a `_bundled_root()`-style
+helper that respects `sys._MEIPASS`.

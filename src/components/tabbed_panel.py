@@ -1,8 +1,7 @@
 """Tab bar + swappable content holder.
 
-Sections used to render ``[tab_bar(...), <chat content>]`` directly. With
-clickable tabs each section now hands ``tabbed_panel`` one ``ft.Control``
-per tab; the helper owns the state and swaps the content area in place
+Sections hand ``tabbed_panel`` one ``QWidget`` per tab; the helper owns
+the state and swaps the content area in place via a ``QStackedLayout``
 when the tab changes.
 """
 
@@ -10,9 +9,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-import flet as ft
+from PySide6.QtWidgets import QFrame, QStackedLayout, QWidget
 
 from src.components.tab_bar import tab_bar
+from src.qt.widgets import vbox
 from src.services import logger as logger_service
 from src.theme import Theme
 
@@ -21,41 +21,38 @@ def tabbed_panel(
     theme: Theme,
     *,
     tabs: Sequence[str],
-    panels: Sequence[ft.Control],
+    panels: Sequence[QWidget],
     initial_index: int = 0,
-) -> ft.Column:
+) -> QFrame:
     if len(panels) != len(tabs):
         raise ValueError(
             f"tabbed_panel: got {len(tabs)} tab labels but {len(panels)} panels"
         )
 
-    holder = ft.Container(content=panels[initial_index], expand=True)
+    container = QFrame()
+    container.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    container.setLayout(layout)
 
-    def on_change(idx: int) -> None:
+    body = QFrame()
+    body.setStyleSheet("background: transparent;")
+    stack = QStackedLayout(body)
+    stack.setContentsMargins(0, 0, 0, 0)
+    for panel in panels:
+        stack.addWidget(panel)
+    stack.setCurrentIndex(initial_index)
+
+    def _on_change(idx: int) -> None:
         try:
-            holder.content = panels[idx]
+            stack.setCurrentIndex(idx)
         except Exception as exc:
             logger_service.log_exception(
-                "tabbed_panel", "on_change_set_content_failed", exc,
+                "tabbed_panel", "on_change_set_index_failed", exc,
                 idx=idx, total_panels=len(panels),
             )
-            return
-        if not logger_service.try_update(holder):
-            logger_service.log_event(
-                "ERROR", "tabbed_panel", "on_change_update_failed",
-                idx=idx,
-            )
 
-    bar = tab_bar(
-        theme,
-        tabs=tabs,
-        active_index=initial_index,
-        on_change=on_change,
-    )
+    bar = tab_bar(theme, tabs=tabs, active_index=initial_index, on_change=_on_change)
+    layout.addWidget(bar)
+    layout.addWidget(body, 1)
 
-    return ft.Column(
-        controls=[bar, holder],
-        spacing=0,
-        expand=True,
-        tight=True,
-    )
+    return container

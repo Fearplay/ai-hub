@@ -13,7 +13,7 @@ structured outputs from the pipeline.
 
 from __future__ import annotations
 
-import flet as ft
+from src.qt.icons import Icons
 
 from src.sections.ai_linkedin.state import (
     AUDIENCE_FOUNDER,
@@ -54,7 +54,7 @@ from src.sections.ai_linkedin.state import (
 from src.sections.ai_linkedin.strings import s
 
 
-SECTION_ICON = ft.Icons.HUB_OUTLINED
+SECTION_ICON = Icons.HUB_OUTLINED
 
 
 # --- Tabs --------------------------------------------------------------
@@ -139,11 +139,11 @@ def quick_actions(lang: str) -> list[dict]:
     """Five most-used actions surfaced in the right-hand panel."""
     txt = s(lang)
     return [
-        {"key": "build_full", "icon": ft.Icons.AUTO_AWESOME, "label": txt["qa_build_full"]},
-        {"key": "improve_headline", "icon": ft.Icons.TITLE, "label": txt["qa_improve_headline"]},
-        {"key": "write_post", "icon": ft.Icons.EDIT_OUTLINED, "label": txt["qa_write_post"]},
-        {"key": "show_history", "icon": ft.Icons.HISTORY, "label": txt["qa_show_history"]},
-        {"key": "how_to", "icon": ft.Icons.HELP_OUTLINE, "label": txt["qa_how_to"]},
+        {"key": "build_full", "icon": Icons.AUTO_AWESOME, "label": txt["qa_build_full"]},
+        {"key": "improve_headline", "icon": Icons.TITLE, "label": txt["qa_improve_headline"]},
+        {"key": "write_post", "icon": Icons.EDIT_OUTLINED, "label": txt["qa_write_post"]},
+        {"key": "show_history", "icon": Icons.HISTORY, "label": txt["qa_show_history"]},
+        {"key": "how_to", "icon": Icons.HELP_OUTLINE, "label": txt["qa_how_to"]},
     ]
 
 
