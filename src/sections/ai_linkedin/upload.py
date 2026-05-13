@@ -25,7 +25,7 @@ def upload_zone(
     extensions: Sequence[str],
     unsupported_message: str,
     on_file_resolved: Callable[[ParsedFile], None],
-    height: int = 132,
+    height: int = 160,
     paste_path_label: str | None = None,
     paste_path_tooltip: str | None = None,
     cta_label: str | None = None,

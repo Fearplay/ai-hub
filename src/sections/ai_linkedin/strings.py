@@ -20,9 +20,6 @@ STRINGS: dict[str, dict[str, str]] = {
             " LinkedIn profile - or just polish a single section."
         ),
         "header_help": "How to use this assistant",
-        # Demo pill
-        "demo_pill": "Demo data",
-        "demo_pill_tooltip": "Outputs come from a hand-curated demo dataset - no API call.",
         # Mode tabs
         "mode_tab_chat": "Chat",
         "mode_tab_builder": "Builder",
@@ -67,7 +64,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup_lang_cs": "Čeština",
         "setup_followups_label": "Ask clarifying questions before generating",
         "setup_followups_hint": "Recommended. The AI surfaces gaps before it writes anything.",
-        "setup_demo_button": "Try demo data",
         "setup_continue_button": "Continue to sections",
         # Sections tab
         "sections_title": "Pick what to build",
@@ -84,7 +80,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sections_followup_button": "Ask clarifying questions first",
         # Output tab
         "output_empty_title": "Nothing built yet",
-        "output_empty_desc": "Run the profile build (or load demo data) to see results here.",
+        "output_empty_desc": "Run the profile build to see results here.",
         "output_save_button": "Save complete profile package",
         "output_open_folder_button": "Open last run folder",
         "output_score_card_title": "Profile score",
@@ -279,9 +275,6 @@ STRINGS: dict[str, dict[str, str]] = {
             " LinkedIn profil - nebo doladí jen jednu sekci."
         ),
         "header_help": "Jak tohoto asistenta používat",
-        # Demo pill
-        "demo_pill": "Demo data",
-        "demo_pill_tooltip": "Výstupy jdou z předpřipraveného demo datasetu - bez volání API.",
         # Mode tabs
         "mode_tab_chat": "Chat",
         "mode_tab_builder": "Builder",
@@ -326,7 +319,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup_lang_cs": "Čeština",
         "setup_followups_label": "Doptat se na chybějící informace",
         "setup_followups_hint": "Doporučeno. AI před generováním upozorní na mezery.",
-        "setup_demo_button": "Vyzkoušet demo data",
         "setup_continue_button": "Pokračovat na sekce",
         # Sections tab
         "sections_title": "Vyber, co se má vyrobit",
@@ -343,7 +335,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sections_followup_button": "Nejdřív se doptat",
         # Output tab
         "output_empty_title": "Zatím nic vyrobeno",
-        "output_empty_desc": "Spusť profile build (nebo načti demo data), ať tu něco vidíš.",
+        "output_empty_desc": "Spusť profile build, ať tu něco vidíš.",
         "output_save_button": "Uložit kompletní profil package",
         "output_open_folder_button": "Otevřít složku posledního runu",
         "output_score_card_title": "Skóre profilu",

@@ -10,17 +10,23 @@
 Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
-středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra** a
-nová **AI LinkedIn Profile Builder** jsou plně napojené na OpenAI /
-Anthropic; ostatní sekce jsou postavené na stejné architektuře a
-postupně se napojují.
+středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
+**AI LinkedIn Profile Builder** a **AI Finance** jsou plně napojené na
+OpenAI / Anthropic; ostatní sekce jsou postavené na stejné architektuře
+a postupně se napojují.
+
+Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
+napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Pořadí se ukládá
+do `~/AI Hub/settings.json`, takže layout přežije restart. Sekundární
+skupina (Historie / Oblíbené / Nastavení) zůstává pevně pod
+oddělovačem.
 
 ## Požadavky
 
 - Python 3.10+
 - PySide6 >= 6.7.0 (Qt 6.x; runtime se vozí s balíčkem - žádné extra SDK)
-- API klíče (volitelné — bez nich jede Demo režim):
-  - **OpenAI** (`sk-…`) nebo **Anthropic** (`sk-ant-…`) v sekci **Nastavení**
+- Alespoň jeden API klíč nastavený v sekci **Nastavení**:
+  - **OpenAI** (`sk-…`) nebo **Anthropic** (`sk-ant-…`)
   - **GitHub** personal access token (volitelný, zvedne rate-limit pro AI Career)
 
 > Žádné Flutter SDK, Qt SDK ani Visual Studio C++ není potřeba. Build
@@ -125,7 +131,8 @@ Sekce **Nastavení** (v sidebaru pod oddělovačem) umožní:
 
 - vybrat AI providera (**OpenAI** / **Anthropic**) a model (default `gpt-5.4-mini` / `claude-haiku-4-5`),
 - uložit a smazat API klíče (OpenAI / Anthropic / GitHub),
-- nastavit globální flagy (Demo režim, doplňující otázky),
+- přepnout, zda se mají automaticky ptát doplňující otázky před spuštěním pipeline,
+- zapnout / vypnout živá tržní data v AI Finance,
 - otevřít **Debug logy** (zobrazit / zkopírovat / vymazat / otevřít složku).
 
 Klíče se neukládají na disk v plain textu. Aplikace je pošle do nativního úložiště OS přes balíček [`keyring`](https://pypi.org/project/keyring/):
@@ -161,9 +168,29 @@ který přepojí Python `ssl.SSLContext` na nativní úložiště:
 sekcích / knihovnách `inject_into_ssl()` nevolá - dle upstream
 upozornění to smí jen entry-point aplikace.
 
-### Demo režim (offline, bez tokenů)
+### Web search v chatu (opt-in)
 
-Každá AI sekce má v Setupu tlačítko **Vyzkoušet ukázková data**, které celý workflow projde bez jediného volání providera. Vhodné pro screenshoty, demonstrace a první seznámení s appkou.
+OpenAI (`web_search_preview`) i Anthropic (`web_search_20250305`) mají
+vestavěné nástroje na webové vyhledávání. Můžou tak odpovědět třeba na
+„kolik dneska zavřel S&P 500" aniž bychom kamkoli posílali tvoje
+osobní údaje. Zapni je v **Nastavení -> Povolit vyhledávání na webu v
+AI chatu** - defaultně je to vypnuté, protože dohledání stojí extra
+tokeny. K providerovi se dostane jenom tvůj dotaz, nic víc (žádná IP,
+zařízení ani historie prohlížení).
+
+Stejný přepínač najdeš i v chat liště AI Finance jako pill „Web: ZAP /
+VYP", abys ho mohl(a) přepínat za běhu bez opouštění sekce.
+
+### Živá tržní data (opt-in, defaultně zapnuto)
+
+AI Finance kreslí pruh živých tickerů přes
+[`yfinance`](https://pypi.org/project/yfinance/). Volá jen veřejné
+endpointy Yahoo Finance - žádný API klíč, žádný účet, žádná
+identifikace uživatele. Defaultní symboly jsou S&P 500 (`^GSPC`),
+NASDAQ (`^IXIC`), DOW JONES (`^DJI`), BTC/USD (`BTC-USD`) a EUR/CZK
+(`EURCZK=X`). Výsledky cachujeme v paměti 60 sekund. **Nastavení -> Živá
+tržní data** vypne stahování úplně a pravý panel přepne na mock
+tickery.
 
 ### Debug logy
 
@@ -274,7 +301,7 @@ ai-hub/
     │   ├── ai_legal/              # AI-napojený chat (multi-formát upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # postavené podle návrhu (mock UI)
-    │   ├── ai_finance/           # placeholder
+    │   ├── ai_finance/           # plně napojené (rozpočty / spoření / investice / analýza / daně / pojištění / kalkulačky)
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # AI asistent na PDF / DOCX (summary / Q&A / rewrite / extract)
@@ -312,7 +339,7 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   **jenom** aktivní sekci (ostatní si nový jazyk vyzvednou až při
   příštím kliknutí). Celé okno se už nepřebudovává od nuly, takže
   bývalá ~3sekundová pauza na sekci AI Career je pryč.
-- **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, demo flagy, debug logy
+- **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, přepínače pro doplňující otázky a živá tržní data, debug logy
 - **AI Životopis / Kariéra** - dva režimy přepínatelné v hlavičce sekce:
   - **Chat** (Verze B) - konverzační HR asistent, který si můžeš zeptat na cokoli k roli, životopisu, motivačnímu dopisu nebo přípravě na pohovor; do bubliny se dají připojit dokumenty (PDF / DOCX / TXT / MD / HTML) a kontext se přenáší do dalších otázek.
   - **Formulářový režim** (Verze A) - 4 stage taby (Setup → Match → Documents → History):
@@ -322,7 +349,6 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
     - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
     - inline refine ("Problem 1, Problem 2 …" → AI revize)
     - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
-  - Demo režim (offline showcase) v obou režimech
   - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
 - **AI LinkedIn Profile Builder** - kompletní pipeline pro generování / přepis LinkedIn profilu:
   - **Setup** - jméno, město, jazyk profilu (EN/CS), tone (warm / sharp / executive / casual), cílová role, target jobs (URL nebo text), CV / LinkedIn export upload, GitHub URL, do-not-mention seznam (témata, která AI nesmí zmínit) a pin / preferred sekce
@@ -332,13 +358,23 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Profile Completeness Checklist** s prioritami (must-have / nice-to-have / advanced) a celkovým profile score 0-100
   - **Output** tab - náhled per sekce + tlačítka Copy, Refine ("Problem 1 …"), Regenerate
   - Save complete LinkedIn package → `outputs/linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
-  - Demo režim, EN/CS strings, doplňující otázky (clarifying questions) když chybí signál pro některou sekci
+  - EN/CS strings, doplňující otázky (clarifying questions) když chybí signál pro některou sekci
+- **AI Finance** - opatrný osobní finanční asistent bez halucinací s osmi záložkami:
+  - **Chat** - libovolné dotazy. Úvodní bublina ukáže tvůj poslední rozpočet (donut + rozpis) až poté, co si ho v záložce **Rozpočet** sestavíš; do té doby chat startuje s čistým pozdravem. Quick-action chipy navigují do strukturovaných záložek a **flow-wrap** se přelamují, takže nepřetékají v úzkých oknech.
+  - **Rozpočet** - vyber metodu (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, vlastní), zadej příjem + esenciály + cíle. Získáš strukturovaný `BudgetPlan` (cachovaný JSON) + donut, tabulku kategorií, upozornění a další kroky.
+  - **Investice** - vrátí tři vzdělávací scénáře (Konzervativní / Vyvážený / Růstový) s alokací podle tříd aktiv a projektovanou hodnotou pro zvolený horizont. Nikdy nedoporučujeme konkrétní akcii ani fond.
+  - **Analýza** - přetáhni CSV / PDF výpis z banky (parsuje se lokálně přes `src/services/file_parser.py`); asistent rozčlení výdaje podle kategorií, vyznačí pravidelné platby, top odlivy a navrhne, kde ušetřit.
+  - **Daně** - checklist podle země + statusu, termíny, dokumenty k přípravě + zřetelné upozornění „nejsem licencovaný daňový poradce".
+  - **Pojištění** - projde stávající smlouvy, vyznačí mezery / duplikace a doporučí další kroky.
+  - **Kalkulačky** - šest čistě klientských kalkulaček (složené úročení, splátka hypotéky, bonita půjčky, důchodový plán, cíl spoření, převodník měn). Měna pohání živé FX přes službu `market_data`.
+  - **Šablony** - čtyři statické šablonové karty z původního mock layoutu.
+  - **Pravý kontextový panel** - **živý, uživatelem editovatelný přehled trhů** přes [`yfinance`](https://pypi.org/project/yfinance/) (free, veřejné Yahoo Finance endpointy; **žádný API klíč, účet ani identifikace uživatele**). Karta startuje s `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` a má tlačítko **Upravit** - dialog umožní přidat / odebrat tickery (libovolný Yahoo symbol) a seznam se ukládá do `~/AI Hub/settings.json`. Karty „Nedávné analýzy" a „Tip dne" zůstávají prázdné, dokud nespustíš reálnou pipeline; nikdy nezobrazují vymyšlená čísla.
+  - **Empty-by-default UX** - Rozpočet / Investice / Analýza / Daně / Pojištění startují prázdné a strukturované karty se vykreslí až po kliknutí na primární CTA. Dvousloupcový layout (formulář / výsledek) se v úzkých oknech přepne do jednoho sloupce a quick-action chipy v chatu se přelamují na další řádek místo toho, aby přetekly mimo obrazovku.
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
   - **Multi-formát upload** - přetáhni `PDF`, `DOCX`, `HTML`, `TXT` (nebo `MD`) dokument do pravého panelu; tělo textu krmí prompty, z počítače odchází jen extrahovaný plain text.
   - **Čtyři quick-action tlačítka** - Shrnout / Najít rizika / Vysvětlit právní pojmy / Navrhnout úpravy - každé otevře specializovaný prompt a streamuje odpověď zpátky do chatu. Volné psaní v inputu funguje stejně.
   - **Disclaimer „nejsem advokát"** - inline banner pod hlavičkou připomíná, že asistent nenahrazuje právní poradenství; každá delší odpověď to znovu zmíní běžným jazykem.
-  - **Demo režim** - globální Demo flag v **Nastavení** projde stejné UI bez volání providera (vrací stubovanou odpověď).
   - **Kompaktní hlavička** - sekce Legal vypíná koncová tlačítka *Jak to použít* / `…` a používá užší top bar, aby chat měl víc vertikálního prostoru; ostatní sekce si zachovávají plnou hlavičku díky novým flagsům `show_help_button` / `show_menu_button` / `compact` v `src/components/header.py`.
 - Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline
 
@@ -406,5 +442,6 @@ Použité knihovny a assety:
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (s výjimkou pro dynamické linkování, kterou PyInstaller používá) | https://www.qt.io/licensing |
 | [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
+| [yfinance](https://pypi.org/project/yfinance/) | Apache License 2.0 | https://github.com/ranaroussi/yfinance/blob/main/LICENSE.txt |
 
 LGPL-3.0 i Apache-2.0 jsou s MIT redistribucí kompatibilní, dokud zachováme atribuci (viz [LICENSE](LICENSE)).

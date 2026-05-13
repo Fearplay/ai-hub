@@ -25,17 +25,20 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QLayout,
+    QLayoutItem,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -278,6 +281,141 @@ def hbox(spacing: int = 0, margins: tuple[int, int, int, int] = (0, 0, 0, 0)) ->
     layout.setSpacing(spacing)
     layout.setContentsMargins(*margins)
     return layout
+
+
+class FlowLayout(QLayout):
+    """Auto-wrapping flow layout (Qt's canonical Python example).
+
+    Used for chip rows / tag clouds / quick-action ribbons that should
+    wrap to a second line on narrow widths instead of overflowing the
+    parent. Mirrors the official PySide flow-layout sample so behaviour
+    matches what users intuitively expect from CSS flex-wrap.
+    """
+
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        *,
+        margin: int = 0,
+        h_spacing: int = 8,
+        v_spacing: int = 8,
+    ) -> None:
+        super().__init__(parent)
+        if parent is None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self._items: list[QLayoutItem] = []
+        self._h_spacing = h_spacing
+        self._v_spacing = v_spacing
+
+    def __del__(self) -> None:
+        item = self.takeAt(0)
+        while item is not None:
+            item = self.takeAt(0)
+
+    def addItem(self, item: QLayoutItem) -> None:  # noqa: N802
+        self._items.append(item)
+
+    def horizontalSpacing(self) -> int:  # noqa: N802
+        if self._h_spacing >= 0:
+            return self._h_spacing
+        return self._smart_spacing(QStyle.PixelMetric.PM_LayoutHorizontalSpacing)
+
+    def verticalSpacing(self) -> int:  # noqa: N802
+        if self._v_spacing >= 0:
+            return self._v_spacing
+        return self._smart_spacing(QStyle.PixelMetric.PM_LayoutVerticalSpacing)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int) -> Optional[QLayoutItem]:  # noqa: N802
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int) -> Optional[QLayoutItem]:  # noqa: N802
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self) -> Qt.Orientation:  # noqa: N802
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect: QRect) -> None:  # noqa: N802
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:  # noqa: N802
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(
+            margins.left() + margins.right(),
+            margins.top() + margins.bottom(),
+        )
+        return size
+
+    def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
+        margins = self.contentsMargins()
+        effective = rect.adjusted(
+            margins.left(),
+            margins.top(),
+            -margins.right(),
+            -margins.bottom(),
+        )
+        x = effective.x()
+        y = effective.y()
+        line_height = 0
+        for item in self._items:
+            wid = item.widget()
+            space_x = self.horizontalSpacing()
+            space_y = self.verticalSpacing()
+            if wid is not None:
+                space_x = max(
+                    space_x,
+                    wid.style().layoutSpacing(
+                        QSizePolicy.ControlType.PushButton,
+                        QSizePolicy.ControlType.PushButton,
+                        Qt.Orientation.Horizontal,
+                    ),
+                )
+                space_y = max(
+                    space_y,
+                    wid.style().layoutSpacing(
+                        QSizePolicy.ControlType.PushButton,
+                        QSizePolicy.ControlType.PushButton,
+                        Qt.Orientation.Vertical,
+                    ),
+                )
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > effective.right() and line_height > 0:
+                x = effective.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+        return y + line_height - rect.y() + margins.bottom()
+
+    def _smart_spacing(self, pm: QStyle.PixelMetric) -> int:
+        parent = self.parent()
+        if parent is None:
+            return -1
+        if parent.isWidgetType():
+            return parent.style().pixelMetric(pm, None, parent)
+        return parent.spacing()  # type: ignore[attr-defined]
 
 
 class Card(QFrame):

@@ -67,9 +67,6 @@ def _cost_body(theme: Theme, txt: dict) -> QFrame:
     holder.setStyleSheet("background: transparent;")
     layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     holder.setLayout(layout)
-    if STATE.demo_mode:
-        layout.addWidget(MutedLabel(txt["ctx_cost_demo"], theme=theme, size=12))
-        return holder
 
     provider_label = (
         settings_store.PROVIDER_OPENAI

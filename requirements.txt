@@ -35,3 +35,8 @@ reportlab>=4.0.0
 
 # OS-level clipboard helper (cross-platform, no UI dependency)
 pyperclip>=1.9.0
+
+# Live market tickers + FX for AI Finance (free, no API key, hits only
+# public Yahoo Finance endpoints; no user identification). Opt-out via
+# Settings -> "Live market data".
+yfinance>=0.2.40

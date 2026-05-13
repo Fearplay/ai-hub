@@ -35,7 +35,12 @@ from PySide6.QtWidgets import (
 )
 
 from src.components.language_toggle import language_toggle
-from src.components.nav_item import NavItemHandle, nav_item_handle
+from src.components.nav_item import (
+    NavItemHandle,
+    ReorderHandle,
+    nav_item_handle,
+    reorderable_nav_item,
+)
 from src.components.theme_toggle import theme_toggle
 from src.components.user_card import user_card
 from src.i18n import t
@@ -47,7 +52,13 @@ from src.qt.widgets import (
     hbox,
     vbox,
 )
-from src.sections import PRIMARY_SECTIONS, SECONDARY_SECTIONS
+from src.sections import (
+    PRIMARY_SECTIONS,
+    SECONDARY_SECTIONS,
+    reload_primary_order,
+)
+from src.services import logger as logger_service
+from src.services import settings_store
 from src.theme import Theme
 
 
@@ -130,6 +141,36 @@ def _new_chat_button(theme: Theme, lang: str) -> ClickFrame:
     return btn
 
 
+def _persist_reorder(source_key: str, target_key: str, before: bool) -> bool:
+    """Compute and save the new primary section order after a drop.
+
+    Returns ``True`` when the order actually changed. The sidebar
+    rebuild is then triggered by the caller via
+    :func:`src.app.request_section_refresh`.
+    """
+    current = [s.key for s in PRIMARY_SECTIONS]
+    if source_key not in current or target_key not in current:
+        return False
+    current.remove(source_key)
+    insert_at = current.index(target_key) + (0 if before else 1)
+    current.insert(insert_at, source_key)
+    try:
+        settings_store.set_sidebar_order(current)
+    except Exception as exc:
+        logger_service.log_exception(
+            "sidebar", "persist_reorder_failed", exc,
+            source=source_key, target=target_key, before=before,
+        )
+        return False
+    reload_primary_order()
+    logger_service.log_event(
+        "INFO", "sidebar", "reorder_done",
+        source=source_key, target=target_key, before=before,
+        order=current,
+    )
+    return True
+
+
 def sidebar(
     theme: Theme,
     *,
@@ -140,10 +181,38 @@ def sidebar(
     on_theme_toggle: Callable[[], None],
     on_lang_toggle: Callable[[], None],
 ) -> tuple[QFrame, SetActive]:
-    handles: dict[str, NavItemHandle] = {}
+    primary_handles: dict[str, ReorderHandle] = {}
+    secondary_handles: dict[str, NavItemHandle] = {}
 
-    def _build_handles(sections, into_layout: QVBoxLayout) -> None:
-        for section in sections:
+    def _on_reorder(source_key: str, target_key: str, before: bool) -> None:
+        if not _persist_reorder(source_key, target_key, before):
+            return
+        try:
+            from src.app import request_section_refresh
+
+            request_section_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "sidebar", "reorder_refresh_failed", exc,
+            )
+
+    def _build_primary(into_layout: QVBoxLayout) -> None:
+        for section in PRIMARY_SECTIONS:
+            handle = reorderable_nav_item(
+                theme,
+                section.icon,
+                section.label(lang),
+                section_key=section.key,
+                active=section.key == active_section,
+                badge=section.badge,
+                on_click=lambda k=section.key: on_section_change(k),
+                on_reorder=_on_reorder,
+            )
+            primary_handles[section.key] = handle
+            into_layout.addWidget(handle.container)
+
+    def _build_secondary(into_layout: QVBoxLayout) -> None:
+        for section in SECONDARY_SECTIONS:
             handle = nav_item_handle(
                 theme,
                 section.icon,
@@ -152,7 +221,7 @@ def sidebar(
                 badge=section.badge,
                 on_click=lambda k=section.key: on_section_change(k),
             )
-            handles[section.key] = handle
+            secondary_handles[section.key] = handle
             into_layout.addWidget(handle.container)
 
     container = QFrame()
@@ -196,7 +265,7 @@ def sidebar(
     primary_holder.setStyleSheet("background: transparent;")
     primary_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     primary_holder.setLayout(primary_layout)
-    _build_handles(PRIMARY_SECTIONS, primary_layout)
+    _build_primary(primary_layout)
     middle_layout.addWidget(primary_holder)
 
     if SECONDARY_SECTIONS:
@@ -211,7 +280,7 @@ def sidebar(
         secondary_holder.setStyleSheet("background: transparent;")
         secondary_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
         secondary_holder.setLayout(secondary_layout)
-        _build_handles(SECONDARY_SECTIONS, secondary_layout)
+        _build_secondary(secondary_layout)
         middle_layout.addWidget(secondary_holder)
 
     middle_layout.addStretch(1)
@@ -243,10 +312,14 @@ def sidebar(
         if key == current["key"]:
             return
         prev = current["key"]
-        if prev in handles:
-            handles[prev].set_active(theme, active=False)
-        if key in handles:
-            handles[key].set_active(theme, active=True)
+        if prev in primary_handles:
+            primary_handles[prev].set_active(theme, active=False)
+        elif prev in secondary_handles:
+            secondary_handles[prev].set_active(theme, active=False)
+        if key in primary_handles:
+            primary_handles[key].set_active(theme, active=True)
+        elif key in secondary_handles:
+            secondary_handles[key].set_active(theme, active=True)
         current["key"] = key
 
     return container, set_active

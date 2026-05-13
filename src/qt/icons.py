@@ -205,6 +205,7 @@ class Icons:
     DESCRIPTION_OUTLINED = "description"
     DIRECTIONS_CAR_OUTLINED = "directions_car"
     DOWNLOAD_OUTLINED = "download"
+    DRAG_INDICATOR = "drag_indicator"
     EDIT_NOTE_OUTLINED = "edit_note"
     EDIT_OUTLINED = "edit"
     ELDERLY = "elderly"

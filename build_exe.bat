@@ -171,11 +171,17 @@ REM                                            _openssl) at import time; force
 REM                                            PyInstaller to bundle all three
 REM                                            so the .exe trusts the system
 REM                                            CA store on a clean machine.
+REM   --collect-submodules yfinance        -> yfinance lazily imports a handful
+REM                                            of internal modules (multi.py,
+REM                                            scrapers, utils). Force the bundle
+REM                                            so the AI Finance live tickers
+REM                                            still resolve in the frozen .exe.
 pyinstaller --noconfirm --onefile --windowed --name AIHub ^
     --add-data "assets\fonts;assets\fonts" ^
     --hidden-import pyperclip ^
     --collect-submodules PySide6 ^
     --collect-submodules truststore ^
+    --collect-submodules yfinance ^
     %ICON_ARG% ^
     main.py
 if errorlevel 1 (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -21,7 +20,6 @@ from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
-    GhostButton,
     IconLabel,
     IconOnlyButton,
     MutedLabel,
@@ -36,7 +34,6 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
-from src.sections.ai_linkedin import pipeline
 from src.sections.ai_linkedin.data import audience_options, tone_options
 from src.sections.ai_linkedin.refs import REFS, safe
 from src.sections.ai_linkedin.state import (
@@ -303,7 +300,6 @@ def _step_inputs(
         STATE.linkedin_export = UploadedFile(path=parsed.path, name=parsed.name, ext=parsed.ext, size_bytes=parsed.size_bytes, text=parsed.text)
         rebuild()
 
-    body_layout.addWidget(BodyLabel(txt["setup_resume_title"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
     body_layout.addWidget(upload_zone(
         theme,
         title=txt["setup_resume_title"],
@@ -311,6 +307,7 @@ def _step_inputs(
         extensions=_RESUME_EXTENSIONS,
         unsupported_message=txt["setup_resume_hint"],
         on_file_resolved=_on_resume,
+        height=140,
         paste_path_label=txt["upload_paste_path_btn"],
         paste_path_tooltip=txt["upload_paste_path_tooltip"],
         cta_label=txt["upload_cta_label"],
@@ -321,7 +318,6 @@ def _step_inputs(
         body_layout.addWidget(MutedLabel("\u2014", theme=theme, size=12))
     body_layout.addSpacing(8)
 
-    body_layout.addWidget(BodyLabel(txt["setup_linkedin_title"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
     body_layout.addWidget(upload_zone(
         theme,
         title=txt["setup_linkedin_title"],
@@ -329,7 +325,7 @@ def _step_inputs(
         extensions=_LINKEDIN_EXTENSIONS,
         unsupported_message=txt["setup_linkedin_hint"],
         on_file_resolved=_on_linkedin,
-        height=104,
+        height=140,
         paste_path_label=txt["upload_paste_path_btn"],
         paste_path_tooltip=txt["upload_paste_path_tooltip"],
         cta_label=txt["upload_cta_label"],
@@ -459,43 +455,24 @@ def _footer_bar(
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     bar.setLayout(layout)
 
-    def _on_demo() -> None:
-        STATE.demo_mode = True
-
-        def _worker() -> None:
-            try:
-                pipeline.load_demo(output_lang=(STATE.output_lang or lang))
-            except Exception as exc:
-                logger_service.log_exception(
-                    "ai_linkedin.tab_setup", "demo_worker_failed", exc,
-                )
-                return
-            runtime_dispatch(lambda: on_navigate_tab(TAB_SECTIONS))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
     def _on_continue() -> None:
-        if not STATE.demo_mode and not STATE.target_roles:
+        if not STATE.target_roles:
             logger_service.log_event(
                 "WARNING", "ai_linkedin.tab_setup", "continue_no_roles",
             )
             return
-        if not STATE.demo_mode:
-            provider = settings_store.get_provider()
-            key_name = (
-                secrets.ANTHROPIC_API_KEY
-                if provider == settings_store.PROVIDER_ANTHROPIC
-                else secrets.OPENAI_API_KEY
+        provider = settings_store.get_provider()
+        key_name = (
+            secrets.ANTHROPIC_API_KEY
+            if provider == settings_store.PROVIDER_ANTHROPIC
+            else secrets.OPENAI_API_KEY
+        )
+        if not secrets.has_secret(key_name):
+            logger_service.log_event(
+                "WARNING", "ai_linkedin.tab_setup", "continue_no_api_key", provider=provider,
             )
-            if not secrets.has_secret(key_name):
-                logger_service.log_event(
-                    "WARNING", "ai_linkedin.tab_setup", "continue_no_api_key", provider=provider,
-                )
         on_navigate_tab(TAB_SECTIONS)
 
-    demo_btn = GhostButton(txt["setup_demo_button"], theme=theme, icon=Icons.AUTO_AWESOME)
-    demo_btn.clicked.connect(_on_demo)
-    layout.addWidget(demo_btn)
     layout.addStretch(1)
 
     continue_btn = PrimaryButton(txt["setup_continue_button"], theme=theme, icon=Icons.ARROW_FORWARD)

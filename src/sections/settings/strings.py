@@ -41,8 +41,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "key_hide_btn": "Hide",
 
         "general_card_title": "General",
-        "general_demo_default_label": "Start AI Career runs in Demo mode",
-        "general_demo_default_desc": "When on, the analysis uses local mock data instead of calling the AI - useful for screenshots and offline work.",
+        "general_web_search_label": "Enable web search in AI chat",
+        "general_web_search_desc": "When on, OpenAI / Anthropic can perform a quick web lookup from the chat. Off by default - costs extra tokens. We only send the prompt you typed, never any personal data.",
+        "general_market_data_label": "Live market data (yfinance)",
+        "general_market_data_desc": "When on, AI Finance pulls live tickers via Yahoo Finance. No API key, no account, no user identification. Off by default keeps AI Finance fully offline.",
 
         "logs_card_label": "Debug logs",
         "logs_card_desc": "We write a small rolling log file when something goes wrong (silent click, failed save, etc.). Use it to copy or clear the file.",
@@ -112,8 +114,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "key_hide_btn": "Skrýt",
 
         "general_card_title": "Obecné",
-        "general_demo_default_label": "Spustit AI Career analýzu v Demo režimu",
-        "general_demo_default_desc": "Když je zapnuté, analýza používá lokální mock data místo volání AI - hodí se na screenshoty a offline práci.",
+        "general_web_search_label": "Povolit vyhledávání na webu v AI chatu",
+        "general_web_search_desc": "Když je zapnuté, OpenAI / Anthropic můžou v chatu rychle dohledat aktuální data. Defaultně vypnuto - stojí navíc tokeny. Posíláme jen tvůj dotaz, žádné osobní údaje.",
+        "general_market_data_label": "Živá tržní data (yfinance)",
+        "general_market_data_desc": "Když je zapnuté, AI Finance stahuje tickery z Yahoo Finance. Žádný API klíč, účet ani identifikace. Vypnuto udrží AI Finance plně offline.",
 
         "logs_card_label": "Debug logy",
         "logs_card_desc": "Když se něco pokazí (kliknutí bez efektu, neúspěšné uložení atd.), zapisuje se to do malého log souboru. Tady ho můžeš zkopírovat nebo vymazat.",

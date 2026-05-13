@@ -21,7 +21,6 @@ from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
-    GhostButton,
     IconLabel,
     IconOnlyButton,
     MutedLabel,
@@ -303,7 +302,7 @@ def _step_2(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
         extensions=_LINKEDIN_EXTENSIONS,
         unsupported_message=txt["resume_unsupported"],
         on_file_resolved=_on_linkedin,
-        height=140,
+        height=160,
         paste_path_label=txt["upload_paste_path_btn"],
         paste_path_tooltip=txt["upload_paste_path_tooltip"],
         cta_label=txt["upload_cta_label"],
@@ -413,8 +412,6 @@ def build_setup_tab(
     button_row_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     button_row.setLayout(button_row_layout)
 
-    demo_btn = GhostButton(txt["footer_demo_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
-    button_row_layout.addWidget(demo_btn)
     button_row_layout.addStretch(1)
     run_btn = PrimaryButton(txt["footer_run_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
     button_row_layout.addWidget(run_btn)
@@ -462,8 +459,6 @@ def build_setup_tab(
             )
 
     def _label_for(stage: str) -> str:
-        if stage == "demo":
-            return txt["footer_run_demo_running"]
         if stage == "followups":
             return txt["footer_run_followups_running"]
         if stage == "match":
@@ -544,50 +539,34 @@ def build_setup_tab(
             on_cancel=_on_cancel,
         )
 
-    def _on_demo() -> None:
-        STATE.demo_mode = True
-        pipeline.load_demo(output_lang=lang)
-        STATE.active_tab = TAB_MATCH
-        REFS.dispatch(_request_full_refresh)
-    demo_btn.clicked.connect(_on_demo)
-
     def _on_run() -> None:
         if not STATE.can_run():
             _set_status(txt["run_disabled_hint"], error=True)
             return
-        if not STATE.demo_mode:
-            provider = settings_store.get_provider()
-            key_name = (
-                secrets.ANTHROPIC_API_KEY
-                if provider == settings_store.PROVIDER_ANTHROPIC
-                else secrets.OPENAI_API_KEY
-            )
-            if not secrets.has_secret(key_name):
-                _set_status(txt["error_no_key_template"].format(provider=provider), error=True)
-                return
+        provider = settings_store.get_provider()
+        key_name = (
+            secrets.ANTHROPIC_API_KEY
+            if provider == settings_store.PROVIDER_ANTHROPIC
+            else secrets.OPENAI_API_KEY
+        )
+        if not secrets.has_secret(key_name):
+            _set_status(txt["error_no_key_template"].format(provider=provider), error=True)
+            return
 
         STATE.followup_questions = []
         STATE.followup_qa = []
         _set_status("")
-        STATE.run_stage = "demo" if STATE.demo_mode else "running"
+        STATE.run_stage = "running"
         _refresh_run_button()
 
         def _phase1() -> None:
             try:
                 if (
-                    not STATE.demo_mode
-                    and STATE.github_url
+                    STATE.github_url
                     and not STATE.github_skip
                     and STATE.github_profile is None
                 ):
                     STATE.github_profile = pipeline.fetch_github_profile(STATE.github_url)
-
-                if STATE.demo_mode:
-                    pipeline.load_demo(output_lang=lang)
-                    STATE.run_stage = ""
-                    runtime_dispatch(_refresh_run_button)
-                    _go_to_match()
-                    return
 
                 res = pipeline.extract_candidate(output_lang=lang)
                 if not res.ok:

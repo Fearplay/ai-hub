@@ -11,17 +11,23 @@
 A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
-in the middle, and a context panel on the right. **AI CV / Career** and
-the new **AI LinkedIn Profile Builder** are fully wired to OpenAI /
-Anthropic; other sections share the same architecture and are being
-filled in as we go.
+in the middle, and a context panel on the right. **AI CV / Career**,
+**AI LinkedIn Profile Builder**, and **AI Finance** are fully wired to
+OpenAI / Anthropic; other sections share the same architecture and are
+being filled in as we go.
+
+The left sidebar is **drag-and-drop reorderable** - grab the small grip
+on the right of any primary AI section and drop it where you want.
+Order persists in `~/AI Hub/settings.json` so your layout survives
+restarts. The secondary group (History / Favorites / Settings) stays
+pinned below the divider.
 
 ## Requirements
 
 - Python 3.10+
 - PySide6 >= 6.7.0 (Qt 6.x, ships its own Qt runtime - no extra SDK)
-- API keys (optional - without them the app runs in Demo mode):
-  - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`) under **Settings**
+- At least one provider API key configured under **Settings**:
+  - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`)
   - **GitHub** personal access token (optional, lifts the rate limit for AI Career)
 
 > No Flutter SDK, Qt SDK, or Visual Studio C++ workload is required.
@@ -135,7 +141,8 @@ The **Settings** section (in the sidebar, under the divider) lets you:
 - pick the AI provider (**OpenAI** / **Anthropic**) and model
   (defaults: `gpt-5.4-mini` / `claude-haiku-4-5`),
 - save and delete API keys (OpenAI / Anthropic / GitHub),
-- toggle global flags (Demo mode, follow-up questions),
+- toggle the global "ask follow-up questions before running" preference,
+- enable / disable live market data for AI Finance,
 - open the **Debug logs** viewer (view / copy / clear / open folder).
 
 Keys are not written to disk in plain text. The app pushes them to the
@@ -175,11 +182,30 @@ to use:
 code calls `inject_into_ssl()` - per the upstream warning, only the
 application entry point is allowed to.
 
-### Demo mode (offline, no tokens)
+### Web search in chat (opt-in)
 
-Every AI section has a **Try demo data** button in Setup which walks the
-whole workflow without calling any provider. Useful for screenshots,
-demos, and the first walk-through of the app.
+OpenAI (`web_search_preview`) and Anthropic (`web_search_20250305`) both
+ship built-in web-search tools that can answer "what is today's S&P 500
+close?" without us mailing user data anywhere. Flip them on under
+**Settings -> Enable web search in AI chat** - the toggle is off by
+default because the lookup costs extra tokens. Only the prompt you
+typed reaches the provider; no IP, device fingerprint, or browsing
+history is sent.
+
+The same provider switch is exposed in the AI Finance chat composer as
+a one-click pill ("Web: ON / OFF") so you can toggle it mid-conversation
+without leaving the section.
+
+### Live market data (opt-in default-on)
+
+AI Finance renders a live ticker strip via
+[`yfinance`](https://pypi.org/project/yfinance/). It hits public Yahoo
+Finance endpoints only - no API key, no account, no user identification.
+The default symbols are S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), DOW JONES
+(`^DJI`), BTC/USD (`BTC-USD`), and EUR/CZK (`EURCZK=X`). Results are
+cached in-process for 60 seconds. Flip **Settings -> Live market data**
+off to keep AI Finance fully offline; the right-hand panel then falls
+back to mock tickers.
 
 ### Debug logs
 
@@ -278,7 +304,7 @@ ai-hub/
     │   ├── ai_legal/              # AI-wired chat (multi-format upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # designed mock UI
-    │   ├── ai_finance/           # placeholder
+    │   ├── ai_finance/           # fully wired (budgets / savings / investments / analysis / taxes / insurance / calculators)
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
@@ -316,7 +342,7 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   language on their next click). The full window is no longer torn down on
   every toggle, so the previously-3-second freeze on the AI Career section
   is gone.
-- **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, demo flags, debug logs.
+- **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, follow-up-question + market-data toggles, debug logs.
 - **AI CV / Career** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
   - **Form mode** (Version A) - 4 stage tabs (Setup -> Match -> Documents -> History):
@@ -326,7 +352,6 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
     - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
-  - Demo mode (offline showcase) in both modes.
   - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
 - **AI LinkedIn Profile Builder** - same two-mode shell (Chat / Builder), aimed at a complete LinkedIn rewrite:
   - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
@@ -336,13 +361,22 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Profile completeness checklist** with priority levels (critical / important / nice to have) and a 0-100 profile score.
   - **Output** tab renders every generated section as a card (with copy-to-clipboard) + the checklist + the score.
   - Save the complete profile to `outputs/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
-  - Demo mode (offline showcase) populates a curated end-to-end example in seconds.
+- **AI Finance** - cautious, no-hallucination personal-finance assistant with eight tabs:
+  - **Chat** - free-form questions. A greeting bubble shows your latest budget (donut + breakdown) once you build one in the Budget tab; before that, the chat starts from a clean greeting. Quick-action chips route to the structured tabs and **flow-wrap** so they don't overflow on narrow windows.
+  - **Budget** - pick a method (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, custom), enter income + essentials + goals, get a structured `BudgetPlan` JSON (cached) with donut chart, category table, warnings, and next-step suggestions.
+  - **Investments** - returns three educational scenarios (Conservative / Moderate / Growth) with asset-class allocations and a projected value over the chosen horizon. Never names a specific stock or fund.
+  - **Analysis** - drop a CSV / PDF bank statement (parsed locally via `src/services/file_parser.py`); the assistant categorises spend, flags recurring payments, lists top outflows, and proposes savings.
+  - **Taxes** - country + filing-status checklist with deadlines, documents to gather, and a "this is not licensed tax advice" disclaimer.
+  - **Insurance** - reviews existing policies, flags gaps / duplicates, and suggests next steps.
+  - **Calculators** - six pure-Python calculators (compound interest, mortgage payment, loan affordability, retirement planner, savings goal, currency converter). The currency converter pulls live FX via the `market_data` service.
+  - **Templates** - the four static template cards from the original mock layout.
+  - **Right-hand context panel** - **live, user-editable market overview** via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**). The card seeds with `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` and exposes an **Upravit / Edit** button - the dialog lets the user add / remove tickers (any Yahoo symbol) and persists the list to `~/AI Hub/settings.json`. The "Recent analyses" and "Tip of the day" cards stay empty until the user runs a real pipeline; nothing fakes the numbers.
+  - **Empty-by-default UX** - Budget / Invest / Analysis / Taxes / Insurance start blank and only paint structured cards once you click their primary CTA. The two-column form / result layout collapses into a single column on narrow widths, and the chat quick-action chips wrap onto multiple rows instead of stretching off-screen.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
   - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
   - **Four quick-action chips** - Summarise / Find risks / Explain legal terms / Suggest changes - each opens a tailored prompt and streams the reply back into the chat. Plain typing in the input field also works.
   - **No-lawyer disclaimer** - inline banner under the header reminds the user the assistant does not replace legal advice; every long reply re-states it in plain language.
-  - **Demo mode** - turn the global Demo flag on in **Settings** to walk the same UI without any provider call (returns a stubbed answer).
   - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
 - Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
@@ -413,6 +447,7 @@ Libraries and assets used:
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
 | [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
+| [yfinance](https://pypi.org/project/yfinance/) | Apache License 2.0 | https://github.com/ranaroussi/yfinance/blob/main/LICENSE.txt |
 
 LGPL-3.0 and Apache-2.0 are both compatible with MIT redistribution as
 long as we keep the upstream attribution (see [LICENSE](LICENSE)).

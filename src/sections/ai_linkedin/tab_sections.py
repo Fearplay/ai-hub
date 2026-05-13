@@ -376,7 +376,7 @@ def build_sections_tab(
         def _worker() -> None:
             output_lang = (STATE.output_lang or lang or "en")
             try:
-                if ask_followups and not STATE.demo_mode:
+                if ask_followups:
                     res = pipeline.extract_profile(output_lang=output_lang)
                     if not res.ok:
                         STATE.run_stage = ""
@@ -454,24 +454,23 @@ def build_sections_tab(
         )
 
     def _on_run() -> None:
-        if not STATE.demo_mode and not STATE.target_roles:
+        if not STATE.target_roles:
             logger_service.log_event(
                 "WARNING", "ai_linkedin.tab_sections", "run_no_target_roles",
             )
             return
-        if not STATE.demo_mode:
-            provider = settings_store.get_provider()
-            key_name = (
-                secrets.ANTHROPIC_API_KEY
-                if provider == settings_store.PROVIDER_ANTHROPIC
-                else secrets.OPENAI_API_KEY
+        provider = settings_store.get_provider()
+        key_name = (
+            secrets.ANTHROPIC_API_KEY
+            if provider == settings_store.PROVIDER_ANTHROPIC
+            else secrets.OPENAI_API_KEY
+        )
+        if not secrets.has_secret(key_name):
+            logger_service.log_event(
+                "WARNING", "ai_linkedin.tab_sections",
+                "run_no_api_key", provider=provider,
             )
-            if not secrets.has_secret(key_name):
-                logger_service.log_event(
-                    "WARNING", "ai_linkedin.tab_sections",
-                    "run_no_api_key", provider=provider,
-                )
-                return
+            return
         ask = STATE.ask_followups
         _phase_run(ask_followups=ask)
 
