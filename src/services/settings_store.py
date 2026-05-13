@@ -1,4 +1,4 @@
-"""Non-secret user preferences (provider, model, demo mode, …).
+"""Non-secret user preferences (provider, model, finance tickers, …).
 
 Lives next to :mod:`src.services.secrets` but stores values in plain JSON
 under ``~/AI Hub/settings.json``. API keys never go here - those use the
@@ -105,14 +105,6 @@ def set_model(provider: str, model: str) -> bool:
     return set_value(key, model)
 
 
-def get_demo_default() -> bool:
-    return bool(get("demo_default", False))
-
-
-def set_demo_default(value: bool) -> bool:
-    return set_value("demo_default", bool(value))
-
-
 def get_ask_followups() -> bool:
     # Default ON: the clarifying-questions step typically lifts the
     # match-analysis quality enough to be worth the extra LLM call. Users
@@ -156,6 +148,108 @@ def set_lang(value: str) -> bool:
     if value not in _LANG_CODES:
         return False
     return set_value("lang", value)
+
+
+def get_sidebar_order() -> list[str]:
+    """Return the user's preferred order for the primary sidebar list.
+
+    Empty list means "use the default :data:`Section.order` / key sort".
+    Unknown keys are filtered out so a stale entry from a deleted section
+    folder cannot crash the sidebar.
+    """
+    value = get("sidebar_order", []) or []
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item]
+
+
+def set_sidebar_order(keys: list[str]) -> bool:
+    """Persist the drag-and-drop section order."""
+    cleaned = [str(k) for k in keys if isinstance(k, str) and k]
+    return set_value("sidebar_order", cleaned)
+
+
+def get_web_search_enabled() -> bool:
+    """Opt-in toggle for the OpenAI / Anthropic web search tool.
+
+    Off by default because web search adds cost on every chat turn. The
+    AI Finance chat header pill and the Settings checkbox both write to
+    this same key so the user has one source of truth.
+    """
+    return bool(get("web_search_enabled", False))
+
+
+def set_web_search_enabled(value: bool) -> bool:
+    return set_value("web_search_enabled", bool(value))
+
+
+def get_market_data_enabled() -> bool:
+    """Kill-switch for yfinance live tickers in the AI Finance section.
+
+    On by default; flipping this to False in Settings keeps the section
+    fully offline (the Markets card paints an empty state telling the
+    user it is disabled and never touches the network).
+    """
+    return bool(get("market_data_enabled", True))
+
+
+def set_market_data_enabled(value: bool) -> bool:
+    return set_value("market_data_enabled", bool(value))
+
+
+_DEFAULT_FINANCE_TICKERS: tuple[str, ...] = (
+    "^GSPC",
+    "^IXIC",
+    "^DJI",
+    "BTC-USD",
+    "EURCZK=X",
+)
+
+
+def get_finance_tickers() -> list[str]:
+    """User-customisable Yahoo symbol list for the AI Finance Markets card.
+
+    Returns the saved list when present, the default seed list otherwise
+    (``S&P 500 / NASDAQ / DOW JONES / BTC-USD / EUR-CZK``). Symbols are
+    upper-cased and de-duplicated; an empty saved list is honoured (the
+    Markets card simply paints its empty state then).
+    """
+    raw = get("finance_tickers", None)
+    if raw is None:
+        return list(_DEFAULT_FINANCE_TICKERS)
+    if not isinstance(raw, list):
+        return list(_DEFAULT_FINANCE_TICKERS)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        sym = item.strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        cleaned.append(sym)
+    return cleaned
+
+
+def set_finance_tickers(symbols: list[str]) -> bool:
+    """Persist the AI Finance Markets ticker list.
+
+    Empty list is allowed and means "show empty-state copy and skip the
+    live fetch". Symbols are normalised the same way as
+    :func:`get_finance_tickers` so the saved file stays canonical.
+    """
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in symbols or []:
+        if not isinstance(item, str):
+            continue
+        sym = item.strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        cleaned.append(sym)
+    return set_value("finance_tickers", cleaned)
 
 
 def settings_path_str() -> str:

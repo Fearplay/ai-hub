@@ -27,6 +27,7 @@ def section_card(
     title: str,
     description: Optional[str] = None,
     body: Optional[QWidget] = None,
+    trailing: Optional[QWidget] = None,
 ) -> QFrame:
     card = Card(
         bg=theme.surface,
@@ -63,6 +64,9 @@ def section_card(
     if description:
         text_layout.addWidget(MutedLabel(description, theme=theme, size=11))
     head_row.addWidget(text_holder, 1)
+
+    if trailing is not None:
+        head_row.addWidget(trailing, 0, Qt.AlignmentFlag.AlignTop)
 
     layout.addLayout(head_row)
 

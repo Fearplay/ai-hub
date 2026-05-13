@@ -24,6 +24,7 @@ from pathlib import Path
 
 from src.sections._base import Section
 from src.services import logger as logger_service
+from src.services import settings_store
 
 
 def _discover() -> list[Section]:
@@ -71,11 +72,60 @@ def _discover() -> list[Section]:
     return sections
 
 
+def _apply_user_order(primary: list[Section]) -> list[Section]:
+    """Reorder the primary sidebar list per the user's drag-and-drop save.
+
+    Sections present in ``settings_store.get_sidebar_order()`` come first
+    in the saved order. Anything missing (e.g. a newly added section that
+    the user has not seen yet) is appended at the end in the default
+    ``(order, key)`` sort so authoring intent still wins for newcomers.
+    Stale keys (saved orders that reference a deleted section folder)
+    are silently dropped.
+    """
+    try:
+        saved = settings_store.get_sidebar_order()
+    except Exception as exc:
+        logger_service.log_exception(
+            "sections", "apply_user_order_read_failed", exc,
+        )
+        return primary
+    if not saved:
+        return primary
+
+    by_key = {s.key: s for s in primary}
+    ordered: list[Section] = []
+    seen: set[str] = set()
+    for key in saved:
+        section = by_key.get(key)
+        if section is None or key in seen:
+            continue
+        ordered.append(section)
+        seen.add(key)
+    for section in primary:
+        if section.key in seen:
+            continue
+        ordered.append(section)
+    return ordered
+
+
 SECTIONS: list[Section] = _discover()
 SECTION_BY_KEY: dict[str, Section] = {s.key: s for s in SECTIONS}
 
-PRIMARY_SECTIONS: list[Section] = [s for s in SECTIONS if s.nav_group == "primary"]
+_PRIMARY_DEFAULT: list[Section] = [s for s in SECTIONS if s.nav_group == "primary"]
+PRIMARY_SECTIONS: list[Section] = _apply_user_order(_PRIMARY_DEFAULT)
 SECONDARY_SECTIONS: list[Section] = [s for s in SECTIONS if s.nav_group == "secondary"]
+
+
+def reload_primary_order() -> None:
+    """Reapply the persisted sidebar order in place.
+
+    Called by :mod:`src.components.sidebar` after a drag-and-drop reorder
+    so ``PRIMARY_SECTIONS`` reflects the new layout without an app
+    restart. The list object identity is preserved on purpose - other
+    modules import this name directly and we want their reference to
+    stay valid.
+    """
+    PRIMARY_SECTIONS[:] = _apply_user_order(_PRIMARY_DEFAULT)
 
 
 __all__ = [
@@ -84,4 +134,5 @@ __all__ = [
     "SECTION_BY_KEY",
     "PRIMARY_SECTIONS",
     "SECONDARY_SECTIONS",
+    "reload_primary_order",
 ]

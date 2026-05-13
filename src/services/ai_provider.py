@@ -110,6 +110,7 @@ def _run_openai(
     max_output_tokens: int,
     temperature: float,
     api_key: str,
+    enable_web_search: bool = False,
 ) -> tuple[str, Optional[Any], int, int]:
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
@@ -119,6 +120,31 @@ def _run_openai(
         ) from exc
 
     client = OpenAI(api_key=api_key)
+
+    # Web search is a Responses-API tool, not a Chat-Completions one.
+    # When the caller asks for it we route through the Responses API
+    # and let the model decide whether to call ``web_search_preview``.
+    # We only do this when no JSON schema is requested (schemas need
+    # the dedicated structured-output path on Chat Completions).
+    if enable_web_search and schema is None:
+        try:
+            response = client.responses.create(
+                model=model,
+                input=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                tools=[{"type": "web_search_preview"}],
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            raise ProviderError(f"OpenAI request failed: {exc}") from exc
+        text = getattr(response, "output_text", "") or ""
+        usage = getattr(response, "usage", None)
+        tokens_in = getattr(usage, "input_tokens", 0) or 0
+        tokens_out = getattr(usage, "output_tokens", 0) or 0
+        return text, None, int(tokens_in), int(tokens_out)
 
     kwargs: dict[str, Any] = {
         "model": model,
@@ -165,6 +191,7 @@ def _run_anthropic(
     max_output_tokens: int,
     temperature: float,
     api_key: str,
+    enable_web_search: bool = False,
 ) -> tuple[str, Optional[Any], int, int]:
     try:
         from anthropic import Anthropic  # type: ignore[import-not-found]
@@ -194,6 +221,14 @@ def _run_anthropic(
             }
         ]
         kwargs["tool_choice"] = {"type": "tool", "name": schema_name}
+    elif enable_web_search:
+        # Anthropic's hosted web-search tool. ``max_uses`` is capped at
+        # 3 to keep per-turn cost predictable - one or two searches is
+        # plenty for the kind of "what is today's S&P 500 close?"
+        # question users would ask in the AI Finance chat.
+        kwargs["tools"] = [
+            {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
+        ]
 
     try:
         response = client.messages.create(**kwargs)
@@ -230,6 +265,7 @@ def run(
     max_output_tokens: int = 2000,
     temperature: float = 0.2,
     skip_no_hallucination_clause: bool = False,
+    enable_web_search: bool = False,
 ) -> ProviderResult:
     """Single AI entry point for sections.
 
@@ -237,6 +273,14 @@ def run(
     ``data`` will be the parsed object (and the model is forced into
     structured-output mode). Otherwise ``data`` is ``None`` and ``text``
     is plain prose / markdown.
+
+    ``enable_web_search`` is an opt-in toggle (mirrors the user's
+    Settings checkbox). When ``True`` the provider attaches its hosted
+    web-search tool to the call so the model can answer "what is the
+    current S&P 500 price?" style questions without the user pasting
+    facts in by hand. Web search is **not** combined with structured
+    outputs - the schema path already forces the model into a tool call
+    of its own, so the flag is ignored when ``schema`` is provided.
     """
     provider_id, model_id = _resolve_provider_and_model(provider, model)
     api_key = _ensure_key(provider_id)
@@ -253,6 +297,7 @@ def run(
             max_output_tokens=max_output_tokens,
             temperature=temperature,
             api_key=api_key,
+            enable_web_search=enable_web_search,
         )
     else:
         text, data, tokens_in, tokens_out = _run_openai(
@@ -264,6 +309,7 @@ def run(
             max_output_tokens=max_output_tokens,
             temperature=temperature,
             api_key=api_key,
+            enable_web_search=enable_web_search,
         )
 
     COST.record(

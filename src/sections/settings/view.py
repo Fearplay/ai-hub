@@ -582,27 +582,55 @@ def _general_card(
     body_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
     body.setLayout(body_layout)
 
-    def _on_demo_change(value: bool) -> None:
-        settings_store.set_demo_default(bool(value))
+    def _toggle_row(
+        *,
+        label: str,
+        desc: str,
+        checked: bool,
+        on_change: Callable[[bool], None],
+    ) -> QFrame:
+        row = QFrame()
+        row.setStyleSheet("background: transparent;")
+        rl = hbox(spacing=10, margins=(2, 8, 2, 8))
+        rl.setAlignment(Qt.AlignmentFlag.AlignTop)
+        row.setLayout(rl)
+
+        text_holder = QFrame()
+        text_holder.setStyleSheet("background: transparent;")
+        text_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        tl = vbox(spacing=2, margins=(0, 0, 0, 0))
+        text_holder.setLayout(tl)
+        tl.addWidget(BodyLabel(label, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+        tl.addWidget(MutedLabel(desc, theme=theme, size=12))
+        rl.addWidget(text_holder, 1)
+        rl.addWidget(_toggle_switch(theme, checked=checked, on_change=on_change))
+        return row
+
+    def _on_web_search_change(value: bool) -> None:
+        settings_store.set_web_search_enabled(bool(value))
         logger_service.log_event(
-            "INFO", "settings.view", "demo_default_changed", value=bool(value),
+            "INFO", "settings.view", "web_search_changed", value=bool(value),
         )
 
-    demo_row = QFrame()
-    demo_row.setStyleSheet("background: transparent;")
-    drl = hbox(spacing=10, margins=(2, 8, 2, 8))
-    drl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    demo_row.setLayout(drl)
+    def _on_market_data_change(value: bool) -> None:
+        settings_store.set_market_data_enabled(bool(value))
+        logger_service.log_event(
+            "INFO", "settings.view", "market_data_changed", value=bool(value),
+        )
 
-    demo_text = QFrame()
-    demo_text.setStyleSheet("background: transparent;")
-    dtl = vbox(spacing=2, margins=(0, 0, 0, 0))
-    demo_text.setLayout(dtl)
-    dtl.addWidget(BodyLabel(txt["general_demo_default_label"], theme=theme, size=13, weight=QFont.Weight.DemiBold))
-    dtl.addWidget(MutedLabel(txt["general_demo_default_desc"], theme=theme, size=12))
-    drl.addWidget(demo_text, 1)
-    drl.addWidget(_toggle_switch(theme, checked=settings_store.get_demo_default(), on_change=_on_demo_change))
-    body_layout.addWidget(demo_row)
+    body_layout.addWidget(_toggle_row(
+        label=txt["general_web_search_label"],
+        desc=txt["general_web_search_desc"],
+        checked=settings_store.get_web_search_enabled(),
+        on_change=_on_web_search_change,
+    ))
+    body_layout.addWidget(HSeparator(theme))
+    body_layout.addWidget(_toggle_row(
+        label=txt["general_market_data_label"],
+        desc=txt["general_market_data_desc"],
+        checked=settings_store.get_market_data_enabled(),
+        on_change=_on_market_data_change,
+    ))
 
     body_layout.addWidget(HSeparator(theme))
 

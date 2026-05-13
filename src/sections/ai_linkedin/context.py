@@ -276,10 +276,6 @@ def _cost_body(theme: Theme) -> QFrame:
     layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     holder.setLayout(layout)
 
-    if STATE.demo_mode:
-        layout.addWidget(MutedLabel("—", theme=theme, size=12))
-        return holder
-
     provider_label = (
         settings_store.PROVIDER_OPENAI
         if settings_store.get_provider() == settings_store.PROVIDER_OPENAI

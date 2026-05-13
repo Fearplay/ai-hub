@@ -9,13 +9,8 @@ re-sending the raw resume / GitHub text - the main cost saver.
 
 Three deterministic helpers (``build_completeness_checklist``,
 ``build_unsupported_claims_report``, ``compute_profile_score``) run on
-top of the cached state without calling any provider, so the user can
-still see a profile-completeness verdict + an honest score even in
-demo mode.
-
-In demo mode the pipeline returns curated mock data without any
-provider call, so the entire UI flow (Setup -> Sections -> Output ->
-History) can be explored offline.
+top of the cached state without calling any provider, so the user gets
+a profile-completeness verdict + an honest score for free.
 """
 
 from __future__ import annotations
@@ -29,7 +24,6 @@ from typing import Callable, Optional
 from src.services import ai_provider, exporter, github_client, store
 from src.services import logger as logger_service
 from src.services.cost_tracker import COST
-from src.sections.ai_linkedin import data as linkedin_data
 from src.sections.ai_linkedin import prompts, schema, summary_html
 from src.sections.ai_linkedin.refs import REFS, safe
 from src.sections.ai_linkedin.state import (
@@ -54,7 +48,6 @@ from src.sections.ai_linkedin.state import (
     STATE,
     TONE_PROFESSIONAL,
     ChatMessage,
-    UploadedFile,
 )
 
 
@@ -173,21 +166,12 @@ def extract_profile(*, output_lang: str) -> PipelineResult:
         "ai_linkedin.pipeline",
         "extract_profile_start",
         output_lang=output_lang,
-        demo_mode=STATE.demo_mode,
         target_roles=len(target_roles),
         has_resume=bool(STATE.resume and STATE.resume.text),
         has_linkedin=bool(STATE.linkedin_export and STATE.linkedin_export.text),
         has_github=bool(STATE.github_profile),
         has_notes=bool(STATE.notes),
     )
-
-    if STATE.demo_mode:
-        STATE.extracted_profile = linkedin_data.demo_profile(output_lang)
-        STATE.evidence_index = linkedin_data.demo_evidence_index()
-        logger_service.log_event(
-            "INFO", "ai_linkedin.pipeline", "extract_profile_demo_done",
-        )
-        return PipelineResult(ok=True)
 
     if not (
         (STATE.resume and STATE.resume.text)
@@ -271,10 +255,6 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
     output_lang = _resolve_output_lang(output_lang)
     target_roles, audience, tone = _resolve_targeting()
 
-    if STATE.demo_mode:
-        STATE.followup_questions = []
-        return PipelineResult(ok=True)
-
     if not STATE.extracted_profile:
         return _set_error("Extract the profile first.")
 
@@ -341,7 +321,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
 
 
 def _ensure_profile() -> Optional[PipelineResult]:
-    if not STATE.extracted_profile and not STATE.demo_mode:
+    if not STATE.extracted_profile:
         return _set_error("Extract the profile first.")
     return None
 
@@ -355,7 +335,6 @@ def _generate_with_schema(
     schema_name: str,
     max_output_tokens: int = 2400,
     state_attr: str,
-    demo_payload: Optional[dict] = None,
 ) -> PipelineResult:
     """Shared helper: log start, call provider, store result, log done."""
     logger_service.log_event(
@@ -363,18 +342,7 @@ def _generate_with_schema(
         "ai_linkedin.pipeline",
         "generate_section_start",
         section=section_id,
-        demo_mode=STATE.demo_mode,
     )
-
-    if STATE.demo_mode:
-        setattr(STATE, state_attr, demo_payload or {})
-        logger_service.log_event(
-            "INFO",
-            "ai_linkedin.pipeline",
-            "generate_section_demo_done",
-            section=section_id,
-        )
-        return PipelineResult(ok=True)
 
     err = _ensure_profile()
     if err is not None:
@@ -428,7 +396,6 @@ def generate_headlines(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_headlines",
         max_output_tokens=1500,
         state_attr="headlines",
-        demo_payload=linkedin_data.demo_headlines(output_lang),
     )
 
 
@@ -450,7 +417,6 @@ def generate_about(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_about",
         max_output_tokens=3500,
         state_attr="about_variants",
-        demo_payload=linkedin_data.demo_about(output_lang),
     )
 
 
@@ -472,7 +438,6 @@ def generate_experience_rewrites(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_experience_rewrite",
         max_output_tokens=4500,
         state_attr="experience_rewrites",
-        demo_payload=linkedin_data.demo_experience_rewrites(output_lang),
     )
 
 
@@ -494,7 +459,6 @@ def generate_education_rewrites(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_education_rewrite",
         max_output_tokens=2500,
         state_attr="education_rewrites",
-        demo_payload=linkedin_data.demo_education_rewrites(output_lang),
     )
 
 
@@ -516,7 +480,6 @@ def generate_certifications(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_certifications",
         max_output_tokens=2500,
         state_attr="certifications_rewrites",
-        demo_payload=linkedin_data.demo_certifications(output_lang),
     )
 
 
@@ -538,7 +501,6 @@ def generate_skills_buckets(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_skills",
         max_output_tokens=3500,
         state_attr="skills_buckets",
-        demo_payload=linkedin_data.demo_skills_buckets(output_lang),
     )
 
 
@@ -560,7 +522,6 @@ def generate_featured(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_featured",
         max_output_tokens=2500,
         state_attr="featured",
-        demo_payload=linkedin_data.demo_featured(output_lang),
     )
 
 
@@ -582,7 +543,6 @@ def generate_projects(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_projects",
         max_output_tokens=3000,
         state_attr="projects",
-        demo_payload=linkedin_data.demo_projects(output_lang),
     )
 
 
@@ -605,7 +565,6 @@ def generate_services(*, output_lang: str, opt_in: bool = False) -> PipelineResu
         schema_name="linkedin_services",
         max_output_tokens=2000,
         state_attr="services",
-        demo_payload=linkedin_data.demo_services(output_lang, opt_in=opt_in),
     )
 
 
@@ -627,7 +586,6 @@ def generate_courses(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_courses",
         max_output_tokens=2000,
         state_attr="courses",
-        demo_payload=linkedin_data.demo_courses(output_lang),
     )
 
 
@@ -649,7 +607,6 @@ def generate_recommendation_messages(*, output_lang: str) -> PipelineResult:
         schema_name="linkedin_recommendations",
         max_output_tokens=2000,
         state_attr="recommendation_messages",
-        demo_payload=linkedin_data.demo_recommendations(output_lang),
     )
 
 
@@ -678,7 +635,6 @@ def generate_posts(
         schema_name="linkedin_posts",
         max_output_tokens=3500,
         state_attr="posts",
-        demo_payload=linkedin_data.demo_posts(output_lang, kinds),
     )
 
 
@@ -1036,7 +992,6 @@ def run_full_profile_build(
         "run_full_profile_build_state",
         output_lang=output_lang,
         sections=sorted(sections),
-        demo_mode=STATE.demo_mode,
     )
 
     res = extract_profile(output_lang=output_lang)
@@ -1115,20 +1070,9 @@ def send_chat_message(*, output_lang: str, user_text: str) -> tuple[str, str]:
         "send_chat_start",
         output_lang=output_lang,
         chars=len(user_text),
-        demo_mode=STATE.demo_mode,
         history=len(STATE.chat_messages),
         attachments=len(STATE.chat_attachments),
     )
-
-    if STATE.demo_mode:
-        canned = _demo_chat_reply(user_text, output_lang)
-        logger_service.log_event(
-            "INFO",
-            "ai_linkedin.pipeline",
-            "send_chat_demo_done",
-            chars=len(canned),
-        )
-        return canned, ""
 
     history = [
         {"role": m.role, "text": m.text} for m in STATE.chat_messages
@@ -1190,68 +1134,6 @@ def append_chat_message(
     )
 
 
-def _demo_chat_reply(user_text: str, lang: str) -> str:
-    """Tiny canned replies so Chat mode stays usable in Demo mode."""
-    is_cs = lang == "cs"
-    lower = user_text.lower()
-
-    if any(token in lower for token in ("headline", "motto", "nadpis")):
-        if is_cs:
-            return (
-                "Zkus headline, který otevírá rolí + signaturní silnou stránkou."
-                "\n\nNapř.: **Senior Software QA Engineer | Python · Playwright ·"
-                " Flutter | Building Practical QA Tools** (191 znaků)."
-                "\n\nV Demo režimu odpovídám předvyplněně - pro plně"
-                " personalizovaný headline přepni na Builder mód a vyplň"
-                " Setup."
-            )
-        return (
-            "Try a headline that opens with role + signature strength."
-            "\n\nExample: **Senior Software QA Engineer | Python · Playwright ·"
-            " Flutter | Building Practical QA Tools** (191 chars)."
-            "\n\nWe're in Demo mode so this is a scripted reply - for a"
-            " fully personalised headline switch to Builder mode and run"
-            " the profile build."
-        )
-    if any(token in lower for token in ("post", "článek", "clanek", "article")):
-        if is_cs:
-            return (
-                "LinkedIn post: hook (1 věta) → 1 konkrétní insight z tvojí"
-                " práce → CTA (otázka). Drž 800-1 400 znaků a max 5"
-                " hashtagů."
-            )
-        return (
-            "LinkedIn post: hook (one sentence) → one specific insight from"
-            " your work → CTA (a question). Keep it 800-1,400 chars with"
-            " max 5 hashtags."
-        )
-    if any(token in lower for token in ("recruiter", "outreach", "zprava", "zpráva")):
-        if is_cs:
-            return (
-                "Recruiter outreach drž v 600-900 znacích, žádné emoji, jeden"
-                " konkrétní háček ('viděl jsem váš inzerát na X / článek o Y')"
-                " a jednu jasnou pobídku k rozhovoru."
-            )
-        return (
-            "Recruiter outreach: 600-900 chars, no emoji, one specific hook"
-            " ('saw your X posting / your article about Y') and one clear"
-            " ask for a conversation."
-        )
-    if is_cs:
-        return (
-            "Pomůžu ti s headlinem, About sekcí, přepisem zkušeností,"
-            " featured sekcí, projekty, recommendations a posty. Co tě"
-            " zajímá? (Demo režim - odpovídám předvyplněně. Pro plně"
-            " personalizované výstupy přepni na Builder a spusť pipeline.)"
-        )
-    return (
-        "I can help with headlines, About, experience rewrites, featured,"
-        " projects, recommendations and posts. What do you want to work"
-        " on first? (Demo mode - replies are scripted. Switch to Builder"
-        " for the full pipeline.)"
-    )
-
-
 # --- Save complete profile --------------------------------------------------
 
 
@@ -1267,7 +1149,7 @@ def _safe_write(path: Path, content: str) -> None:
 
 def save_full_profile() -> SaveResult:
     """Persist every generated section + summary.json + history entry."""
-    if not STATE.extracted_profile and not STATE.demo_mode:
+    if not STATE.extracted_profile:
         logger_service.log_event(
             "WARNING", "ai_linkedin.pipeline", "save_full_no_profile",
         )
@@ -1398,9 +1280,9 @@ def save_full_profile() -> SaveResult:
             company="",
             overall_score=score,
             folder=str(folder_path),
-            provider=("demo" if STATE.demo_mode else ""),
-            model=("demo" if STATE.demo_mode else ""),
-            cost_usd=0.0 if STATE.demo_mode else float(COST.cost_usd),
+            provider="",
+            model="",
+            cost_usd=float(COST.cost_usd),
             docs=docs_list,
             note="ai_linkedin",
         )
@@ -1842,51 +1724,3 @@ def _render_unsupported_md(payload: dict, is_cs: bool) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-# --- Demo helpers -----------------------------------------------------------
-
-
-def load_demo(*, output_lang: str) -> None:
-    """Pre-populate state with the demo seed for an offline showcase."""
-    output_lang = _resolve_output_lang(output_lang)
-    STATE.demo_mode = True
-    STATE.target_roles = ["Senior Software QA Engineer", "QA Automation Lead"]
-    STATE.audience = AUDIENCE_RECRUITER
-    STATE.tone = TONE_PROFESSIONAL
-    STATE.output_lang = output_lang
-    STATE.resume = UploadedFile(
-        path="(demo)",
-        name="QA_Engineer_CV.pdf",
-        ext="pdf",
-        size_bytes=148_000,
-        text=linkedin_data.DEMO_RESUME_TEXT,
-    )
-    STATE.linkedin_export = None
-    STATE.github_skip = True
-    STATE.github_profile = None
-    STATE.notes = ""
-    STATE.extracted_profile = linkedin_data.demo_profile(output_lang)
-    STATE.evidence_index = linkedin_data.demo_evidence_index()
-    STATE.headlines = linkedin_data.demo_headlines(output_lang)
-    STATE.about_variants = linkedin_data.demo_about(output_lang)
-    STATE.experience_rewrites = linkedin_data.demo_experience_rewrites(output_lang)
-    STATE.education_rewrites = linkedin_data.demo_education_rewrites(output_lang)
-    STATE.certifications_rewrites = linkedin_data.demo_certifications(output_lang)
-    STATE.skills_buckets = linkedin_data.demo_skills_buckets(output_lang)
-    STATE.featured = linkedin_data.demo_featured(output_lang)
-    STATE.projects = linkedin_data.demo_projects(output_lang)
-    STATE.services = linkedin_data.demo_services(output_lang, opt_in=False)
-    STATE.courses = linkedin_data.demo_courses(output_lang)
-    STATE.recommendation_messages = linkedin_data.demo_recommendations(output_lang)
-    STATE.posts = linkedin_data.demo_posts(
-        output_lang,
-        [POST_LEARNING_UPDATE, POST_PROJECT_LAUNCH],
-    )
-    build_completeness_checklist()
-    build_unsupported_claims_report()
-    compute_profile_score()
-    _set_activity("ready")
-    REFS.dispatch(_request_full_refresh)
-    logger_service.log_event(
-        "INFO", "ai_linkedin.pipeline", "load_demo_done",
-        output_lang=output_lang,
-    )

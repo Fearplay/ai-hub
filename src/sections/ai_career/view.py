@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 import threading
-from typing import Optional
 
 from PySide6.QtWidgets import QFrame, QMessageBox, QWidget
 
@@ -15,7 +14,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import Pill, vbox
+from src.qt.widgets import vbox
 from src.sections.ai_career import pipeline
 from src.sections.ai_career.data import SECTION_ICON
 from src.sections.ai_career.how_to import open_career_how_to
@@ -182,10 +181,6 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         HeaderMenuItem(icon=Icons.MENU_BOOK_OUTLINED, label=txt["menu_how_to"], on_click=_menu_how_to),
     ]
 
-    trailing: Optional[QWidget] = None
-    if STATE.demo_mode:
-        trailing = Pill(text=txt["ctx_demo_pill"], bg="#F59E0B", fg="#FFFFFF")
-
     header_widget = header(
         theme,
         lang,
@@ -193,7 +188,6 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
-        trailing=trailing,
         menu_items=menu_items,
     )
     layout.addWidget(header_widget)

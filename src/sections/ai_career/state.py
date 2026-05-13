@@ -107,7 +107,7 @@ class CareerState:
 
     job_url: str = ""
     job_text: str = ""
-    job_text_source: str = ""  # "scrape" | "paste" | "demo"
+    job_text_source: str = ""  # "scrape" | "paste"
 
     resume: Optional[UploadedFile] = None
     linkedin: Optional[UploadedFile] = None
@@ -152,10 +152,9 @@ class CareerState:
     # Footer "Run analysis" stage. Lives on STATE so the disabled state
     # survives the full section rebuild that fires after each pipeline
     # step (scrape, extract, follow-ups, match). One of:
-    # "" (idle) | "demo" | "running" | "followups" | "match".
+    # "" (idle) | "running" | "followups" | "match".
     run_stage: str = ""
 
-    demo_mode: bool = False
     runs_history: list[dict] = field(default_factory=list)
 
     def reset_run(self) -> None:
@@ -186,8 +185,7 @@ class CareerState:
 
         Clears every input the user might have entered (job posting,
         resume, LinkedIn, GitHub URL / token preference, target role) on
-        top of :meth:`reset_run` and :meth:`reset_chat`. Demo mode is
-        switched off so the next run defaults to the live pipeline. The
+        top of :meth:`reset_run` and :meth:`reset_chat`. The
         ``last_run_folder`` is intentionally cleared inside ``reset_run``
         so "Save complete analysis" creates a fresh folder for the next
         run.
@@ -203,14 +201,11 @@ class CareerState:
         self.github_skip = False
         self.github_profile = None
         self.target_role = ""
-        self.demo_mode = False
 
     def has_results(self) -> bool:
         return self.match is not None
 
     def can_run(self) -> bool:
-        if self.demo_mode:
-            return True
         return bool(self.resume and self.resume.text and self.job_text)
 
 

@@ -14,8 +14,7 @@ to live outside ``build_view``. This singleton holds:
   completeness checklist, unsupported claims report, profile score,
 * chat-mode transcript + attachments,
 * the activity / run-stage flags powering the right-hand context
-  panel and the cost / history sidecar,
-* the demo-mode flag so the showcase flow works without an API key.
+  panel and the cost / history sidecar.
 
 Each section keeps its own state singleton — no shared module.
 """
@@ -257,11 +256,10 @@ class LinkedInState:
 
     # --- UX flags ------------------------------------------------------
     activity: str = "ready"  # "ready" | "scraping" | "parsing" | "extracting" | "analyzing" | "generating" | "scoring" | "saving" | "error"
-    run_stage: str = ""  # "" | "demo" | "running" | "followups" | "saving"
+    run_stage: str = ""  # "" | "running" | "followups" | "saving"
     last_error: str = ""
     last_run_folder: str = ""
 
-    demo_mode: bool = False
     runs_history: list[dict] = field(default_factory=list)
 
     # Vertical scroll position of the Setup tab's QScrollArea, kept
@@ -326,7 +324,6 @@ class LinkedInState:
             POST_LEARNING_UPDATE,
             POST_PROJECT_LAUNCH,
         }
-        self.demo_mode = False
 
     # --- Convenience predicates ---------------------------------------
 
@@ -334,8 +331,6 @@ class LinkedInState:
         return bool(self.extracted_profile)
 
     def can_run(self) -> bool:
-        if self.demo_mode:
-            return True
         return bool(
             self.target_roles
             and (

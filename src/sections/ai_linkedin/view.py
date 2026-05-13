@@ -16,7 +16,6 @@ import os
 import subprocess
 import sys
 import threading
-from typing import Optional
 
 from PySide6.QtWidgets import QFrame, QMessageBox, QWidget
 
@@ -25,7 +24,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import Pill, vbox
+from src.qt.widgets import vbox
 from src.sections.ai_linkedin import pipeline
 from src.sections.ai_linkedin.data import SECTION_ICON, builder_tabs, mode_tabs
 from src.sections.ai_linkedin.how_to import open_linkedin_how_to
@@ -227,17 +226,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         HeaderMenuItem(icon=Icons.MENU_BOOK_OUTLINED, label=txt["menu_how_to"], on_click=_menu_how_to),
     ]
 
-    demo_pill: Optional[QWidget] = None
-    if STATE.demo_mode:
-        demo_pill = Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
-
     layout.addWidget(header(
         theme, lang,
         icon=SECTION_ICON,
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
-        trailing=demo_pill,
         menu_items=menu_items,
     ))
 
