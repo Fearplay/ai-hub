@@ -38,6 +38,7 @@ nutnosti přečíslovávat:
 | ----- | ------------------- | ----------- |
 | 10    | `dashboard`         | volné       |
 | 20    | `ai_career`         | Fearplay    |
+| 25    | `ai_jobs`           | Fearplay    |
 | 25    | `ai_linkedin`       | volné       |
 | 30    | `ai_legal`          | volné       |
 | 40    | `ai_business`       | volné       |
