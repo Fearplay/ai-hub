@@ -31,11 +31,13 @@ from src.sections.ai_jobs.state import (
     TAB_HISTORY,
     TAB_RESULTS,
     TAB_SETUP,
+    TAB_SKILL_GAP,
 )
 from src.sections.ai_jobs.strings import s
 from src.sections.ai_jobs.tab_history import build_history_tab
 from src.sections.ai_jobs.tab_results import build_results_tab
 from src.sections.ai_jobs.tab_setup import build_setup_tab
+from src.sections.ai_jobs.tab_skill_gap import build_skill_gap_tab
 from src.services import logger as logger_service
 from src.services import store
 from src.theme import Theme
@@ -94,6 +96,8 @@ def _build_tab_body(theme: Theme, lang: str) -> QWidget:
     try:
         if tab == TAB_RESULTS:
             return build_results_tab(theme, lang)
+        if tab == TAB_SKILL_GAP:
+            return build_skill_gap_tab(theme, lang)
         if tab == TAB_HISTORY:
             return build_history_tab(theme, lang)
         return build_setup_tab(
@@ -134,7 +138,10 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             logger_service.log_exception(
                 "ai_jobs.view", "menu_open_folder_ensure_dirs", exc,
             )
-        target = STATE.last_run_folder or str(store.runs_dir())
+        section_root = str(store.section_runs_dir("ai_jobs"))
+        target = STATE.last_run_folder or (
+            section_root if os.path.isdir(section_root) else str(store.runs_dir())
+        )
         if not target or not os.path.isdir(target):
             _show_message(txt["menu_open_folder_no_run"])
             return
@@ -176,6 +183,10 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         STATE.active_tab = TAB_HISTORY
         _refresh()
 
+    def _menu_show_skill_gap() -> None:
+        STATE.active_tab = TAB_SKILL_GAP
+        _refresh()
+
     def _menu_how_to() -> None:
         open_jobs_how_to(get_main_window(), theme, lang)
 
@@ -191,6 +202,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             label=txt["menu_save_html"],
             on_click=_menu_save_html,
             enabled=has_results,
+        ),
+        HeaderMenuItem(
+            icon=Icons.INSIGHTS_OUTLINED,
+            label=txt["menu_show_skill_gap"],
+            on_click=_menu_show_skill_gap,
+            enabled=STATE.has_skill_gap(),
         ),
         HeaderMenuItem(
             icon=Icons.FOLDER_OPEN,

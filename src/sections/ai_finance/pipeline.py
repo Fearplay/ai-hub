@@ -903,7 +903,7 @@ def save_full_analysis(*, output_lang: str) -> PipelineResult:
 
     _set_activity("exporting")
     try:
-        run_dir = store.new_run_dir("ai-finance", "")
+        run_dir = store.new_run_dir("ai-finance", "", section="ai_finance")
     except Exception as exc:
         return _set_error("save_full_analysis", str(exc))
 

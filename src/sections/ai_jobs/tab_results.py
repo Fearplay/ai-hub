@@ -21,7 +21,7 @@ import sys
 import threading
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QFrame,
@@ -118,6 +118,68 @@ def _work_mode_pill(theme: Theme, mode: str) -> Optional[QFrame]:
     return pill
 
 
+def _match_pill(theme: Theme, txt: dict, score: Optional[int]) -> Optional[QFrame]:
+    """Small "Match XX%" pill rendered in the position card header.
+
+    Colour bands match the HTML export (>=75 green, 50-74 amber,
+    <50 red). On-screen the rest of the per-position analysis stays
+    lean per user direction - the chips / recommendation paragraph
+    only render in the saved HTML.
+    """
+    if not isinstance(score, int):
+        return None
+
+    if score >= 75:
+        color = "#22C55E"  # good
+    elif score >= 50:
+        color = "#F59E0B"  # warn
+    else:
+        color = "#EF4444"  # danger
+
+    pill = QFrame()
+    pill.setStyleSheet(
+        f"background-color: {rgba(color, 0.18)}; border-radius: 9px;"
+    )
+    layout = hbox(spacing=4, margins=(8, 3, 8, 3))
+    pill.setLayout(layout)
+    layout.addWidget(custom_label(
+        txt["results_match_pill_template"].format(score=score),
+        color=color, size=10, weight=QFont.Weight.Bold,
+    ))
+    pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    return pill
+
+
+def _inactive_pill(theme: Theme, txt: dict, *, marker: str = "") -> QFrame:
+    """Red "No longer hiring" pill shown on closed listings.
+
+    Surfaces dead postings instead of dropping them - the verifier
+    matched on a known marker phrase ("No longer accepting
+    applications", "U\u017e nep\u0159ij\u00edm\u00e1 \u017e\u00e1dosti", "Tahle nab\u00eddka u\u017e je
+    pry\u010d", \u2026), an HTTP 404 / 410 status, or a hard scrape
+    failure. The matched marker is appended to the tooltip when
+    present so the user can verify detection accuracy without
+    opening the HTML export.
+    """
+    color = "#EF4444"  # danger - matches the < 50 score band
+    pill = QFrame()
+    pill.setStyleSheet(
+        f"background-color: {rgba(color, 0.18)}; border-radius: 9px;"
+    )
+    layout = hbox(spacing=4, margins=(8, 3, 8, 3))
+    pill.setLayout(layout)
+    layout.addWidget(custom_label(
+        txt["results_inactive_pill"],
+        color=color, size=10, weight=QFont.Weight.Bold,
+    ))
+    pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    tooltip = txt["results_inactive_tooltip"]
+    if marker:
+        tooltip = f'{tooltip}\n\u2192 "{marker}"'
+    pill.setToolTip(tooltip)
+    return pill
+
+
 def _position_card(
     theme: Theme,
     txt: dict,
@@ -125,13 +187,23 @@ def _position_card(
     *,
     on_link_copied: Callable[[str], None],
 ) -> QFrame:
+    is_active = bool(item.get("is_active", True))
     card = QFrame()
     card.setObjectName("JobsResultCard")
+    if is_active:
+        border = theme.border
+        bg = theme.surface
+    else:
+        # Muted look for closed listings so the live ones pop visually,
+        # without hiding them - the user has to be able to verify the
+        # marker detection by clicking through.
+        border = rgba("#EF4444", 0.32)
+        bg = rgba(theme.surface, 0.7)
     card.setStyleSheet(
         f"""
         QFrame#JobsResultCard {{
-            background-color: {theme.surface};
-            border: 1px solid {theme.border};
+            background-color: {bg};
+            border: 1px solid {border};
             border-radius: 14px;
         }}
         """
@@ -147,6 +219,12 @@ def _position_card(
     title_label = TitleLabel(item.get("title", ""), theme=theme, size=15, weight=QFont.Weight.Bold)
     title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     title_layout.addWidget(title_label, 1)
+    if not is_active:
+        marker = (item.get("inactive_reason") or "").strip()
+        title_layout.addWidget(_inactive_pill(theme, txt, marker=marker))
+    match_pill = _match_pill(theme, txt, item.get("match_score"))
+    if match_pill is not None:
+        title_layout.addWidget(match_pill)
     pill = _work_mode_pill(theme, item.get("work_mode", "unknown"))
     if pill is not None:
         title_layout.addWidget(pill)
@@ -156,10 +234,15 @@ def _position_card(
     meta_holder.setStyleSheet("background: transparent;")
     meta_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     meta_holder.setLayout(meta_layout)
+    salary_value = (item.get("salary_text") or "").strip()
+    contract_raw = (item.get("contract_type") or "unknown").strip().lower()
+    contract_value = contract_raw.upper() if contract_raw and contract_raw != "unknown" else ""
     for icon_name, label_key, value in (
         (Icons.WORK_OUTLINE, txt["results_meta_company"], item.get("company", "")),
         (Icons.LOCATION_ON, txt["results_meta_location"], item.get("location", "")),
         (Icons.SCHEDULE, txt["results_meta_posted"], item.get("posted", "")),
+        (Icons.PAYMENTS_OUTLINED, txt["results_meta_salary"], salary_value),
+        (Icons.WORKSPACE_PREMIUM_OUTLINED, txt["results_meta_contract"], contract_value),
         (Icons.PUBLIC, txt["results_meta_source"], item.get("source", "")),
     ):
         row = _meta_row(theme, icon=icon_name, label=label_key, value=value)
@@ -260,6 +343,11 @@ def _summary_card(theme: Theme, txt: dict) -> Optional[QFrame]:
             txt["results_dropped_note_template"].format(count=STATE.last_dropped),
             theme=theme, size=11, italic=True,
         ))
+    if STATE.last_inactive:
+        layout.addWidget(SubtleLabel(
+            txt["results_inactive_count_template"].format(count=STATE.last_inactive),
+            theme=theme, size=11, italic=True,
+        ))
     return card
 
 
@@ -287,7 +375,7 @@ def build_results_tab(theme: Theme, lang: str) -> QWidget:
     header.setLayout(header_layout)
     header_layout.addWidget(TitleLabel(txt["results_title"], theme=theme, size=18, weight=QFont.Weight.Bold))
     header_layout.addWidget(MutedLabel(
-        txt["results_subtitle_template"].format(count=len(STATE.results)),
+        txt["results_subtitle_template"].format(count=STATE.active_results_count()),
         theme=theme, size=12,
     ))
     body_layout.addWidget(header)
@@ -314,6 +402,29 @@ def build_results_tab(theme: Theme, lang: str) -> QWidget:
     scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
     scroll.setWidget(body_holder)
     layout.addWidget(scroll, 1)
+
+    # --- scroll-position memory --------------------------------------
+    # Mirrors the Setup tab: copying / opening a job link, switching
+    # tabs, or any other action that triggers ``request_section_refresh``
+    # rebuilds this tab and resets the QScrollArea to y=0. Saving the
+    # last known position to ``STATE.results_scroll_pos`` and restoring
+    # it on the next event-loop tick keeps the user in place.
+    _vbar = scroll.verticalScrollBar()
+
+    def _save_scroll_pos(value: int) -> None:
+        STATE.results_scroll_pos = max(0, int(value))
+
+    _vbar.valueChanged.connect(_save_scroll_pos)
+
+    def _restore_scroll_pos() -> None:
+        try:
+            target = max(0, min(STATE.results_scroll_pos, _vbar.maximum()))
+            _vbar.setValue(target)
+        except RuntimeError:
+            pass
+
+    if STATE.results_scroll_pos > 0:
+        QTimer.singleShot(0, _restore_scroll_pos)
 
     # Footer ------------------------------------------------------------
     footer = QFrame()

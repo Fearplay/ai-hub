@@ -198,6 +198,10 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             logger_service.log_exception(
                 "ai_finance.view", "menu_open_folder_ensure_dirs", exc,
             )
+        section_root = str(store.section_runs_dir("ai_finance"))
+        if os.path.isdir(section_root):
+            _open_in_explorer(section_root)
+            return
         outputs_root = str(store.runs_dir())
         if not os.path.isdir(outputs_root):
             _show_message(txt["menu_open_folder_no_run"])

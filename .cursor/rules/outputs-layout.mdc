@@ -1,0 +1,116 @@
+---
+description: Every section that saves runs to disk must call store.new_run_dir(..., section=<section_key>) so outputs land in outputs/<section>/<run-slug>-<timestamp>/
+alwaysApply: true
+---
+
+# AI Hub - outputs folder layout
+
+The repo-root `outputs/` folder collects every saved AI run from every
+section. To keep it browsable when the user accumulates dozens of runs
+across AI Career / AI Jobs / AI Finance / AI LinkedIn / future
+sections, **every** call into `src.services.store.new_run_dir(...)` must
+pass a `section=<section_key>` argument so the run lands in
+`outputs/<section_key>/<run-slug>-<timestamp>/`.
+
+## Disk layout (what the user sees)
+
+```
+outputs/
+  ai_career/
+    senior-qa-engineer-gen-20260516-141700/
+        Tailored_CV.pdf
+        Cover_Letter.pdf
+        summary.json
+        ...
+  ai_jobs/
+    qa-engineer-search-20260516-142200/
+        results.html
+        summary.json
+  ai_finance/
+    ai-finance-20260516-150100/
+        Budget.pdf
+        ...
+  ai_linkedin/
+    senior-qa-engineer-20260516-152000/
+        14_full_linkedin_profile.html
+        ...
+```
+
+The full top-level `outputs/` folder is git-ignored
+(see [`.gitignore`](mdc:../../.gitignore) -> `outputs/`); the per-section
+subfolders inherit that pattern automatically, so contributors do
+**not** need to add new entries to `.gitignore` when introducing a new
+section.
+
+## Hard rules - never break these
+
+1. **Every section that saves runs uses `section=<section_key>`.** Pass
+ the same key that lives in `src/sections/<key>/` and is set in the
+ ``key=`` field of the section's `section.py`. Do **not** invent a
+ different name (no `ai-jobs` vs `ai_jobs`, no nicknames like
+ `cv` for `ai_career`) - mirror the code identifier so debug logs
+ and on-disk paths line up.
+
+ ```python
+ # src/sections/ai_jobs/pipeline.py
+ run_dir = store.new_run_dir(
+ role=STATE.last_query or "ai-jobs",
+ company="search",
+ section="ai_jobs", # mandatory
+ )
+ ```
+
+2. **"Open outputs folder" buttons must open the per-section
+ subfolder when it exists.** Use `store.section_runs_dir(<key>)` and
+ fall back to `store.runs_dir()` only when the per-section folder
+ hasn't been created yet (i.e. the user has never saved a run from
+ this section).
+
+ ```python
+ section_root = str(store.section_runs_dir("ai_jobs"))
+ target = (
+ STATE.last_run_folder
+ or (section_root if os.path.isdir(section_root) else str(store.runs_dir()))
+ )
+ ```
+
+3. **Do not commit `outputs/`.** The folder is already in
+ `.gitignore`. New section subfolders inherit this - no edit needed.
+
+4. **Mandatory ERROR log when `new_run_dir` raises.** Wrap the call in
+ try / except and use `log_exception("<section_key>.pipeline",
+ "save_full_new_run_dir_failed", exc)` so the user sees why the
+ save did not produce a folder. The store helper itself already
+ logs `new_run_dir_section_missing` (WARNING) when contributors
+ forget the `section=` kwarg, but it cannot recover from a missing
+ disk / permission issue on its own.
+
+## When you add a new section that saves
+
+1. Pick the section key (mirrors the folder under `src/sections/<key>/`
+ and the `key=` field in `section.py`).
+2. Pass it as `section=<key>` to every `store.new_run_dir(...)` call.
+3. Wire any "Open folder" button through `store.section_runs_dir(<key>)`.
+4. Update both READMEs to mention the new path
+ (`outputs/<section>/<run-slug>-<timestamp>/`); see
+ [docs-and-license.mdc](mdc:docs-and-license.mdc).
+
+## Backwards compatibility
+
+Existing entries in `~/AI Hub/history.json` already point at absolute
+paths like `outputs/qa-engineer-20260508-204231/` (the pre-subfolder
+layout). They keep working untouched - the History tab uses the stored
+absolute path, not a recomputed one. Only **new** runs land in the new
+per-section subfolder; we never silently relocate the user's existing
+runs.
+
+## Don't
+
+- Do **not** call `store.new_run_dir(...)` without `section=`. The
+ store helper will still create a folder under the legacy
+ top-level `outputs/`, but it logs a WARNING that contributors will
+ see in the in-app debug log.
+- Do **not** hard-code the path `outputs/<key>/`. Always go through
+ `store.section_runs_dir(<key>)` so we keep one source of truth.
+- Do **not** duplicate runs across two section folders. A run belongs
+ to exactly one section.

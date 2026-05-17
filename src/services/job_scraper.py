@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import urlparse
@@ -94,12 +95,134 @@ _GDPR_MARKERS = (
 )
 
 
+# Markers that indicate the job posting page LOADED OK but the listing
+# itself is closed / expired / filled / completely missing. Stored
+# without diacritics so the matcher can normalise the haystack once and
+# compare cheaply. Keep the phrases specific enough that they don't
+# fire on regular job text (e.g. "no longer accepting" is unique to
+# the LinkedIn closed banner; "page not found" only appears on 404
+# placeholders).
+INACTIVE_MARKERS = (
+    # LinkedIn (EN + CS rendered banner)
+    "no longer accepting applications",
+    "this job is no longer available",
+    "uz neprijima zadosti",
+    "neprijima zadosti",
+    # prace.cz / jobs.cz "this offer is gone" placeholders
+    "tahle nabidka uz je pryc",
+    "tahle prace uz neni k mani",
+    "nabidka jiz neni aktivni",
+    "nabidka je jiz neaktivni",
+    "tato nabidka prace jiz neni aktivni",
+    "inzerat byl smazan",
+    "inzerat byl odstranen",
+    # prace.cz / jobs.cz hard 404 placeholder ("Taková stránka tu není")
+    "takova stranka tu neni",
+    "udelali chybu v adrese",
+    "neexistujici stranku",
+    "neexistujici stranka",
+    "stranka neexistuje",
+    "stranka nebyla nalezena",
+    "stranka nenalezena",
+    # startupjobs.cz "offer expired" placeholders
+    "nabidka neni up-to-date",
+    "nabidce vyprsela platnost",
+    "jiz neni aktualni",
+    # generic / other portals
+    "position has been filled",
+    "the position is no longer available",
+    "applications are now closed",
+    "we are no longer accepting applications",
+    "pozice je jiz obsazena",
+    "pozice byla obsazena",
+    "vyprsela platnost",
+    "platnost inzeratu vyprsela",
+    # 404 / page-not-found families (EN)
+    "page not found",
+    "page does not exist",
+    "page you are looking for",
+    "page you requested",
+    "this page doesn",
+    "404 not found",
+    "error 404",
+    "404 - ",
+    "the requested url was not found",
+)
+
+
+def _strip_diacritics(text: str) -> str:
+    """Return ``text`` lowercased + with diacritics removed.
+
+    LinkedIn / prace.cz / startupjobs.cz sometimes serve diacritics-free
+    copy ("uz neprijima zadosti" vs "už nepřijímá žádosti") depending
+    on the locale and the asset bundle, so we normalise the haystack
+    once before scanning ``INACTIVE_MARKERS``. Cheap (single linear
+    pass) and deterministic.
+    """
+    if not text:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
+def detect_inactive(
+    text: str,
+    *,
+    title: Optional[str] = None,
+    raw_text: Optional[str] = None,
+) -> Optional[str]:
+    """Return the marker phrase that flagged the page as inactive, else ``None``.
+
+    Scans every haystack we have access to:
+
+    * ``text`` - cleaned body text from :func:`_extract_with_bs4` (drops
+      ``<aside>``, ``<header>``, ``<form>``, …).
+    * ``title`` - page ``<title>``. Catches "Stránka nenalezena | …"
+      style titles when the body fails to load at all.
+    * ``raw_text`` - text extracted with minimal cleanup (only
+      ``<script>`` / ``<style>`` removed). Critical for LinkedIn,
+      where the "Už nepřijímá žádosti" banner lives inside an
+      ``<aside>`` that the cleaned ``text`` strips out.
+
+    Used by :mod:`src.sections.ai_jobs.pipeline` to surface "No longer
+    hiring" badges instead of silently dropping closed postings - the
+    user has to be able to evaluate whether detection works.
+
+    Returns the matched marker (always one of :data:`INACTIVE_MARKERS`)
+    so the caller can log which phrase fired, which makes debugging
+    false positives much easier.
+    """
+    haystacks: list[str] = []
+    for src in (text, title or "", raw_text or ""):
+        if src:
+            haystacks.append(_strip_diacritics(src))
+    if not haystacks:
+        return None
+    for marker in INACTIVE_MARKERS:
+        for hay in haystacks:
+            if marker in hay:
+                return marker
+    return None
+
+
 @dataclass
 class ScrapeResult:
     url: str
     text: str
     title: Optional[str]
     error: Optional[str]
+    # HTTP status from the last httpx attempt (None when the request
+    # never reached the server - DNS failure, SSL error, hard timeout).
+    status: Optional[int] = None
+    # Final URL after redirects. Differs from ``url`` when the host
+    # redirected (e.g. expired prace.cz offers redirect to a generic
+    # placeholder, LinkedIn 999 status redirects to a login page).
+    final_url: str = ""
+    # Plain text dump of the page with only ``<script>`` / ``<style>``
+    # stripped. Used by :func:`detect_inactive` so banner phrases that
+    # live in elements removed by the cleaned-text extractor (``<aside>``,
+    # ``<header>``, ``<form>``, …) still get scanned.
+    raw_text: str = ""
 
     @property
     def ok(self) -> bool:
@@ -141,6 +264,27 @@ def _extract_alma(soup) -> tuple[str, Optional[str]]:
                 return text, title
 
     return "", title
+
+
+def _extract_raw_text(html: str) -> str:
+    """Plain-text dump of ``html`` with minimal cleanup.
+
+    Only ``<script>``, ``<style>``, ``<noscript>``, and ``<svg>`` are
+    stripped - everything else survives, so banner phrases living in
+    ``<aside>`` / ``<header>`` / ``<form>`` (LinkedIn's "Už nepřijímá
+    žádosti", prace.cz's "Tahle nabídka už je pryč", …) make it into
+    the haystack scanned by :func:`detect_inactive`. Cheap regex-only
+    pipeline so we can afford to call it on every scrape.
+    """
+    if not html:
+        return ""
+    text = re.sub(r"<script[\s\S]*?</script>", " ", html, flags=re.I)
+    text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
+    text = re.sub(r"<noscript[\s\S]*?</noscript>", " ", text, flags=re.I)
+    text = re.sub(r"<svg[\s\S]*?</svg>", " ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
+    return _clean_lines(text)
 
 
 def _extract_with_bs4(html: str, *, host: str) -> tuple[str, Optional[str]]:
@@ -208,6 +352,8 @@ def scrape_job_posting(url: str, *, timeout: float = 15.0) -> ScrapeResult:
     http_error: Optional[str] = None
     text = ""
     title: Optional[str] = None
+    raw_text = ""
+    final_url = url
 
     try:
         with httpx.Client(
@@ -217,11 +363,31 @@ def scrape_job_posting(url: str, *, timeout: float = 15.0) -> ScrapeResult:
         ) as client:
             response = client.get(url)
             http_status = response.status_code
+            final_url = str(response.url) or url
+            # Always capture raw_text BEFORE raising on 4xx - the 404
+            # placeholder body is exactly what we want to scan for the
+            # "Stránka neexistuje" markers.
+            raw_text = _extract_raw_text(response.text)
             response.raise_for_status()
             text, title = _extract_with_bs4(response.text, host=host)
     except httpx.HTTPStatusError as exc:
         http_status = exc.response.status_code if exc.response is not None else None
         http_error = f"HTTP {http_status}" if http_status else str(exc)
+        if exc.response is not None:
+            try:
+                final_url = str(exc.response.url) or final_url
+                if not raw_text:
+                    raw_text = _extract_raw_text(exc.response.text)
+                if not title:
+                    title_match = re.search(
+                        r"<title[^>]*>(.*?)</title>",
+                        exc.response.text,
+                        flags=re.I | re.S,
+                    )
+                    if title_match:
+                        title = _clean_lines(title_match.group(1))
+            except Exception:
+                pass
     except Exception as exc:
         http_error = f"Download failed: {exc}"
 
@@ -232,9 +398,19 @@ def scrape_job_posting(url: str, *, timeout: float = 15.0) -> ScrapeResult:
     )
 
     if needs_fallback:
-        pw_text, pw_title, pw_error = _scrape_with_playwright(url, host=host, timeout=timeout)
+        pw_text, pw_title, pw_raw, pw_error = _scrape_with_playwright(
+            url, host=host, timeout=timeout
+        )
         if pw_text and len(pw_text) >= 80:
-            return ScrapeResult(url=url, text=pw_text, title=pw_title or title, error=None)
+            return ScrapeResult(
+                url=url,
+                text=pw_text,
+                title=pw_title or title,
+                error=None,
+                status=http_status,
+                final_url=final_url,
+                raw_text=pw_raw or raw_text,
+            )
         # Playwright also failed - return whatever we have plus the
         # clearest error from either layer so the user knows why.
         if http_error and pw_error:
@@ -247,9 +423,25 @@ def scrape_job_posting(url: str, *, timeout: float = 15.0) -> ScrapeResult:
             error = "Page is too short - likely JS-rendered. Paste the text manually."
         else:
             error = "Could not download the page. Paste the text manually."
-        return ScrapeResult(url=url, text=pw_text or text, title=pw_title or title, error=error)
+        return ScrapeResult(
+            url=url,
+            text=pw_text or text,
+            title=pw_title or title,
+            error=error,
+            status=http_status,
+            final_url=final_url,
+            raw_text=pw_raw or raw_text,
+        )
 
-    return ScrapeResult(url=url, text=text, title=title, error=None)
+    return ScrapeResult(
+        url=url,
+        text=text,
+        title=title,
+        error=None,
+        status=http_status,
+        final_url=final_url,
+        raw_text=raw_text,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,14 +476,16 @@ def _scrape_with_playwright(
     *,
     host: str,
     timeout: float,
-) -> tuple[str, Optional[str], Optional[str]]:
+) -> tuple[str, Optional[str], str, Optional[str]]:
     """Open ``url`` in a system browser via Playwright and return cleaned text.
 
-    Returns ``(text, title, error)`` - ``text`` empty on failure, ``error``
-    non-empty when no browser was reachable. The browsers are tried in
-    order of likelihood on Windows: Edge (preinstalled), Chrome (very
-    common), Firefox (fallback). Each attempt is timeboxed so a hung
-    browser can't freeze the UI thread that called us.
+    Returns ``(text, title, raw_text, error)`` - ``text`` empty on
+    failure, ``error`` non-empty when no browser was reachable. The
+    browsers are tried in order of likelihood on Windows: Edge
+    (preinstalled), Chrome (very common), Firefox (fallback). Each
+    attempt is timeboxed so a hung browser can't freeze the UI thread
+    that called us. ``raw_text`` is populated even for "too short"
+    pages so the verifier can still scan it for inactive markers.
     """
     try:
         # Imported lazily so missing playwright doesn't break the import
@@ -302,10 +496,11 @@ def _scrape_with_playwright(
             sync_playwright,
         )
     except ImportError:
-        return "", None, "Playwright is not installed - run pip install -r requirements.txt."
+        return "", None, "", "Playwright is not installed - run pip install -r requirements.txt."
 
     nav_timeout_ms = int(max(timeout, 15.0) * 1000)
     last_error: Optional[str] = None
+    last_raw_text = ""
 
     try:
         with sync_playwright() as pw:
@@ -341,9 +536,6 @@ def _scrape_with_playwright(
                     page.set_default_navigation_timeout(nav_timeout_ms)
                     try:
                         page.goto(url, wait_until="domcontentloaded")
-                        # Best-effort wait for late hydration; the catch
-                        # below swallows the timeout because the page
-                        # may already be fully rendered.
                         try:
                             page.wait_for_load_state(
                                 "networkidle", timeout=nav_timeout_ms
@@ -370,10 +562,13 @@ def _scrape_with_playwright(
                             pass
 
                 text, title = _extract_with_bs4(html, host=host)
+                raw = _extract_raw_text(html)
+                if raw:
+                    last_raw_text = raw
                 if len(text) >= 80:
-                    return text, title, None
+                    return text, title, raw, None
                 last_error = f"{label}: extracted only {len(text)} chars"
     except Exception as exc:
-        return "", None, f"Browser fallback failed to start: {exc}"
+        return "", None, last_raw_text, f"Browser fallback failed to start: {exc}"
 
-    return "", None, last_error or "No system browser (Edge / Chrome / Firefox) reachable."
+    return "", None, last_raw_text, last_error or "No system browser (Edge / Chrome / Firefox) reachable."

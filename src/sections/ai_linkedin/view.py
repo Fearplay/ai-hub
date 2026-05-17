@@ -165,7 +165,8 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             logger_service.log_exception(
                 "ai_linkedin.view", "menu_open_folder_ensure_dirs", exc,
             )
-        outputs_root = str(store.runs_dir())
+        section_root = str(store.section_runs_dir("ai_linkedin"))
+        outputs_root = section_root if os.path.isdir(section_root) else str(store.runs_dir())
         logger_service.log_event(
             "INFO", "ai_linkedin.view", "menu_open_folder", path=outputs_root,
         )

@@ -54,6 +54,7 @@ from src.sections.ai_jobs.state import (
     TAB_HISTORY,
     TAB_RESULTS,
     TAB_SETUP,
+    TAB_SKILL_GAP,
 )
 from src.sections.ai_jobs.strings import s
 from src.theme import Theme
@@ -64,6 +65,8 @@ _ACTIVITY_KEYS = {
     "searching": "ctx_activity_searching",
     "extracting": "ctx_activity_extracting",
     "verifying": "ctx_activity_verifying",
+    "scoring": "ctx_activity_scoring",
+    "gap_analysis": "ctx_activity_gap",
     "saving": "ctx_activity_saving",
     "error": "ctx_activity_error",
 }
@@ -152,6 +155,7 @@ def _quick_actions_body(theme: Theme, lang: str) -> QFrame:
     actions: list[tuple[str, str, callable]] = [
         (Icons.MANAGE_SEARCH, txt["ctx_qa_new_search"], _action_new_search),
         (Icons.AUTO_AWESOME, txt["ctx_qa_open_results"], _action_open_results),
+        (Icons.INSIGHTS_OUTLINED, txt["ctx_qa_open_skill_gap"], _action_open_skill_gap),
         (Icons.HISTORY, txt["ctx_qa_show_history"], _action_open_history),
         (Icons.FOLDER_OPEN, txt["ctx_qa_open_folder"], _action_open_folder),
         (Icons.MENU_BOOK_OUTLINED, txt["ctx_qa_open_how_to"], _action_open_how_to),
@@ -187,12 +191,17 @@ def _last_run_body(theme: Theme, lang: str) -> QFrame:
             theme=theme, size=11,
         ))
     layout.addWidget(SubtleLabel(
-        txt["history_count_template"].format(count=len(STATE.results)),
+        txt["history_count_template"].format(count=STATE.active_results_count()),
         theme=theme, size=11,
     ))
     if STATE.last_dropped:
         layout.addWidget(SubtleLabel(
             txt["results_dropped_note_template"].format(count=STATE.last_dropped),
+            theme=theme, size=11, italic=True,
+        ))
+    if STATE.last_inactive:
+        layout.addWidget(SubtleLabel(
+            txt["results_inactive_count_template"].format(count=STATE.last_inactive),
             theme=theme, size=11, italic=True,
         ))
     return holder
@@ -209,6 +218,11 @@ def _action_open_results() -> None:
     REFS.dispatch(_request_full_refresh)
 
 
+def _action_open_skill_gap() -> None:
+    STATE.active_tab = TAB_SKILL_GAP
+    REFS.dispatch(_request_full_refresh)
+
+
 def _action_open_history() -> None:
     STATE.active_tab = TAB_HISTORY
     REFS.dispatch(_request_full_refresh)
@@ -219,7 +233,8 @@ def _action_open_folder() -> None:
     if not target or not os.path.isdir(target):
         try:
             store.ensure_dirs()
-            target = str(store.runs_dir())
+            section_root = str(store.section_runs_dir("ai_jobs"))
+            target = section_root if os.path.isdir(section_root) else str(store.runs_dir())
         except Exception as exc:
             logger_service.log_exception(
                 "ai_jobs.context", "open_folder_ensure_dirs", exc,

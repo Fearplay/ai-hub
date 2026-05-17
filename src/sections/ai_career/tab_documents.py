@@ -115,7 +115,7 @@ def _layout_display_name(slug: str, txt: dict) -> str:
 def _ensure_run_folder(role: str, company: str = "") -> str:
     if STATE.last_run_folder and os.path.isdir(STATE.last_run_folder):
         return STATE.last_run_folder
-    folder = store.new_run_dir(role or "ai-career-run", company)
+    folder = store.new_run_dir(role or "ai-career-run", company, section="ai_career")
     STATE.last_run_folder = str(folder)
     return STATE.last_run_folder
 

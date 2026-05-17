@@ -53,12 +53,18 @@ Inside `src/sections/<key>/` you may add (all optional except as noted):
   Every pipeline function must short-circuit when `STATE.demo_mode` is
   `True` and return curated mock data — that lets users showcase the
   feature without spending tokens.
-- **Runs persist on disk.** Use `src.services.store.new_run_dir(...)`
+- **Runs persist on disk.** Use
+ `src.services.store.new_run_dir(role, company, section=<section_key>)`
  and write outputs through `src.services.exporter.export_*`. The
- history index lives at `~/AI Hub/history.json`. Every "Save complete
- analysis" call must request a fresh `new_run_dir(...)` - never reuse
- the previous run folder, otherwise two saves silently overwrite each
- other (see `ai_career.pipeline.save_full_analysis`).
+ `section=` kwarg is mandatory - it routes the run into
+ `outputs/<section_key>/<run-slug>-<timestamp>/` so the user can
+ browse runs by section instead of one giant flat list. See
+ [outputs-layout.mdc](outputs-layout.mdc) for the full convention
+ + the "Open outputs folder" pattern. The history index lives at
+ `~/AI Hub/history.json`. Every "Save complete analysis" call must
+ request a fresh `new_run_dir(...)` - never reuse the previous run
+ folder, otherwise two saves silently overwrite each other (see
+ `ai_career.pipeline.save_full_analysis`).
 - **Pipeline functions log start / end / errors** through
  `src.services.logger.log_event` and `log_exception`. AI calls must
  emit a `*_start` line (with `kind`, `output_lang`, `demo_mode`) and a

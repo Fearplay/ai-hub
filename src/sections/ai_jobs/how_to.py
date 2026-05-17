@@ -32,6 +32,11 @@ def open_jobs_how_to(parent: Optional[QWidget], theme: Theme, lang: str) -> None
             body=txt["how_to_inputs_text"],
         ),
         HowToSection(
+            icon=Icons.PUBLIC,
+            title=txt["how_to_section_sources"],
+            body=txt["how_to_sources_text"],
+        ),
+        HowToSection(
             icon=Icons.TUNE,
             title=txt["how_to_section_quality"],
             body=txt["how_to_quality_text"],
