@@ -125,18 +125,32 @@ def _top_required_body(theme: Theme, txt: dict, items: list[dict], total: int) -
 def _empty_state(theme: Theme, txt: dict) -> QWidget:
     holder = QFrame()
     holder.setStyleSheet("background: transparent;")
-    layout = vbox(spacing=10, margins=(40, 60, 40, 60))
+    layout = vbox(spacing=12, margins=(48, 68, 48, 68))
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     holder.setLayout(layout)
 
+    badge = QFrame()
+    badge.setFixedSize(72, 72)
+    badge.setStyleSheet(
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 18px;"
+    )
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(
+        IconLabel(Icons.TRACK_CHANGES, color=theme.primary, size=34),
+        alignment=Qt.AlignmentFlag.AlignCenter,
+    )
+    layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignHCenter)
+
     layout.addWidget(
-        IconLabel(Icons.INSIGHTS_OUTLINED, color=theme.text_muted, size=42),
+        TitleLabel(txt["skill_gap_empty_title"], theme=theme, size=17, weight=QFont.Weight.Bold),
         alignment=Qt.AlignmentFlag.AlignHCenter,
     )
-    layout.addWidget(TitleLabel(txt["skill_gap_empty_title"], theme=theme, size=16))
     desc = MutedLabel(txt["skill_gap_empty_desc"], theme=theme, size=12)
     desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(desc)
+    desc.setMaximumWidth(460)
+    layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
 
     open_btn = GhostButton(txt["tab_setup"], theme=theme, icon=Icons.TUNE)
     def _go_setup() -> None:
@@ -150,18 +164,32 @@ def _empty_state(theme: Theme, txt: dict) -> QWidget:
 def _no_profile_state(theme: Theme, txt: dict) -> QWidget:
     holder = QFrame()
     holder.setStyleSheet("background: transparent;")
-    layout = vbox(spacing=10, margins=(40, 60, 40, 60))
+    layout = vbox(spacing=12, margins=(48, 68, 48, 68))
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     holder.setLayout(layout)
 
+    badge = QFrame()
+    badge.setFixedSize(72, 72)
+    badge.setStyleSheet(
+        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 18px;"
+    )
+    bl = hbox(spacing=0, margins=(0, 0, 0, 0))
+    bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setLayout(bl)
+    bl.addWidget(
+        IconLabel(Icons.PERSON_OUTLINE, color=theme.primary, size=34),
+        alignment=Qt.AlignmentFlag.AlignCenter,
+    )
+    layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignHCenter)
+
     layout.addWidget(
-        IconLabel(Icons.PERSON_OUTLINE, color=theme.text_muted, size=42),
+        TitleLabel(txt["skill_gap_empty_title"], theme=theme, size=17, weight=QFont.Weight.Bold),
         alignment=Qt.AlignmentFlag.AlignHCenter,
     )
-    layout.addWidget(TitleLabel(txt["skill_gap_empty_title"], theme=theme, size=16))
     desc = MutedLabel(txt["skill_gap_skipped_no_profile"], theme=theme, size=12)
     desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(desc)
+    desc.setMaximumWidth(460)
+    layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
 
     open_btn = GhostButton(txt["tab_setup"], theme=theme, icon=Icons.TUNE)
     def _go_setup() -> None:

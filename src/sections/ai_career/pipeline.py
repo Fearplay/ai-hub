@@ -1205,6 +1205,7 @@ def save_full_analysis() -> SaveResult:
             model="",
             cost_usd=float(COST.cost_usd),
             docs=docs_list,
+            note="ai_career",
         )
         store.append_run(summary)
     except Exception as exc:

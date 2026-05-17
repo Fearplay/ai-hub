@@ -16,4 +16,5 @@ SECTION = Section(
     build_view=build_view,
     build_context=build_context,
     order=70,
+    hidden=True,
 )

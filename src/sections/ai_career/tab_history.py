@@ -88,6 +88,16 @@ def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
     on_done()
 
 
+def _is_career_run(summary: store.RunSummary) -> bool:
+    note = (getattr(summary, "note", "") or "").strip().lower()
+    if note == "ai_career":
+        return True
+    # Backwards compatibility for older history rows saved before
+    # ``note`` was written by AI Career.
+    folder_text = (summary.folder or "").replace("\\", "/").lower()
+    return "/outputs/ai_career/" in folder_text
+
+
 def _row(
     theme: Theme,
     txt: dict,
@@ -110,7 +120,7 @@ def _row(
         """
     )
     layout = hbox(spacing=10, margins=(14, 10, 14, 10))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
     info = QFrame()
@@ -130,15 +140,21 @@ def _row(
     layout.addWidget(info, 1)
 
     pill = Pill(text=f"{txt['history_score_label']}: {score}", bg=rgba(score_color, 0.14), fg=score_color)
-    layout.addWidget(pill)
+    layout.addWidget(pill, 0, Qt.AlignmentFlag.AlignTop)
 
     open_folder = IconOnlyButton(Icons.FOLDER_OPEN, color=theme.text_muted, size=18, bg_hover=theme.surface_2, tooltip=txt["history_open_folder_btn"])
-    open_folder.clicked.connect(lambda folder=summary.folder: _open_in_explorer(folder))
-    layout.addWidget(open_folder)
+    # ``IconOnlyButton`` is a ``QToolButton`` whose ``clicked`` signal
+    # passes ``bool checked``. Bind it to ``_checked`` so the captured
+    # ``folder`` default survives - otherwise Qt overwrites ``folder``
+    # with ``True``/``False`` and we hit
+    # ``TypeError: argument should be a str or an os.PathLike object``
+    # in ``store.read_run_summary``.
+    open_folder.clicked.connect(lambda _checked=False, folder=summary.folder: _open_in_explorer(folder))
+    layout.addWidget(open_folder, 0, Qt.AlignmentFlag.AlignTop)
 
     open_app = IconOnlyButton(Icons.OPEN_IN_NEW, color=theme.primary, size=18, bg_hover=theme.surface_2, tooltip=txt["history_open_app_btn"])
-    open_app.clicked.connect(lambda folder=summary.folder: on_open_app(folder))
-    layout.addWidget(open_app)
+    open_app.clicked.connect(lambda _checked=False, folder=summary.folder: on_open_app(folder))
+    layout.addWidget(open_app, 0, Qt.AlignmentFlag.AlignTop)
     return row
 
 
@@ -198,7 +214,7 @@ def build_history_tab(
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        runs = store.list_runs()
+        runs = [run for run in store.list_runs() if _is_career_run(run)]
         if not runs:
             list_layout.addWidget(_empty_state(theme, txt))
             return

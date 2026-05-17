@@ -176,15 +176,11 @@ def _quick_action_chip(theme: Theme, label: str, icon: str, on_click: Callable[[
     return chip
 
 
-def _intro_bubble(theme: Theme) -> QWidget:
+def _intro_bubble(theme: Theme, lang: str) -> QWidget:
+    txt = s(lang)
     return _assistant_bubble(
         theme,
-        text=(
-            "Hi! I'm your LinkedIn voice expert. Ask me to improve your headline, "
-            "critique your About, draft a learning-update post or write a "
-            "recruiter outreach DM. Switch to **Builder** mode whenever you "
-            "want me to run a full profile pass."
-        ),
+        text=txt["chat_intro"],
         time_label=datetime.now().strftime("%H:%M"),
     )
 
@@ -415,10 +411,15 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_improve_headline"], Icons.TITLE, lambda: _send_canned(txt["chat_qa_improve_headline"])))
-    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_write_learning_post"], Icons.EDIT_OUTLINED, lambda: _send_canned(txt["chat_qa_write_learning_post"])))
-    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_critique_about"], Icons.SUBJECT, lambda: _send_canned(txt["chat_qa_critique_about"])))
-    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_recruiter_dm"], Icons.MAIL_OUTLINE, lambda: _send_canned(txt["chat_qa_recruiter_dm"])))
+    # ``Icons.TITLE`` rendered as a stylised "T" that read as a "5" at
+    # 14 px (see review screenshots); ``WORKSPACE_PREMIUM_OUTLINED`` is
+    # a recognisable badge / award glyph that better signals "improve
+    # your professional headline". The other three swaps follow the
+    # same logic - pick a glyph that survives 14 px rendering.
+    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_improve_headline"], Icons.WORKSPACE_PREMIUM_OUTLINED, lambda: _send_canned(txt["chat_qa_improve_headline"])))
+    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_write_learning_post"], Icons.POST_ADD, lambda: _send_canned(txt["chat_qa_write_learning_post"])))
+    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_critique_about"], Icons.NOTES, lambda: _send_canned(txt["chat_qa_critique_about"])))
+    layout.addWidget(_quick_action_chip(theme, txt["chat_qa_recruiter_dm"], Icons.FORWARD_TO_INBOX, lambda: _send_canned(txt["chat_qa_recruiter_dm"])))
     layout.addStretch(1)
     return holder
 
@@ -467,7 +468,7 @@ def build_chat_tab(
     msgs_layout = vbox(spacing=18, margins=(24, 20, 24, 20))
     messages_holder.setLayout(msgs_layout)
     if not STATE.chat_messages:
-        msgs_layout.addWidget(_intro_bubble(theme))
+        msgs_layout.addWidget(_intro_bubble(theme, lang))
     else:
         for msg in STATE.chat_messages:
             if msg.role == "user":

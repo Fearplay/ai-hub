@@ -436,9 +436,9 @@ def reorderable_nav_item(
         on_click=on_click,
     )
     grip = IconLabel(
-        Icons.DRAG_INDICATOR,
+        Icons.MORE_HORIZ,
         color=theme.text_subtle,
-        size=18,
+        size=16,
     )
     grip.setToolTip(label)
     grip.setCursor(Qt.CursorShape.OpenHandCursor)

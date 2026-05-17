@@ -7,7 +7,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "nav_label": "AI Finance",
         "title": "AI Finance",
-        "subtitle": "Smart financial assistant for managing money, investments and planning.",
+        "subtitle": "Finance assistant for budgeting, investing and planning.",
         "tab_chat": "Chat",
         "tab_budget": "Budget",
         "tab_invest": "Investments",
@@ -334,7 +334,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "cs": {
         "nav_label": "AI Finance",
         "title": "AI Finance",
-        "subtitle": "Chytrý finanční asistent pro správu financí, investice a plánování.",
+        "subtitle": "Asistent pro rozpočet, investice a plánování.",
         "tab_chat": "Chat",
         "tab_budget": "Rozpočet",
         "tab_invest": "Investice",

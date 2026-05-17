@@ -281,6 +281,7 @@ class Icons:
     SCHOOL_OUTLINED = "school"
     SCIENCE_OUTLINED = "science"
     SCOREBOARD_OUTLINED = "scoreboard"
+    SEARCH = "search"
     SEND = "send"
     SENTIMENT_SATISFIED_OUTLINED = "sentiment_satisfied"
     SETTINGS_OUTLINED = "settings"

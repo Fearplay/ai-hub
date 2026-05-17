@@ -111,9 +111,13 @@ def _apply_user_order(primary: list[Section]) -> list[Section]:
 SECTIONS: list[Section] = _discover()
 SECTION_BY_KEY: dict[str, Section] = {s.key: s for s in SECTIONS}
 
-_PRIMARY_DEFAULT: list[Section] = [s for s in SECTIONS if s.nav_group == "primary"]
+# Hidden sections stay in ``SECTIONS`` / ``SECTION_BY_KEY`` so a stale
+# ``set_section("dashboard")`` deep-link still resolves to the safe-build
+# panel - they just do not appear in the sidebar lists below.
+_VISIBLE: list[Section] = [s for s in SECTIONS if not s.hidden]
+_PRIMARY_DEFAULT: list[Section] = [s for s in _VISIBLE if s.nav_group == "primary"]
 PRIMARY_SECTIONS: list[Section] = _apply_user_order(_PRIMARY_DEFAULT)
-SECONDARY_SECTIONS: list[Section] = [s for s in SECTIONS if s.nav_group == "secondary"]
+SECONDARY_SECTIONS: list[Section] = [s for s in _VISIBLE if s.nav_group == "secondary"]
 
 
 def reload_primary_order() -> None:

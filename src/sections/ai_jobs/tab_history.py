@@ -127,7 +127,7 @@ def _row(
         """
     )
     layout = hbox(spacing=12, margins=(16, 12, 16, 12))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
     badge = QFrame()
@@ -149,7 +149,7 @@ def _row(
     title_row = QFrame()
     title_row.setStyleSheet("background: transparent;")
     title_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    title_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    title_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     title_row.setLayout(title_layout)
     title_layout.addWidget(BodyLabel(query, theme=theme, size=13, weight=QFont.Weight.DemiBold), 1)
     if timestamp:

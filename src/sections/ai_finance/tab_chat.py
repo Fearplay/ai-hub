@@ -19,6 +19,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLineEdit,
     QScrollArea,
@@ -34,7 +35,6 @@ from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
-    FlowLayout,
     GhostButton,
     IconLabel,
     IconOnlyButton,
@@ -43,6 +43,7 @@ from src.qt.widgets import (
     custom_label,
     hbox,
     vbox,
+    wrap_label_slot,
 )
 from src.services import logger as logger_service
 from src.services import settings_store
@@ -256,17 +257,33 @@ def _quick_action_chip(theme: Theme, *, label: str, icon: str, on_click: Callabl
         ClickFrame {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
-            border-radius: 999px;
+            border-radius: 14px;
         }}
         ClickFrame:hover {{
             background-color: {theme.surface_2};
         }}
         """
     )
-    layout = hbox(spacing=6, margins=(10, 6, 12, 6))
+    chip.setMinimumHeight(64)
+    chip.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    layout = hbox(spacing=10, margins=(12, 10, 12, 10))
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     chip.setLayout(layout)
-    layout.addWidget(IconLabel(icon, color=theme.primary, size=14))
-    layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.Medium))
+    icon_box = QFrame()
+    icon_box.setFixedSize(22, 22)
+    icon_box.setStyleSheet(f"background-color: {rgba(theme.primary, 0.15)}; border-radius: 7px;")
+    icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    icon_box.setLayout(icon_layout)
+    icon_layout.addWidget(IconLabel(icon, color=theme.primary, size=13), alignment=Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(icon_box, 0, Qt.AlignmentFlag.AlignTop)
+    text_slot = QFrame()
+    text_slot.setStyleSheet("background: transparent;")
+    wrap_label_slot(text_slot)
+    text_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    text_slot.setLayout(text_layout)
+    text_layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.Medium))
+    layout.addWidget(text_slot, 1)
     chip.clicked.connect(on_click)
     return chip
 
@@ -302,17 +319,28 @@ def _quick_actions_row(
     txt = s(lang)
     holder = QFrame()
     holder.setStyleSheet("background: transparent;")
-    layout = FlowLayout(holder, h_spacing=8, v_spacing=8)
+    layout = QGridLayout(holder)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setHorizontalSpacing(10)
+    layout.setVerticalSpacing(10)
+    layout.setColumnStretch(0, 1)
+    layout.setColumnStretch(1, 1)
 
     actions = [
-        (txt["chat_canned_budget"], Icons.PIE_CHART_OUTLINE, lambda: on_navigate(TAB_BUDGET)),
+        (txt["chat_canned_budget"], Icons.ACCOUNT_BALANCE_WALLET_OUTLINED, lambda: on_navigate(TAB_BUDGET)),
         (txt["chat_canned_savings"], Icons.SAVINGS_OUTLINED, lambda: _send_canned(txt["chat_canned_savings"], lang)),
         (txt["chat_canned_invest"], Icons.TRENDING_UP, lambda: on_navigate(TAB_INVEST)),
         (txt["chat_canned_taxes"], Icons.RECEIPT_LONG_OUTLINED, lambda: on_navigate(TAB_TAXES)),
-        (txt["chat_canned_calc"], Icons.CALCULATE_OUTLINED, lambda: on_navigate(TAB_CALCULATORS)),
+        (txt["chat_canned_calc"], Icons.FUNCTIONS, lambda: on_navigate(TAB_CALCULATORS)),
     ]
-    for label, icon, handler in actions:
-        layout.addWidget(_quick_action_chip(theme, label=label, icon=icon, on_click=handler))
+    for index, (label, icon, handler) in enumerate(actions):
+        row = index // 2
+        col = index % 2
+        layout.addWidget(
+            _quick_action_chip(theme, label=label, icon=icon, on_click=handler),
+            row,
+            col,
+        )
     return holder
 
 
@@ -359,9 +387,9 @@ def _build_input_bar(theme: Theme, lang: str) -> QFrame:
     input_row.setLayout(input_layout)
 
     attach_btn = IconOnlyButton(
-        Icons.ATTACH_FILE,
+        Icons.UPLOAD_FILE_OUTLINED,
         color=theme.text_muted,
-        size=20,
+        size=18,
         bg_hover=theme.surface_2,
         tooltip=txt["input_attach_label"],
     )
@@ -384,12 +412,12 @@ def _build_input_bar(theme: Theme, lang: str) -> QFrame:
     input_layout.addWidget(field, 1)
 
     send_btn = IconOnlyButton(
-        Icons.SEND,
+        Icons.ARROW_FORWARD,
         color="#FFFFFF",
-        size=18,
+        size=16,
         bg=theme.primary,
         bg_hover=theme.primary_hover,
-        radius=10,
+        radius=12,
     )
     send_btn.setFixedSize(40, 40)
     input_layout.addWidget(send_btn)

@@ -42,7 +42,6 @@ from src.components.nav_item import (
     reorderable_nav_item,
 )
 from src.components.theme_toggle import theme_toggle
-from src.components.user_card import user_card
 from src.i18n import t
 from src.qt.icons import Icons
 from src.qt.widgets import (
@@ -288,17 +287,14 @@ def sidebar(
     root.addWidget(scroll, 1)
 
     # footer ----------------------------------------------------------------
+    # The previously-rendered ``user_card(theme)`` ("Jan Novák" mock) is
+    # intentionally omitted - the app currently has no real user identity
+    # and the placeholder added visual noise. Re-add it here once the
+    # auth story lands. See README "Hidden UI" note.
     footer = QFrame()
     footer.setStyleSheet("background: transparent;")
     footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
     footer.setLayout(footer_layout)
-
-    user_holder = QFrame()
-    user_holder.setStyleSheet("background: transparent;")
-    user_holder_layout = vbox(spacing=0, margins=(12, 4, 12, 6))
-    user_holder.setLayout(user_holder_layout)
-    user_holder_layout.addWidget(user_card(theme))
-    footer_layout.addWidget(user_holder)
 
     footer_layout.addWidget(language_toggle(theme, lang, on_toggle=on_lang_toggle))
     footer_layout.addWidget(

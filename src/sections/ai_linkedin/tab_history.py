@@ -20,6 +20,7 @@ from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ElidedLabel,
     GhostButton,
     IconLabel,
     IconOnlyButton,
@@ -74,7 +75,7 @@ def _row(theme: Theme, txt: dict, summary: store.RunSummary) -> QFrame:
         """
     )
     layout = hbox(spacing=10, margins=(14, 10, 14, 10))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
     info = QFrame()
@@ -84,15 +85,19 @@ def _row(theme: Theme, txt: dict, summary: store.RunSummary) -> QFrame:
     info.setLayout(info_layout)
     info_layout.addWidget(BodyLabel(summary.role or txt["recent_default_title"], theme=theme, size=14, weight=QFont.Weight.Bold))
     info_layout.addWidget(MutedLabel(summary.timestamp, theme=theme, size=12))
-    info_layout.addWidget(SubtleLabel(summary.folder, theme=theme, size=11, italic=True))
+    info_layout.addWidget(ElidedLabel(summary.folder, color=theme.text_subtle, size=11, italic=True))
     layout.addWidget(info, 1)
 
     pill = Pill(text=f"{txt['history_score']}: {score}", bg=rgba(score_color, 0.14), fg=score_color)
-    layout.addWidget(pill)
+    layout.addWidget(pill, 0, Qt.AlignmentFlag.AlignTop)
 
     open_btn = IconOnlyButton(Icons.FOLDER_OPEN, color=theme.text_muted, size=18, bg_hover=theme.surface_2, tooltip=txt["history_open"])
-    open_btn.clicked.connect(lambda folder=summary.folder: _open_in_explorer(folder))
-    layout.addWidget(open_btn)
+    # ``QToolButton.clicked`` emits ``bool checked`` - bind it to a
+    # throwaway first arg so the captured ``folder`` default is not
+    # overwritten by ``True``/``False`` (see ai_career.tab_history for
+    # the same pattern + the upstream traceback this fixed).
+    open_btn.clicked.connect(lambda _checked=False, folder=summary.folder: _open_in_explorer(folder))
+    layout.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignTop)
     return row
 
 

@@ -11,10 +11,12 @@ Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
 středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
-**AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
-a **AI Právní asistent** jsou plně napojené na OpenAI / Anthropic;
-ostatní sekce jsou postavené na stejné architektuře
-a postupně se napojují.
+**AI LinkedIn Profile Builder**, **AI Finance** a **AI Hledání práce**
+jsou plně napojené na OpenAI / Anthropic. Rozpracované sekce
+(Dashboard, AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
+AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
+aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
+[Schované UI](#schované-ui) níže.
 
 Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Pořadí se ukládá
@@ -388,6 +390,36 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Disclaimer „nejsem advokát"** - inline banner pod hlavičkou připomíná, že asistent nenahrazuje právní poradenství; každá delší odpověď to znovu zmíní běžným jazykem.
   - **Kompaktní hlavička** - sekce Legal vypíná koncová tlačítka *Jak to použít* / `…` a používá užší top bar, aby chat měl víc vertikálního prostoru; ostatní sekce si zachovávají plnou hlavičku díky novým flagsům `show_help_button` / `show_menu_button` / `compact` v `src/components/header.py`.
 - Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline
+
+## Schované UI
+
+V sidebaru jsou teď jen čtyři produkční sekce (AI LinkedIn,
+AI Životopis / Kariéra, AI Finance, AI Hledání práce) plus
+**Nastavení** pod oddělovačem. Rozpracované sekce v repu zůstávají,
+ale jejich `section.py` má `hidden=True`, takže
+`src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
+`SECONDARY_SECTIONS` přeskočí. Pořád se auto-discoverují a zůstávají
+v `SECTIONS` / `SECTION_BY_KEY`, aby staré deep-linky a uložené pořadí
+sidebaru nespadly - jen se nevykreslí.
+
+| Klíč sekce | Složka | K čemu má být |
+| --- | --- | --- |
+| `dashboard` | `src/sections/dashboard/` | Úvodní dashboard / přehled KPI. |
+| `ai_legal` | `src/sections/ai_legal/` | Multi-formátový upload + 4 quick-action chat pro právní dokumenty (už napojené na AI, schované do doladění copy). |
+| `ai_business` | `src/sections/ai_business/` | Pomocník pro byznys strategii / SaaS playbook. |
+| `ai_marketing` | `src/sections/ai_marketing/` | Generátor marketingových textů / Instagram příspěvků (mock UI). |
+| `ai_study` | `src/sections/ai_study/` | Plánovač učení / flashcards. |
+| `ai_documents` | `src/sections/ai_documents/` | Placeholder pro generování dokumentů. |
+| `ai_doc_assistant` | `src/sections/ai_doc_assistant/` | PDF / DOCX shrnutí + Q&A (Verze B). |
+
+Když chceš kteroukoli z nich vrátit, otevři `section.py` dané sekce a
+nastav `hidden=False` (nebo ten řádek prostě smaž). Pole
+`Section.hidden` defaultně `False`.
+
+Sidebar taky aktuálně nevykresluje **uživatelskou kartu** ("Jan Novák"
+placeholder) - žádná reálná identita zatím neexistuje. Až přibyde
+auth, vrať volání zpátky do `src/components/sidebar.py`; helper pořád
+žije v `src/components/user_card.py`.
 
 ## Co zatím **neumí** (záměrně)
 

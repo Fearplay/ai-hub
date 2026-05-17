@@ -353,6 +353,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "results_inactive_section_title": "Closed listings",
         "results_match_pill_template": "Match {score}%",
         "results_open_skill_gap_btn": "Open skill gap analysis",
+        "results_card_fit_title": "Fits",
+        "results_card_concerns_title": "Possible concerns",
+        "results_card_recommendation_title": "AI recommendation",
 
         # skill gap tab --------------------------------------------------
         "skill_gap_title": "Skill gap analysis",
@@ -455,7 +458,7 @@ STRINGS: dict[str, dict[str, str]] = {
         # tab labels ------------------------------------------------------
         "tab_setup": "Nastaven\u00ed",
         "tab_results": "V\u00fdsledky",
-        "tab_skill_gap": "Skill gap",
+        "tab_skill_gap": "Mezera dovednost\u00ed",
         "tab_history": "Historie",
 
         # setup hero ------------------------------------------------------
@@ -781,6 +784,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "results_inactive_section_title": "Uzav\u0159en\u00e9 nab\u00eddky",
         "results_match_pill_template": "Shoda {score} %",
         "results_open_skill_gap_btn": "Otev\u0159\u00edt skill gap anal\u00fdzu",
+        "results_card_fit_title": "Sed\u00ed",
+        "results_card_concerns_title": "Co m\u016f\u017ee b\u00fdt probl\u00e9m",
+        "results_card_recommendation_title": "Doporu\u010den\u00ed AI",
 
         # skill gap tab --------------------------------------------------
         "skill_gap_title": "Skill gap anal\u00fdza",

@@ -69,6 +69,17 @@ def _import_yfinance():
         import yfinance  # type: ignore[import-not-found]
 
         return yfinance
+    except ImportError:
+        # Expected branch when the user is on an older venv that
+        # predates the yfinance bump. The pipeline gracefully falls
+        # back to mock tickers, so this is not a real ERROR - log it as
+        # INFO with the cure (``pip install -r requirements.txt``) so
+        # the debug log does not look like a real failure.
+        logger_service.log_event(
+            "INFO", "market_data", "yfinance_not_installed",
+            hint="pip install -r requirements.txt",
+        )
+        return None
     except Exception as exc:
         logger_service.log_exception(
             "market_data", "yfinance_import_failed", exc,

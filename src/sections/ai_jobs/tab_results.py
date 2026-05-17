@@ -35,6 +35,7 @@ from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    FlowLayout,
     GhostButton,
     IconLabel,
     MutedLabel,
@@ -180,6 +181,86 @@ def _inactive_pill(theme: Theme, txt: dict, *, marker: str = "") -> QFrame:
     return pill
 
 
+def _skill_chip(theme: Theme, label: str, *, color: str, fill: str) -> QFrame:
+    """Small pill that mirrors the saved-HTML ``.skill-chip`` look.
+
+    Kept in this module (rather than imported from ``tab_skill_gap``)
+    so the Results tab does not pull in skill-gap's empty-state
+    bootstrapping when there is no profile yet.
+    """
+    chip = QFrame()
+    chip.setStyleSheet(f"background-color: {fill}; border-radius: 12px;")
+    layout = hbox(spacing=0, margins=(10, 4, 10, 4))
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    chip.setLayout(layout)
+    layout.addWidget(custom_label(label, color=color, size=11, weight=QFont.Weight.DemiBold))
+    chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    return chip
+
+
+def _skill_subcard(
+    theme: Theme,
+    *,
+    title: str,
+    items: list[str],
+    color: str,
+) -> Optional[QFrame]:
+    """Header + wrapping chip row, or ``None`` when ``items`` is empty.
+
+    Drives the on-screen "Sedí" / "Co může být problém" sections in
+    ``_position_card`` so the in-app card looks the same as the saved
+    HTML export.
+    """
+    items = [s for s in (str(x).strip() for x in items or []) if s]
+    if not items:
+        return None
+    card = QFrame()
+    card.setObjectName("JobsResultSubCard")
+    card.setStyleSheet(
+        f"""
+        QFrame#JobsResultSubCard {{
+            background-color: {rgba(theme.text, 0.04)};
+            border: 1px solid {theme.border};
+            border-radius: 12px;
+        }}
+        """
+    )
+    layout = vbox(spacing=8, margins=(14, 12, 14, 12))
+    card.setLayout(layout)
+    layout.addWidget(SubtleLabel(title.upper(), theme=theme, size=10, weight=QFont.Weight.Bold))
+    chips_holder = QFrame()
+    chips_holder.setStyleSheet("background: transparent;")
+    flow = FlowLayout(chips_holder, h_spacing=6, v_spacing=6)
+    chips_holder.setLayout(flow)
+    fill = rgba(color, 0.18)
+    for label in items:
+        flow.addWidget(_skill_chip(theme, label, color=color, fill=fill))
+    layout.addWidget(chips_holder)
+    return card
+
+
+def _recommendation_card(theme: Theme, *, title: str, body: str) -> Optional[QFrame]:
+    body = (body or "").strip()
+    if not body:
+        return None
+    card = QFrame()
+    card.setObjectName("JobsResultRecCard")
+    card.setStyleSheet(
+        f"""
+        QFrame#JobsResultRecCard {{
+            background-color: {rgba(theme.primary, 0.10)};
+            border-left: 3px solid {theme.primary};
+            border-radius: 10px;
+        }}
+        """
+    )
+    layout = vbox(spacing=6, margins=(14, 12, 14, 12))
+    card.setLayout(layout)
+    layout.addWidget(SubtleLabel(title.upper(), theme=theme, size=10, weight=QFont.Weight.Bold))
+    layout.addWidget(BodyLabel(body, theme=theme, size=13, selectable=True))
+    return card
+
+
 def _position_card(
     theme: Theme,
     txt: dict,
@@ -253,6 +334,34 @@ def _position_card(
     summary = (item.get("summary") or "").strip()
     if summary:
         layout.addWidget(BodyLabel(summary, theme=theme, size=13, selectable=True))
+
+    # Per-position AI fields - only computed for active postings (Pass 4
+    # of the search pipeline). Mirrors the saved HTML export so the
+    # in-app card carries the same context the user sees offline.
+    if is_active:
+        fit_card = _skill_subcard(
+            theme,
+            title=txt["results_card_fit_title"],
+            items=item.get("matched_skills") or [],
+            color="#22C55E",
+        )
+        if fit_card is not None:
+            layout.addWidget(fit_card)
+        concerns_card = _skill_subcard(
+            theme,
+            title=txt["results_card_concerns_title"],
+            items=item.get("missing_skills") or [],
+            color="#EF4444",
+        )
+        if concerns_card is not None:
+            layout.addWidget(concerns_card)
+        rec_card = _recommendation_card(
+            theme,
+            title=txt["results_card_recommendation_title"],
+            body=str(item.get("recommendation") or ""),
+        )
+        if rec_card is not None:
+            layout.addWidget(rec_card)
 
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")

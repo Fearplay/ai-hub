@@ -12,9 +12,12 @@ A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
 in the middle, and a context panel on the right. **AI CV / Career**,
-**AI LinkedIn Profile Builder**, **AI Finance**, **AI Job Search**, and
-**AI Legal assistant** are fully wired to OpenAI / Anthropic; other
-sections share the same architecture and are being filled in as we go.
+**AI LinkedIn Profile Builder**, **AI Finance**, and **AI Job Search**
+are fully wired to OpenAI / Anthropic. The work-in-progress sections
+(Dashboard, AI Legal, AI Business, AI Marketing, AI Study, AI Documents,
+AI Doc Assistant) are kept in the repo so the architecture stays
+documented but are currently **hidden from the sidebar** - see
+[Hidden UI](#hidden-ui) below to flip them back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
 on the right of any primary AI section and drop it where you want.
@@ -390,6 +393,37 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
 - Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
+
+## Hidden UI
+
+The sidebar currently only shows the four production-ready sections
+(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search) plus
+**Settings** under the divider. Work-in-progress sections still live in
+the repo but their `section.py` sets `hidden=True` so
+`src/sections/__init__.py` skips them when building
+`PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
+and stay in `SECTIONS` / `SECTION_BY_KEY`, so deep-links / saved
+sidebar orders that still reference them do not crash - they just are
+not rendered.
+
+| Section key | Folder | What it will become |
+| --- | --- | --- |
+| `dashboard` | `src/sections/dashboard/` | Landing dashboard / KPI summary. |
+| `ai_legal` | `src/sections/ai_legal/` | Multi-format upload + 4 quick-action legal chat (already wired to AI, hidden until copy is finalised). |
+| `ai_business` | `src/sections/ai_business/` | Business-strategy / SaaS playbook helper. |
+| `ai_marketing` | `src/sections/ai_marketing/` | Marketing copy / Instagram post generator (mock UI in place). |
+| `ai_study` | `src/sections/ai_study/` | Study planner / flashcards. |
+| `ai_documents` | `src/sections/ai_documents/` | Document generator placeholder. |
+| `ai_doc_assistant` | `src/sections/ai_doc_assistant/` | PDF / DOCX summary + Q&A (Version B). |
+
+To bring any of them back, open the section's `section.py` and set
+`hidden=False` (or just delete the line). The `Section.hidden` field
+defaults to `False`.
+
+The sidebar also drops the **user card** ("Jan Novák" placeholder) for
+the same reason - there is no real user identity yet. Re-add it in
+`src/components/sidebar.py` once auth lands; the helper still lives in
+`src/components/user_card.py`.
 
 ## Not yet (deliberately)
 
