@@ -58,6 +58,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "footer_generate_btn": "Generate bug report",
         "footer_generate_running": "Generating...",
         "generate_disabled_hint": "Add a description or at least one attachment first.",
+        "input_requirement_hint": "Minimum input: add a description or at least one attachment.",
         "no_key_template": "Missing API key for {provider}. Open Settings and save your key first.",
 
         "preview_empty": "Nothing to show yet. Run Generate on the Input tab.",
@@ -183,6 +184,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "footer_generate_btn": "Vygenerovat bug report",
         "footer_generate_running": "Generuji...",
         "generate_disabled_hint": "Přidej popis nebo aspoň jednu přílohu.",
+        "input_requirement_hint": "Minimum vstup: vyplň popis nebo přidej aspoň jednu přílohu.",
         "no_key_template": "Chybí API klíč pro {provider}. Otevři Nastavení a klíč ulož.",
 
         "preview_empty": "Zatím nic. Spusť Generování na záložce Vstup.",

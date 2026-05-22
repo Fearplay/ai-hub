@@ -45,7 +45,7 @@ from src.sections.ai_linkedin.state import (
 from src.sections.ai_linkedin.strings import s
 
 
-SECTION_ICON = Icons.HUB_OUTLINED
+SECTION_ICON = Icons.ID_CARD
 
 
 # --- Tabs --------------------------------------------------------------

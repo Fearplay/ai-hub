@@ -1,14 +1,14 @@
 """Left sidebar.
 
-Renders the brand mark, the "new chat" button, the section list (read from
-the auto-discovered registry), the secondary nav, the user card, and the
-language + theme toggles. Adding a new section to the sidebar happens by
-creating a folder under ``src/sections/`` - this file does not need editing.
+Renders the brand mark, the section list (read from the auto-discovered
+registry), the secondary nav, the user card, and the language + theme
+toggles. Adding a new section to the sidebar happens by creating a
+folder under ``src/sections/`` - this file does not need editing.
 
 Layout has three vertical zones so the content scrolls cleanly even on
 short windows:
 
-* **header** - logo + "+ New chat" button, fixed height at the top.
+* **header** - logo only, fixed height at the top.
 * **middle** - primary nav, divider, secondary nav. Wrapped in a scrolling
   ``QScrollArea`` so long section lists never push the footer off-screen.
 * **footer** - user card, language toggle, theme toggle, fixed at the
@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
 )
 
@@ -45,7 +44,6 @@ from src.components.theme_toggle import theme_toggle
 from src.i18n import t
 from src.qt.icons import Icons
 from src.qt.widgets import (
-    ClickFrame,
     HSeparator,
     IconLabel,
     hbox,
@@ -65,6 +63,13 @@ SetActive = Callable[[str], None]
 
 
 def _logo(theme: Theme, lang: str) -> QFrame:
+    """Sidebar brand mark - icon tile + product name.
+
+    Previously rendered a trailing ``+`` glyph as a visual hook for the
+    "new chat" action; that affordance is now gone because we removed
+    the new-chat button entirely (the brand mark is purely decorative,
+    no action lives next to it).
+    """
     frame = QFrame()
     frame.setStyleSheet("background: transparent;")
     layout = hbox(spacing=12, margins=(0, 0, 0, 0))
@@ -89,55 +94,9 @@ def _logo(theme: Theme, lang: str) -> QFrame:
     name.setFont(name_font)
     name.setStyleSheet(f"color: {theme.text}; background: transparent;")
     layout.addWidget(name)
-
-    plus = QLabel("+")
-    plus_font = QFont()
-    plus_font.setPixelSize(17)
-    plus_font.setWeight(QFont.Weight.Bold)
-    plus.setFont(plus_font)
-    plus.setStyleSheet(f"color: {theme.primary}; background: transparent;")
-    layout.addWidget(plus)
     layout.addStretch(1)
 
     return frame
-
-
-def _new_chat_button(theme: Theme, lang: str) -> ClickFrame:
-    btn = ClickFrame()
-    btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-    btn.setStyleSheet(
-        f"""
-        ClickFrame {{
-            background-color: {theme.primary};
-            border-radius: 10px;
-        }}
-        ClickFrame:hover {{
-            background-color: {theme.primary_hover};
-        }}
-        """
-    )
-    layout = hbox(spacing=8, margins=(14, 12, 14, 12))
-    btn.setLayout(layout)
-
-    icon = IconLabel(Icons.ADD, color="#FFFFFF", size=18)
-    layout.addWidget(icon)
-
-    label = QLabel(t("new_chat", lang))
-    font = QFont()
-    font.setPixelSize(13)
-    font.setWeight(QFont.Weight.DemiBold)
-    label.setFont(font)
-    label.setStyleSheet("color: #FFFFFF; background: transparent;")
-    layout.addWidget(label, 1)
-
-    shortcut = QLabel(t("new_chat_shortcut", lang))
-    shortcut_font = QFont()
-    shortcut_font.setPixelSize(11)
-    shortcut.setFont(shortcut_font)
-    shortcut.setStyleSheet("color: rgba(255,255,255,0.7); background: transparent;")
-    layout.addWidget(shortcut)
-
-    return btn
 
 
 def _persist_reorder(source_key: str, target_key: str, before: bool) -> bool:
@@ -187,9 +146,13 @@ def sidebar(
         if not _persist_reorder(source_key, target_key, before):
             return
         try:
-            from src.app import request_section_refresh
+            # Use the full ``_smart_rebuild`` (sidebar + section + context)
+            # instead of just refreshing the centre column. Without this the
+            # nav rows keep their pre-drop order until the user toggles the
+            # language, which feels broken.
+            from src.app import request_sidebar_refresh
 
-            request_section_refresh()
+            request_sidebar_refresh()
         except Exception as exc:
             logger_service.log_exception(
                 "sidebar", "reorder_refresh_failed", exc,
@@ -238,13 +201,15 @@ def sidebar(
     container.setLayout(root)
 
     # header ----------------------------------------------------------------
+    # Just the brand mark now - the old "Nová konverzace" / "New chat"
+    # button never had a target (the app has no global chat view) so
+    # clicking it did nothing. Removing it leaves the sidebar focused
+    # on the nav list.
     header = QFrame()
     header.setStyleSheet("background: transparent;")
     header_layout = vbox(spacing=14, margins=(20, 18, 20, 8))
     header.setLayout(header_layout)
     header_layout.addWidget(_logo(theme, lang))
-    new_btn = _new_chat_button(theme, lang)
-    header_layout.addWidget(new_btn)
     root.addWidget(header)
 
     # middle (scrollable) ---------------------------------------------------

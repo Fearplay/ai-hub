@@ -26,7 +26,6 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
     QScrollArea,
     QSizePolicy,
@@ -49,6 +48,7 @@ from src.qt.widgets import (
     MutedLabel,
     Pill,
     PrimaryButton,
+    ScrollSafeComboBox,
     SubtleLabel,
     TitleLabel,
     custom_label,
@@ -509,6 +509,9 @@ def _build_input_tab(
 
     holder_layout.addWidget(desc_card)
     holder_layout.addWidget(attachments_card)
+    holder_layout.addWidget(
+        SubtleLabel(txt["input_requirement_hint"], theme=theme, size=11, italic=True)
+    )
     return holder
 
 
@@ -684,7 +687,7 @@ def _build_preview_tab(
         cell_layout.addWidget(
             custom_label(label_text, color=theme.primary, size=11, weight=700)
         )
-        combo = QComboBox()
+        combo = ScrollSafeComboBox()
         for value in values:
             combo.addItem(value)
         if current in values:
@@ -1028,6 +1031,7 @@ def _build_footer(
             label, theme=theme, icon=Icons.PLAY_ARROW_ROUNDED
         )
         button.setEnabled(enabled)
+        button.setToolTip("" if enabled else txt["generate_disabled_hint"])
         button.clicked.connect(_on_generate)
         run_layout.addWidget(button)
 
@@ -1122,7 +1126,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     header_widget = header(
         theme,
         lang,
-        icon=Icons.WARNING_AMBER_OUTLINED,
+        icon=Icons.BUG_REPORT_OUTLINED,
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=lambda: open_bug_report_how_to(container, theme, lang),

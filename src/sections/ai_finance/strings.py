@@ -155,6 +155,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "quick_calculators": "Calculators",
         "markets_title": "Markets",
         "markets_edit": "Edit",
+        "markets_refresh": "Refresh",
+        "markets_refresh_tooltip": "Re-fetch live quotes now",
         "markets_edit_title": "Edit your tickers",
         "markets_edit_hint": (
             "Add Yahoo Finance symbols (e.g. ^GSPC, BTC-USD, EURCZK=X). "
@@ -168,6 +170,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "markets_edit_empty": "No tickers yet - add the first symbol below.",
         "markets_empty_no_tickers": "Add your first ticker via the Edit button above.",
         "markets_empty_no_data": "No live data yet - check your connection or try the Edit button.",
+        "markets_empty_response": (
+            "Yahoo Finance returned no quotes. Check your connection, "
+            "proxy, or whether the symbols still exist, then tap Refresh."
+        ),
+        "markets_error_generic": "Could not fetch live quotes: {error}",
         "markets_loading": "Fetching live quotes...",
         "ticker_sp500": "S&P 500",
         "ticker_nasdaq": "NASDAQ",
@@ -482,6 +489,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "quick_calculators": "Kalkulačky",
         "markets_title": "Přehled trhů",
         "markets_edit": "Upravit",
+        "markets_refresh": "Obnovit",
+        "markets_refresh_tooltip": "Stáhnout aktuální kurzy hned",
         "markets_edit_title": "Uprav si tickery",
         "markets_edit_hint": (
             "Přidej Yahoo Finance symboly (např. ^GSPC, BTC-USD, EURCZK=X). "
@@ -495,6 +504,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "markets_edit_empty": "Žádné tickery - přidej první symbol dole.",
         "markets_empty_no_tickers": "Přidej si první ticker tlačítkem Upravit nahoře.",
         "markets_empty_no_data": "Live data zatím nedorazila - zkontroluj připojení nebo zkus Upravit.",
+        "markets_empty_response": (
+            "Yahoo Finance nevrátil žádné kurzy. Zkontroluj připojení, "
+            "proxy nebo platnost symbolů a klepni na Obnovit."
+        ),
+        "markets_error_generic": "Nepodařilo se stáhnout kurzy: {error}",
         "markets_loading": "Načítám aktuální kurzy...",
         "ticker_sp500": "S&P 500",
         "ticker_nasdaq": "NASDAQ",

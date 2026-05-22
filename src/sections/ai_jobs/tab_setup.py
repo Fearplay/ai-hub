@@ -32,13 +32,11 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QDialog,
     QFrame,
     QRadioButton,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QWidget,
 )
 
@@ -54,6 +52,8 @@ from src.qt.widgets import (
     IconOnlyButton,
     MutedLabel,
     PrimaryButton,
+    ScrollSafeComboBox,
+    ScrollSafeSpinBox,
     SecondaryButton,
     SubtleLabel,
     TitleLabel,
@@ -125,8 +125,8 @@ def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget
     return card
 
 
-def _styled_combo(theme: Theme) -> QComboBox:
-    combo = QComboBox()
+def _styled_combo(theme: Theme) -> ScrollSafeComboBox:
+    combo = ScrollSafeComboBox()
     combo.setStyleSheet(
         f"""
         QComboBox {{
@@ -212,8 +212,8 @@ def _styled_checkbox(theme: Theme, label: str) -> QCheckBox:
     return chk
 
 
-def _styled_spin(theme: Theme, *, value: int, lo: int, hi: int, step: int = 1) -> QSpinBox:
-    spin = QSpinBox()
+def _styled_spin(theme: Theme, *, value: int, lo: int, hi: int, step: int = 1) -> ScrollSafeSpinBox:
+    spin = ScrollSafeSpinBox()
     spin.setRange(lo, hi)
     spin.setValue(value)
     spin.setSingleStep(step)

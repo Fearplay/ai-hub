@@ -43,6 +43,7 @@ from src.qt.widgets import (
     custom_label,
     hbox,
     vbox,
+    wrap_label_slot,
 )
 from src.services import logger as logger_service
 from src.sections.ai_jobs import pipeline
@@ -201,10 +202,11 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
     header = QFrame()
     header.setStyleSheet("background: transparent;")
     header_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
-    header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    header_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     header.setLayout(header_layout)
     title_holder = QFrame()
     title_holder.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_holder)
     title_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     title_holder.setLayout(title_layout)
     title_layout.addWidget(TitleLabel(txt["history_title"], theme=theme, size=18, weight=QFont.Weight.Bold))

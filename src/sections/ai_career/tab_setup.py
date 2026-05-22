@@ -406,19 +406,17 @@ def build_setup_tab(
     footer_layout = vbox(spacing=8, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
 
-    button_row = QFrame()
-    button_row.setStyleSheet("background: transparent;")
-    button_row_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    button_row_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    button_row.setLayout(button_row_layout)
+    controls_row = QFrame()
+    controls_row.setStyleSheet("background: transparent;")
+    controls_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
+    controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    controls_row.setLayout(controls_layout)
 
-    button_row_layout.addStretch(1)
-    run_btn = PrimaryButton(txt["footer_run_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
-    button_row_layout.addWidget(run_btn)
-    footer_layout.addWidget(button_row)
-
-    status_label = SubtleLabel("", theme=theme, size=11)
-    footer_layout.addWidget(status_label)
+    followups_col = QFrame()
+    followups_col.setStyleSheet("background: transparent;")
+    followups_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    followups_col_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    followups_col.setLayout(followups_col_layout)
 
     followups_row = QFrame()
     followups_row.setStyleSheet("background: transparent;")
@@ -436,9 +434,19 @@ def build_setup_tab(
     )
     fu_check.stateChanged.connect(lambda s: settings_store.set_ask_followups(bool(fu_check.isChecked())))
     followups_layout.addWidget(fu_check)
-    followups_layout.addWidget(MutedLabel(txt["footer_followup_desc"], theme=theme, size=10))
     followups_layout.addStretch(1)
-    footer_layout.addWidget(followups_row)
+    followups_col_layout.addWidget(followups_row)
+    desc = MutedLabel(txt["footer_followup_desc"], theme=theme, size=10)
+    desc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    followups_col_layout.addWidget(desc)
+    controls_layout.addWidget(followups_col, 1)
+
+    run_btn = PrimaryButton(txt["footer_run_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
+    controls_layout.addWidget(run_btn, 0, Qt.AlignmentFlag.AlignTop)
+    footer_layout.addWidget(controls_row)
+
+    status_label = SubtleLabel("", theme=theme, size=11)
+    footer_layout.addWidget(status_label)
     layout.addWidget(footer)
 
     def _set_status(message: str, *, error: bool = False) -> None:

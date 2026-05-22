@@ -21,10 +21,10 @@ aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
 [Schované UI](#schované-ui) níže.
 
 Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
-napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Pořadí se ukládá
-do `~/AI Hub/settings.json`, takže layout přežije restart. Sekundární
-skupina (Historie / Oblíbené / Nastavení) zůstává pevně pod
-oddělovačem.
+napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Nové pořadí se
+projeví okamžitě (žádný restart, žádné přepínání jazyka). Pořadí se
+ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
+Sekundární skupina (Nastavení) zůstává pevně pod oddělovačem.
 
 ## Požadavky
 
@@ -224,9 +224,13 @@ AI Finance kreslí pruh živých tickerů přes
 endpointy Yahoo Finance - žádný API klíč, žádný účet, žádná
 identifikace uživatele. Defaultní symboly jsou S&P 500 (`^GSPC`),
 NASDAQ (`^IXIC`), DOW JONES (`^DJI`), BTC/USD (`BTC-USD`) a EUR/CZK
-(`EURCZK=X`). Výsledky cachujeme v paměti 60 sekund. **Nastavení -> Živá
-tržní data** vypne stahování úplně a pravý panel přepne na mock
-tickery.
+(`EURCZK=X`). Výsledky cachujeme v paměti 60 sekund. Karta „Trhy" v
+pravém panelu má vlastní tlačítko **Obnovit** vedle *Upravit*, které
+60-sekundovou cache obejde a vynutí čerstvý fetch; když Yahoo nevrátí
+žádné kurzy (offline, proxy, mrtvý symbol), karta nově ukáže
+konkrétní chybovou hlášku místo obecného "data zatím nedorazila".
+**Nastavení -> Živá tržní data** vypne stahování úplně a pravý panel
+přepne na svůj prázdný stav.
 
 ### Debug logy
 
@@ -282,7 +286,6 @@ ai-hub/
 ├── requirements.txt
 ├── README.md                     # angličtina
 ├── README.cs.md                  # tento soubor (čeština)
-├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
 ├── assets/
@@ -343,8 +346,6 @@ ai-hub/
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # AI asistent na PDF / DOCX (summary / Q&A / rewrite / extract)
     │   ├── ai_bug_report/         # plně napojené (vision) - text / screenshoty / logy -> Wordový bug report
-    │   ├── history/              # placeholder (secondary nav)
-    │   ├── favorites/            # placeholder (secondary nav)
     │   └── settings/             # API klíče, provider, obecné, debug logy (secondary nav)
     └── data/
         └── user.py               # globální mock (jenom přihlášený uživatel)
@@ -359,14 +360,14 @@ Každá složka v `src/sections/` má:
 - `context.py` (volitelně) - pravý kontextový panel
 
 Adding a new section nikdy neotevírá `src/app.py` ani `src/components/sidebar.py`.
-Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
+Detaily v
 [src/sections/SECTION_TEMPLATE/README.md](src/sections/SECTION_TEMPLATE/README.md).
 
 ## Co umí
 
 - Tříslupcový layout, scrollovatelný sidebar (header / scroll / footer)
 - **Přepínač jazyka** EN ↔ CS v sidebaru (default English, jak chtěl tým)
-- Auto-discovery sekcí (primary + secondary skupina; History / Favorites / Settings v secondary)
+- Auto-discovery sekcí (primary + secondary skupina; Settings je jediný záznam ve secondary)
 - Přepínač světlý / tmavý režim - **Windows OS title bar** (proužek
   s X / minimalizovat / maximalizovat a názvem appky) se přebarví
   podle aktivního theme přes DWM API, takže v dark módu už nepřežívá
@@ -415,7 +416,8 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Lean Výsledky tab** s malou "Shoda XX %" pillou na kartě (zelená / žlutá / červená pásma) plus chip pro plat + úvazek + forma práce. Per-position chipy a doporučení AI se renderují **hlavně do ukládaného HTML**, aby zůstal seznam na obrazovce přehledný.
   - **Skill gap záložka** s top požadavky, silnými stránkami, chybějícími skills a doporučeními z Passu 5.
   - **Uložené profily hledání** v `~/AI Hub/jobs_profiles.json` - jedno-klikové spuštění, edit, duplikování, smazání. Žádná nová dependency, žádný nový secret.
-  - **Bohaté HTML** (`Uložit jako HTML`) s match pillou, chip bloky sedí / chybí, doporučením u každé nabídky, samostatnou sekcí „Uzavřené nabídky" pro pozice, které už nenabírají, a kompletní skill gap sekcí. Každé uložení jde do nové složky `outputs/ai_jobs/<dotaz>-search-<timestamp>/` a registruje se v globálním `~/AI Hub/history.json`.
+  - **Cíl jsou aktivní nabídky** - hledání se vždycky snaží najít přesně tolik *aktivních* pozic, kolik si vybereš. Pipeline jede nejdřív přísně (tři top-up pasy, které drží tvoje filtry), a teprve když ani po nich neumí kvótu naplnit, spustí jednu uvolněnou pasáž (sousední role / blízká města). Výsledky z uvolněné pasáže dostanou v UI i v HTML exportu pílí **„Méně relevantní"** (oranžová), abys hned poznal, co přišlo z širšího hledání. Uzavřené / neaktivní nabídky se pořád zobrazují pro kontrolu, ale do počtu aktivních se nezapočítávají.
+  - **Bohaté HTML** (`Uložit jako HTML`) s match pillou, chip bloky sedí / chybí, doporučením u každé nabídky, novou pílí „Méně relevantní" pro výsledky z uvolněné pasáže, samostatnou sekcí „Uzavřené nabídky" pro pozice, které už nenabírají, a kompletní skill gap sekcí. Každé uložení jde do nové složky `outputs/ai_jobs/<dotaz>-search-<timestamp>/` a registruje se v globálním `~/AI Hub/history.json`.
   - **Activity badge** (pravý kontextový panel) odráží každou fázi pipeline (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus quick action "Otevřít skill gap" který skočí přímo do nové záložky.
 - **AI Bug Report** - z popisu, screenshotů a podpůrných dokumentů / logů vyrobí pořádný bug report ve Wordu:
   - **Vision vstup** - kombinovaná drop zóna přijímá screenshoty (PNG / JPG / WEBP / GIF / BMP / HEIC) i textové soubory (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshoty jdou do modelu přes nativní vision API obou providerů (`image_url` content bloky u OpenAI, `image` source bloky u Anthropic), textové soubory parsuje lokálně `src/services/file_parser.py`.
@@ -465,7 +467,6 @@ auth, vrať volání zpátky do `src/components/sidebar.py`; helper pořád
 
 - Streaming odpovědí v UI (první iterace volání blokuje s loaderem v context panelu)
 - Multi-jazyčný OUTPUT_LANGUAGE per dokument (jeden run = jeden výstupní jazyk; řízeno globálním lang toggle)
-- Skutečná persistence pro Favorites / History na úrovni celé appky (zatím per-section)
 - AI v ostatních sekcích - architektura je připravená, sekce se postupně dopisují podle vzoru AI Career
 
 ## Postaveno s Cursorem
@@ -512,7 +513,7 @@ Až bude repo veřejné, půjde tuhle galerii vyměnit za auto-generovanou:
 </a>
 ```
 
-Chceš pomoct? Detaily workflow, pojmenování branch a commitů jsou v souboru [CONTRIBUTING.md](CONTRIBUTING.md).
+Chceš pomoct? Otevři PR s jasným testovacím postupem a screenshoty u UI změn.
 
 ## Licence
 

@@ -408,10 +408,10 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
         threading.Thread(target=_worker, daemon=True).start()
 
     prompts = [
-        ("chat_qa_review_resume", Icons.SUBJECT),
+        ("chat_qa_review_resume", Icons.DESCRIPTION_OUTLINED),
         ("chat_qa_interview_prep", Icons.QUIZ_OUTLINED),
-        ("chat_qa_cover_letter", Icons.MAIL_OUTLINE),
-        ("chat_qa_negotiate", Icons.WORK_OUTLINE),
+        ("chat_qa_cover_letter", Icons.ARTICLE_OUTLINED),
+        ("chat_qa_negotiate", Icons.PAYMENTS_OUTLINED),
     ]
     for key, icon in prompts:
         if key not in txt:

@@ -28,6 +28,7 @@ from typing import Optional
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QStyle,
     QToolButton,
     QVBoxLayout,
@@ -118,9 +120,15 @@ def MutedLabel(
     size: int = 12,
     weight: int | QFont.Weight = QFont.Weight.Normal,
     italic: bool = False,
+    selectable: bool = False,
 ) -> QLabel:
     return _make_label(
-        text, color=theme.text_muted, size=size, weight=weight, italic=italic
+        text,
+        color=theme.text_muted,
+        size=size,
+        weight=weight,
+        italic=italic,
+        selectable=selectable,
     )
 
 
@@ -131,9 +139,15 @@ def SubtleLabel(
     size: int = 11,
     weight: int | QFont.Weight = QFont.Weight.Normal,
     italic: bool = False,
+    selectable: bool = False,
 ) -> QLabel:
     return _make_label(
-        text, color=theme.text_subtle, size=size, weight=weight, italic=italic
+        text,
+        color=theme.text_subtle,
+        size=size,
+        weight=weight,
+        italic=italic,
+        selectable=selectable,
     )
 
 
@@ -911,6 +925,39 @@ def themed_text_edit(
     return edit
 
 
+# --- scroll-safe pickers ----------------------------------------------------
+
+
+class ScrollSafeComboBox(QComboBox):
+    """``QComboBox`` that ignores mouse-wheel events.
+
+    Qt's default ``QComboBox.wheelEvent`` cycles through the selected
+    item when the user hovers the field and turns the wheel. Inside the
+    AI Hub the combo box is usually parked inside a scroll area (the
+    Setup tab for AI Jobs, the meta row in AI Bug Report, every select
+    field in AI Finance) so any incidental wheel motion silently
+    mutates a setting instead of scrolling the page - the user's
+    "Lokalita" jumps from Brno to Praha while they think they are
+    paging down. Ignoring the event lets the parent ``QScrollArea``
+    handle the scroll exactly as the user expects.
+    """
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
+class ScrollSafeSpinBox(QSpinBox):
+    """``QSpinBox`` that ignores mouse-wheel events.
+
+    Same rationale as :class:`ScrollSafeComboBox` - "Max výsledků" /
+    other numeric pickers must not silently increment when the user
+    scrolls the surrounding form.
+    """
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
 # --- separators -------------------------------------------------------------
 
 
@@ -962,11 +1009,23 @@ def wrap_label_slot(widget: QWidget) -> QWidget:
     collapses to the unwrapped single-line height and the second line
     overlaps the sibling icons.
 
+    We also flip ``heightForWidth`` on the size policy: by default
+    ``QHBoxLayout`` does not honor a child's ``heightForWidth`` even
+    when the child has ``setWordWrap(True)``, which clips the second
+    line of long descriptions ("Povolit vyhledávání na webu v AI chatu"
+    in Settings, "Předchozí hledání" subtitle in AI Jobs History, …).
+    Setting the bit forces the parent layout to ask the child how tall
+    it wants to be at the current width and the wrap survives.
+
     See `.cursor/rules/qt-text.mdc` rule 3 ("the label slot must be
     Expanding / Preferred"). Use this helper instead of inlining the
     policy so a single grep finds every label slot in the app.
     """
-    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    policy = QSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+    )
+    policy.setHeightForWidth(True)
+    widget.setSizePolicy(policy)
     return widget
 
 
@@ -995,6 +1054,8 @@ __all__ = [
     "MutedLabel",
     "Pill",
     "PrimaryButton",
+    "ScrollSafeComboBox",
+    "ScrollSafeSpinBox",
     "SecondaryButton",
     "SubtleLabel",
     "TitleLabel",

@@ -203,7 +203,7 @@ def header(
 
     margins = (24, 12, 24, 6) if compact else (24, 18, 24, 12)
     spacing = 12 if compact else 14
-    root = vbox(spacing=6 if subtitle else 0, margins=margins)
+    root = vbox(spacing=0, margins=margins)
     bar.setLayout(root)
 
     row = QFrame()
@@ -219,10 +219,14 @@ def header(
     title_col = QFrame()
     title_col.setStyleSheet("background: transparent;")
     wrap_label_slot(title_col)
-    title_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    title_layout = vbox(spacing=4 if subtitle else 0, margins=(0, 0, 0, 0))
     title_col.setLayout(title_layout)
     title_size = 16 if compact else 18
     title_layout.addWidget(TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold))
+    if subtitle:
+        subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
+        subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        title_layout.addWidget(subtitle_label)
     row_layout.addWidget(title_col, 1, Qt.AlignmentFlag.AlignTop)
 
     actions = QFrame()
@@ -248,17 +252,5 @@ def header(
 
     if actions_layout.count():
         row_layout.addWidget(actions, 0, Qt.AlignmentFlag.AlignTop)
-
-    if subtitle:
-        subtitle_row = QFrame()
-        subtitle_row.setStyleSheet("background: transparent;")
-        subtitle_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
-        subtitle_row.setLayout(subtitle_layout)
-        subtitle_indent = (36 if compact else 44) + spacing
-        subtitle_layout.addSpacing(subtitle_indent)
-        subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
-        subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        subtitle_layout.addWidget(subtitle_label, 1)
-        root.addWidget(subtitle_row)
 
     return bar

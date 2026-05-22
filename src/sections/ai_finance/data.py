@@ -22,7 +22,7 @@ from src.qt.icons import Icons
 from src.sections.ai_finance.strings import s
 
 
-SECTION_ICON = Icons.ACCOUNT_BALANCE_WALLET_OUTLINED
+SECTION_ICON = Icons.SAVINGS_OUTLINED
 
 ACCENT = "#22C55E"
 NEEDS_COLOR = "#22C55E"

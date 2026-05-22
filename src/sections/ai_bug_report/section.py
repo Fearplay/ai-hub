@@ -16,7 +16,7 @@ from src.sections.ai_bug_report.view import build_view
 
 SECTION = Section(
     key="ai_bug_report",
-    icon=Icons.WARNING_AMBER_OUTLINED,
+    icon=Icons.BUG_REPORT_OUTLINED,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,

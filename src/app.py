@@ -62,6 +62,27 @@ def request_section_refresh() -> None:
     qt_runtime.dispatch(_active_app._refresh_active_section)
 
 
+def request_sidebar_refresh() -> None:
+    """Re-run the in-place sidebar + section rebuild on the GUI thread.
+
+    Called after a sidebar drag-and-drop reorder so the new section
+    order is reflected immediately. ``request_section_refresh`` only
+    swaps the centre + right panels, which leaves the sidebar nav rows
+    stale until the user happens to toggle the language. Routing the
+    drop event through this helper takes the user-visible delay back
+    down to one frame.
+
+    Safe to call from any thread - dispatched onto the Qt loop via
+    :mod:`src.qt.runtime`.
+    """
+    if _active_app is None:
+        logger_service.log_event(
+            "WARNING", "app", "request_sidebar_refresh_no_app"
+        )
+        return
+    qt_runtime.dispatch(_active_app._smart_rebuild)
+
+
 def get_active_window() -> Optional[QMainWindow]:
     """Return the live ``QMainWindow`` for the currently running app."""
     if _active_app is None:

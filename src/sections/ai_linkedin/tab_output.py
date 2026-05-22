@@ -82,7 +82,7 @@ def _empty_state(theme: Theme, txt: dict, on_navigate_tab: Callable[[int], None]
     bl = hbox(spacing=0, margins=(0, 0, 0, 0))
     bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     badge.setLayout(bl)
-    bl.addWidget(IconLabel(Icons.HUB_OUTLINED, color=theme.primary, size=42),
+    bl.addWidget(IconLabel(Icons.WORKSPACE_PREMIUM_OUTLINED, color=theme.primary, size=42),
                  alignment=Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignHCenter)
     layout.addWidget(TitleLabel(txt["output_empty_title"], theme=theme, size=18, weight=QFont.Weight.Bold), alignment=Qt.AlignmentFlag.AlignHCenter)

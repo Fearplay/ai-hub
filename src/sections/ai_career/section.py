@@ -11,7 +11,7 @@ from src.sections.ai_career.view import build_view
 
 SECTION = Section(
     key="ai_career",
-    icon=Icons.WORK_OUTLINE,
+    icon=Icons.ASSIGNMENT_IND_OUTLINED,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,

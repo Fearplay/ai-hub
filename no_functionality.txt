@@ -1,243 +1,235 @@
-AI Hub - inventář nefunkčních tlačítek (stav 2026-05-11)
-==========================================================
+AI Hub - non-functional button inventory (state 2026-05-11)
+===========================================================
 
-Tento soubor je výsledek auditu napříč celou aplikací. Záměrně NEZAHRNUJE
-tlačítka, která jsou interaktivní a funkční (mají `.clicked.connect(...)`
-v okolním kontextu), ani tlačítka, která jsou Qt builtiny bez naší
-business logiky (zavírací křížky dialogů, scrollbary, atd.).
+This file is an application-wide audit of visible UI controls that do
+not currently have a real business action behind them.
 
-Symboly:
-  [chybí handler]       - tlačítko se renderuje, kliknutí nic neudělá
-  [placeholder]         - celá sekce / tab je "coming soon" obrazovka
-  [decorative-only]     - ClickFrame je použitý jen pro hover efekt, není
-                          to skutečné tlačítko (např. statické bubliny)
-  [partially wired]     - tlačítko volá UI rerender, ale chybí byznys
-                          logika za ním (např. otevřít detail dialog)
+It intentionally does not list controls that are already interactive
+and functional (for example controls with `.clicked.connect(...)` in
+their local context), or native Qt controls that do not belong to our
+business logic, such as dialog close buttons and scrollbars.
+
+Legend:
+  [missing-handler]   - the control is rendered, but clicking it has no effect
+  [placeholder]       - the whole section or tab is a "coming soon" screen
+  [decorative-only]   - a hoverable or button-like visual element with no action
+  [partially-wired]   - the UI updates, but the core business action is missing
+
+Minimum user-facing rule:
+  When a feature requires input, at least one input must be provided
+  before the action can run. For example, AI Bug Report needs text,
+  an attachment, or both.
 
 
 -----------------------------------------------------------------------
 1) DASHBOARD  (src/sections/dashboard/)
 -----------------------------------------------------------------------
 
-Celá sekce je placeholder. View jen vrací `placeholder_view(...)` -
-nejsou tam žádná interaktivní tlačítka, jen "this section is coming soon"
-obrazovka.
+The whole section is a placeholder. The view only returns
+`placeholder_view(...)`; there are no interactive buttons, just the
+"this section is coming soon" screen.
 
-  [placeholder] Celá obrazovka                            - src/sections/dashboard/view.py
-
-
------------------------------------------------------------------------
-2) FAVORITES  (src/sections/favorites/)
------------------------------------------------------------------------
-
-  [placeholder] Celá obrazovka                            - src/sections/favorites/view.py
+  [placeholder] Whole screen                              - src/sections/dashboard/view.py
 
 
 -----------------------------------------------------------------------
-3) HISTORY  (src/sections/history/)
+2) AI BUSINESS  (src/sections/ai_business/)
 -----------------------------------------------------------------------
 
-  [placeholder] Celá obrazovka                            - src/sections/history/view.py
-
-
------------------------------------------------------------------------
-4) AI BUSINESS  (src/sections/ai_business/)
------------------------------------------------------------------------
-
-  [placeholder] Celá obrazovka                            - src/sections/ai_business/view.py
+  [placeholder] Whole screen                              - src/sections/ai_business/view.py
 
 
 -----------------------------------------------------------------------
-5) AI DOCUMENTS  (src/sections/ai_documents/)
+3) AI DOCUMENTS  (src/sections/ai_documents/)
 -----------------------------------------------------------------------
 
-  [placeholder] Celá obrazovka                            - src/sections/ai_documents/view.py
-
-
------------------------------------------------------------------------
-6) AI MARKETING  (src/sections/ai_marketing/)
------------------------------------------------------------------------
-
-Sekce je vizuální showcase chatu s mock daty. Žádná interakce
-neexistuje - bubliny ani akce nereagují.
-
-  Hlavní view (mock chat):
-    [decorative-only] Assistant action chipy             - src/sections/ai_marketing/view.py:164
-        (`_action_chip(...)` v body asistentské bubliny - bez handleru)
-    [decorative-only] Mock telefonové preview            - src/sections/ai_marketing/phone_mockup.py
-
-  Kontextový panel (pravá strana):
-    [chybí handler] Quick action řádky                   - src/sections/ai_marketing/context.py:77
-        (řádky z `quick_actions_column(...)` - viz pozn. v sekci "Sdílené")
-    [chybí handler] History řádky                        - src/sections/ai_marketing/context.py:79
-        (řádky z `history_column(...)`)
+  [placeholder] Whole screen                              - src/sections/ai_documents/view.py
 
 
 -----------------------------------------------------------------------
-7) AI FINANCE  (src/sections/ai_finance/)
+4) AI MARKETING  (src/sections/ai_marketing/)
 -----------------------------------------------------------------------
 
-Stejně jako AI Marketing - statický demo chat s mockem.
+This section is a visual chat showcase with mock data. No real
+interaction exists yet; the bubbles and action chips do not perform
+business actions.
 
-  Hlavní view:
-    [decorative-only] Assistant action chipy             - src/sections/ai_finance/view.py:334
-        (`_action_chip(...)` bez handleru)
+  Main view (mock chat):
+    [decorative-only] Assistant action chips              - src/sections/ai_marketing/view.py:164
+        (`_action_chip(...)` inside the assistant bubble body, with no handler)
+    [decorative-only] Mock phone preview                  - src/sections/ai_marketing/phone_mockup.py
 
-
------------------------------------------------------------------------
-8) AI STUDY  (src/sections/ai_study/)
------------------------------------------------------------------------
-
-Statický demo chat + mock stat panel.
-
-  Hlavní view:
-    [decorative-only] Assistant action chipy             - src/sections/ai_study/view.py:231
-        (`_action_chip(...)` bez handleru)
+  Context panel (right side):
+    [missing-handler] Quick action rows                   - src/sections/ai_marketing/context.py:77
+        (rows created by `quick_actions_column(...)`; see "Shared components")
+    [missing-handler] History rows                        - src/sections/ai_marketing/context.py:79
+        (rows created by `history_column(...)`)
 
 
 -----------------------------------------------------------------------
-9) AI LEGAL ASSISTANT  (src/sections/ai_legal/)
+5) AI FINANCE  (src/sections/ai_finance/)
 -----------------------------------------------------------------------
 
-Sekce nově plně funkční - drag-and-drop upload, AI quick actions,
-chat input volá `pipeline.send_chat_message`, chip volá
-`pipeline.run_quick_action`. Co tu ještě chybí:
+Like AI Marketing, this is currently a static demo chat with mock
+content in the audited area.
 
-  Tab "Analýza":
-    [chybí handler] Export / Email akce v chat módu     - src/sections/ai_legal/tab_analysis.py:367-368
-        (`_chat_action_chip(...)` u "Export PDF" / "Forward to inbox")
-
-  Tab "Drafts":
-    [chybí handler] "Open in full" tlačítko             - src/sections/ai_legal/tab_drafts.py:128 + použité na :175
-    [decorative-only] Quick action chipy                - src/sections/ai_legal/tab_drafts.py:190
-        (`_action_chip(...)` v initial assistant bubble)
-    [chybí handler] "Refine" / "Save draft" tlačítka v inputu
-
-  Tab "Templates":
-    [chybí handler] "Apply template" tlačítko           - src/sections/ai_legal/tab_templates.py:479
-    [chybí handler] "Download sample" tlačítko          - src/sections/ai_legal/tab_templates.py:480
-        (oba `Primary/GhostButton(...)` zcela bez `.clicked.connect`)
-    [chybí handler] Color swatch tlačítka v sidebaru    - galerie barev neukládá výběr
-    [chybí handler] Font picker tlačítka
-
-  Kontextový panel:
-    [chybí handler] Quick action řádky                  - src/sections/ai_legal/context.py:167
-        (`quick_actions_column(...)` - viz "Sdílené" sekce)
-    OK    "Show detailed analysis" tlačítko             - context.py:157 (přepíná na tab Analysis)
+  Main view:
+    [decorative-only] Assistant action chips              - src/sections/ai_finance/view.py:334
+        (`_action_chip(...)` without a handler)
 
 
 -----------------------------------------------------------------------
-10) AI CAREER  (src/sections/ai_career/)
+6) AI STUDY  (src/sections/ai_study/)
 -----------------------------------------------------------------------
 
-Téměř kompletně funkční - hlavní pipeline (scrape job, parse CV, run
-analysis, generate docs, save run) plně napojené.
+This section is a static demo chat plus a mock stats panel.
 
-Co je dekorativní:
-    [decorative-only] Quick action chipy v chat empty state - src/sections/ai_career/tab_chat.py:419
-        (`_quick_action_chip(...)` - posílají prefab text, ne skutečné akce)
-    [chybí handler] Mock historie řádky (mimo skutečné historie)
+  Main view:
+    [decorative-only] Assistant action chips              - src/sections/ai_study/view.py:231
+        (`_action_chip(...)` without a handler)
 
 
 -----------------------------------------------------------------------
-11) AI LINKEDIN  (src/sections/ai_linkedin/)
+7) AI LEGAL ASSISTANT  (src/sections/ai_legal/)
 -----------------------------------------------------------------------
 
-Většina tlačítek funguje. Drobnosti:
+The section is mostly functional: drag-and-drop upload works, AI quick
+actions are wired, the chat input calls `pipeline.send_chat_message`,
+and chips call `pipeline.run_quick_action`. Remaining gaps:
 
-    [partially wired] Quick action chipy v chat tabu    - src/sections/ai_linkedin/tab_chat.py:418-421
-        (posílají prefab text - funguje, ale nejsou to skutečné akce typu
-         "ulož post jako draft", "exportuj jako markdown")
+  "Analysis" tab:
+    [missing-handler] Export / email actions in chat mode - src/sections/ai_legal/tab_analysis.py:367-368
+        (`_chat_action_chip(...)` for "Export PDF" / "Forward to inbox")
+
+  "Drafts" tab:
+    [missing-handler] "Open in full" button               - src/sections/ai_legal/tab_drafts.py:128 and usage at :175
+    [decorative-only] Quick action chips                  - src/sections/ai_legal/tab_drafts.py:190
+        (`_action_chip(...)` in the initial assistant bubble)
+    [missing-handler] "Refine" / "Save draft" input buttons
+
+  "Templates" tab:
+    [missing-handler] "Apply template" button             - src/sections/ai_legal/tab_templates.py:479
+    [missing-handler] "Download sample" button            - src/sections/ai_legal/tab_templates.py:480
+        (both `Primary/GhostButton(...)` calls have no `.clicked.connect`)
+    [missing-handler] Color swatch buttons in the sidebar - the gallery does not save the selected color
+    [missing-handler] Font picker buttons
+
+  Context panel:
+    [missing-handler] Quick action rows                   - src/sections/ai_legal/context.py:167
+        (`quick_actions_column(...)`; see "Shared components")
+    OK    "Show detailed analysis" button                 - context.py:157 (switches to the Analysis tab)
 
 
 -----------------------------------------------------------------------
-12) AI DOC ASSISTANT  (src/sections/ai_doc_assistant/)
+8) AI CAREER  (src/sections/ai_career/)
 -----------------------------------------------------------------------
 
-Plně funkční - běh celé pipeline (Q&A, summarisation, extraction) je
-napojený. Žádné nefunkční tlačítko.
+This section is almost fully functional: the main pipeline (scrape job,
+parse CV, run analysis, generate documents, save run) is wired.
 
-
------------------------------------------------------------------------
-13) SETTINGS  (src/sections/settings/)
------------------------------------------------------------------------
-
-Plně funkční - každé tlačítko (Save key, Show/hide, Delete, View logs,
-Open log folder, Clear logs, …) má handler.
+Decorative or incomplete items:
+    [decorative-only] Quick action chips in chat empty state - src/sections/ai_career/tab_chat.py:419
+        (`_quick_action_chip(...)`; sends preset text rather than running real actions)
+    [missing-handler] Mock history rows outside the real history list
 
 
 -----------------------------------------------------------------------
-14) SDÍLENÉ KOMPONENTY  (src/components/)
+9) AI LINKEDIN  (src/sections/ai_linkedin/)
 -----------------------------------------------------------------------
 
-Tyhle komponenty jsou používané všude. Když je sekce použije, nedostane
-zdarma click handler - musí ho dodat sama. Aktuálně to dělá jen pár
-sekcí.
+Most buttons work. Minor gap:
+
+    [partially-wired] Quick action chips in the Chat tab  - src/sections/ai_linkedin/tab_chat.py:418-421
+        (they send preset text, which works, but they are not real actions
+         such as "save post as draft" or "export as markdown")
+
+
+-----------------------------------------------------------------------
+10) AI DOC ASSISTANT  (src/sections/ai_doc_assistant/)
+-----------------------------------------------------------------------
+
+Fully functional: the whole pipeline (Q&A, summarisation, extraction)
+is wired. No non-functional button is currently listed.
+
+
+-----------------------------------------------------------------------
+11) SETTINGS  (src/sections/settings/)
+-----------------------------------------------------------------------
+
+Fully functional: every button (Save key, Show/hide, Delete, View logs,
+Open log folder, Clear logs, and related controls) has a handler.
+
+
+-----------------------------------------------------------------------
+12) SHARED COMPONENTS  (src/components/)
+-----------------------------------------------------------------------
+
+These components are used across multiple sections. A section does not
+get a click handler for free when it uses one of them; the section must
+provide that behavior itself. Only a few sections currently do that.
 
   Quick actions panel (src/components/context_panel.py:174 quick_actions_column):
-    [chybí handler] Quick action řádky                  - `quick_action_row(...)` (:144)
-        Volá `quick_action_row(theme, icon, label)` bez callbacku.
-        Použito v:
+    [missing-handler] Quick action rows                   - `quick_action_row(...)` (:144)
+        Calls `quick_action_row(theme, icon, label)` without a callback.
+        Used in:
             - src/sections/ai_marketing/context.py:77
             - src/sections/ai_legal/context.py:167
-        Aby tlačítka něco dělala, je třeba rozšířit `quick_action_row`
-        o `on_click=...` parametr a propojit ho v sekci.
+        To make these rows functional, extend `quick_action_row` with
+        an `on_click=...` parameter and wire it in each section.
 
   History panel (src/components/context_panel.py:184 history_column):
-    [chybí handler] History řádky                       - `history_row(...)` (:160)
-        Stejné jako quick actions - chybí callback.
-        Použito v:
+    [missing-handler] History rows                        - `history_row(...)` (:160)
+        Same issue as quick actions: the row has no callback.
+        Used in:
             - src/sections/ai_marketing/context.py:79
 
   Chat input bar (src/components/chat_input.py):
-    [decorative-only] Attach file chip                  - chat_input.py:108
-    [decorative-only] Voice input chip                  - chat_input.py:109
-    [decorative-only] Improve prompt chip               - chat_input.py:110
-    [decorative-only] Send button                       - send_btn nemá `.clicked` connect
-        Komponenta je vizuální mockup; sekce, které potřebují skutečný
-        send, implementují vlastní input bar (např. nový
-        `_interactive_input` v src/sections/ai_legal/tab_chat.py).
+    [decorative-only] Attach file chip                    - chat_input.py:108
+    [decorative-only] Voice input chip                    - chat_input.py:109
+    [decorative-only] Improve prompt chip                 - chat_input.py:110
+    [decorative-only] Send button                         - send_btn has no `.clicked.connect`
+        The component is a visual mockup. Sections that need real send
+        behavior implement their own input bar, for example
+        `_interactive_input` in src/sections/ai_legal/tab_chat.py.
 
   Chat message bubbles (src/components/chat_message.py):
-    [decorative-only] Action chipy v bubblinách         - chat_message.py:261
-        Statické chipy pod každou mock bublinou - bez click handlerů.
+    [decorative-only] Action chips inside bubbles         - chat_message.py:261
+        Static chips under each mock bubble, with no click handlers.
 
   Document chip (src/components/document_chip.py):
-    [chybí handler] Detail / preview tlačítko na chipu  - chip pouze zobrazuje
-        Klikatelný se počítá jen v některých sekcích (např. AI Career).
+    [missing-handler] Detail / preview button on the chip - the chip only displays data
+        Clickability is implemented only in some sections, such as AI Career.
 
   Sidebar (src/components/sidebar.py):
-    OK   Nav items                                       - každá položka má handler
-    [decorative-only] User card "manage profile" chip   - sidebar.py user_card není klikatelný
-    [decorative-only] Theme toggle / language toggle    - tyhle FUNGUJÍ (jsou v rules to keep),
-                                                          přidáno sem omylem
+    OK   Navigation items                                 - every item has a handler
+    [decorative-only] User card "manage profile" chip     - sidebar.py user_card is not clickable
+    [decorative-only] Theme toggle / language toggle      - these controls work and were listed here by mistake
 
 
 -----------------------------------------------------------------------
-ZÁVĚR
+CONCLUSION
 -----------------------------------------------------------------------
 
-Z perspektivy uživatele jsou nejvíce viditelné chybějící handlery na:
+From the user's perspective, the most visible missing handlers are:
 
-  1. Tlačítkách "Apply template" / "Download sample" v AI Legal
-     -> Templates (oba jsou centrální tlačítka tabu).
-  2. Quick action řádcích v pravém kontextovém panelu AI Legal
-     a AI Marketing (zjevně klikatelné, ale nic se neděje).
-  3. Action chipech ve všech demo sekcích (AI Marketing / AI Finance /
-     AI Study) - tyhle sekce ale jsou explicitně vyznačené jako "static
-     demo" v komentářích a budou nahrazené plnou pipeline později.
+  1. The "Apply template" / "Download sample" buttons in AI Legal
+     -> Templates. Both are central tab actions.
+  2. Quick action rows in the right-hand context panel for AI Legal
+     and AI Marketing. They look clickable, but nothing happens.
+  3. Action chips in all demo sections (AI Marketing / AI Finance /
+     AI Study). These sections are explicitly marked as static demos
+     in comments and should be replaced by full pipelines later.
 
-Pořadí, ve kterém by mělo smysl je doimplementovat (od high-impact):
+Suggested implementation order, from highest impact:
 
-  1. AI Legal: tab Templates - Apply / Download sample (vyžaduje pipeline
-     pro generování ukázkového dokumentu + ukládání výběru template /
-     barvy / fontu do STATE).
-  2. Shared `quick_action_row` a `history_row` - rozšířit signature
-     o `on_click` callback, aby je sekce mohly napojit.
-  3. AI Legal: Drafts tab - "Open in full" otvírací dialog + Refine /
-     Save draft tlačítka.
-  4. AI Legal: Analysis tab - "Export PDF" / "Forward to inbox" v chat
-     módu.
-  5. Sekce ai_marketing / ai_finance / ai_study přepsat na plnou AI
-     pipeline dle pravidel `.cursor/rules/ai-section.mdc` (stejně jako
-     `ai_legal` v této iteraci).
+  1. AI Legal: Templates tab - Apply / Download sample. This requires
+     a pipeline for sample document generation and saving the selected
+     template, color, and font into STATE.
+  2. Shared `quick_action_row` and `history_row` - extend their
+     signatures with an `on_click` callback so sections can wire them.
+  3. AI Legal: Drafts tab - add the "Open in full" dialog plus the
+     Refine / Save draft buttons.
+  4. AI Legal: Analysis tab - wire "Export PDF" / "Forward to inbox"
+     in chat mode.
+  5. Rewrite ai_marketing / ai_finance / ai_study into full AI
+     pipelines that follow `.cursor/rules/ai-section.mdc`.

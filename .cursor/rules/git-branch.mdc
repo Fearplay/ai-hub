@@ -16,7 +16,7 @@ If the user follows up with more tasks in the same conversation, **keep working 
 
 ## Branch naming
 
-Convention from [CONTRIBUTING.md](../../CONTRIBUTING.md):
+Convention used in this repository:
 
 - `feat/<short-description>` - new feature (e.g. `feat/light-mode-polish`)
 - `fix/<short-description>` - bug fix (e.g. `fix/sidebar-overflow`)

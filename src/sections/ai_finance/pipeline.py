@@ -1027,6 +1027,24 @@ def refresh_markets() -> None:
         STATE.markets_loading = False
         REFS.request_context_refresh()
         return
+    if not quotes:
+        # ``yfinance`` returned an empty list - typically the user is
+        # offline, a corporate proxy is blocking Yahoo, or the symbol
+        # set is misspelled. Without surfacing this the card just shows
+        # the generic "data zatím nedorazila" hint forever, which looks
+        # like a frontend bug; promote it to a real error string so the
+        # card renders an actionable message instead.
+        STATE.markets = []
+        STATE.markets_fetched_at = time.time()
+        STATE.markets_loading = False
+        STATE.markets_error = "markets_empty_response"
+        logger_service.log_event(
+            "WARNING", "ai_finance.pipeline", "refresh_markets_empty",
+            requested=len(symbols),
+        )
+        REFS.request_context_refresh()
+        return
+
     STATE.markets = [
         {
             "symbol": q.symbol,

@@ -153,6 +153,7 @@ def build_search_prompt(
     salary_currency: str = "any",
     excluded_urls: Optional[Iterable[str]] = None,
     target_active: int = 0,
+    relaxed_pass: bool = False,
 ) -> tuple[str, str]:
     """Build the (system, user) prompt for the web-search discovery pass.
 
@@ -229,6 +230,28 @@ def build_search_prompt(
     else:
         user_lines.append(f"Goal: find up to {int(max_results)} ACTIVE job postings.")
     user_lines.append("")
+
+    if relaxed_pass:
+        # Final fallback when the strict top-ups exhausted: explicitly
+        # ask for "less relevant but still active" postings. The
+        # pipeline already flags them ``is_relaxed=True`` so the UI can
+        # warn the user; the prompt just makes sure the model uses the
+        # extra leeway productively instead of returning more of the
+        # same dead links it could not find before.
+        user_lines.append("# RELAXED PASS (strict matches exhausted)")
+        user_lines.append(
+            "The strict search did NOT find enough active postings for the "
+            "user's filters. Now broaden the search: keep the location, "
+            "seniority, work-mode and salary filters, but ALLOW adjacent "
+            "roles (e.g. for 'QA Engineer' also accept 'Test Automation "
+            "Engineer', 'SDET', 'Quality Analyst', 'Software Engineer in "
+            "Test'). If the location filter is a city, ALSO include nearby "
+            "cities in the same metro / region (e.g. 'Brno' -> 'Brno + "
+            "remote within the Czech Republic'). Postings must still be "
+            "currently hiring; do NOT return closed listings just to fill "
+            "the count."
+        )
+        user_lines.append("")
 
     # Already-seen URLs (top-up pass) ---------------------------------
     seen_urls = [u.strip() for u in (excluded_urls or ()) if (u or "").strip()]

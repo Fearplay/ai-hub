@@ -22,10 +22,10 @@ documented but are currently **hidden from the sidebar** - see
 [Hidden UI](#hidden-ui) below to flip them back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
-on the right of any primary AI section and drop it where you want.
-Order persists in `~/AI Hub/settings.json` so your layout survives
-restarts. The secondary group (History / Favorites / Settings) stays
-pinned below the divider.
+on the right of any primary AI section and drop it where you want. The
+new order applies instantly (no restart, no language toggle). Order
+persists in `~/AI Hub/settings.json` so your layout survives restarts.
+The secondary group (Settings) stays pinned below the divider.
 
 ## Requirements
 
@@ -241,9 +241,13 @@ AI Finance renders a live ticker strip via
 Finance endpoints only - no API key, no account, no user identification.
 The default symbols are S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), DOW JONES
 (`^DJI`), BTC/USD (`BTC-USD`), and EUR/CZK (`EURCZK=X`). Results are
-cached in-process for 60 seconds. Flip **Settings -> Live market data**
-off to keep AI Finance fully offline; the right-hand panel then falls
-back to mock tickers.
+cached in-process for 60 seconds. The Markets card in the right
+context panel has its own **Refresh** button next to *Edit* that
+bypasses that throttle and triggers a fresh fetch; if Yahoo returns
+no quotes (offline, proxy, dead symbol), the card now surfaces an
+explicit error instead of staying stuck on the generic "no data" hint.
+Flip **Settings -> Live market data** off to keep AI Finance fully
+offline; the right-hand panel then falls back to its empty state.
 
 ### Debug logs
 
@@ -286,7 +290,6 @@ ai-hub/
 ├── requirements.txt
 ├── README.md                     # English (this file)
 ├── README.cs.md                  # Czech translation
-├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
 ├── assets/
@@ -348,8 +351,6 @@ ai-hub/
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
     │   ├── ai_bug_report/         # fully wired (vision) - text / screenshots / logs -> Word bug report
-    │   ├── history/              # placeholder (secondary nav)
-    │   ├── favorites/            # placeholder (secondary nav)
     │   └── settings/             # API keys, provider, general, debug logs (secondary nav)
     └── data/
         └── user.py               # global mock (the signed-in user only)
@@ -364,14 +365,14 @@ Every folder under `src/sections/` has:
 - `context.py` (optional) - the right context panel
 
 Adding a new section never opens `src/app.py` or `src/components/sidebar.py`.
-Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
+Details in
 [src/sections/SECTION_TEMPLATE/README.md](src/sections/SECTION_TEMPLATE/README.md).
 
 ## What it does
 
 - Three-column layout, scrollable sidebar (header / scroll / footer).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
-- Section auto-discovery (primary + secondary; History / Favorites / Settings live in secondary).
+- Section auto-discovery (primary + secondary; Settings is the only secondary entry).
 - Light / dark mode toggle - the **Windows OS title bar** (caption strip with
   X / minimise / maximise + app name) is tinted to match the active theme via
   the DWM API, so dark mode no longer leaves a bright white strip on top of
@@ -419,7 +420,8 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable.
   - **Skill gap tab** with the top requirements, strong sides, missing skills, and advice paragraphs from Pass 5.
   - **Saved search profiles** persisted to `~/AI Hub/jobs_profiles.json` - one-click rerun, edit, duplicate, delete. No external dependency, no extra secret.
-  - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
+  - **Active-target ordering** - the search always tries to return the number of *applicable* openings you asked for. The pipeline starts strict (three top-up passes that respect your filters), and only falls back to a single relaxed broad pass (adjacent roles / nearby cities) if the strict run still cannot fill the quota. Relaxed hits are flagged with an amber **"Less relevant"** pill (in-app and in the HTML export) so you can tell at a glance which postings came from the broader search. Closed / inactive listings are still surfaced for transparency but never count toward the active target.
+  - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, the new "Less relevant" pill for relaxed-pass hits, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
   - **Activity badge** (right context panel) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus a "Open skill gap" quick action that jumps straight to the new tab.
 - **AI Bug Report** - turn a description, screenshots, and supporting docs / logs into a polished Word bug report:
   - **Vision input** - the combined drop zone accepts both screenshots (PNG / JPG / WEBP / GIF / BMP / HEIC) and text-like attachments (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshots are sent to the model via the providers' native vision APIs (`image_url` content blocks for OpenAI, `image` source blocks for Anthropic), text-like docs are parsed locally with `src/services/file_parser.py`.
@@ -471,7 +473,6 @@ the same reason - there is no real user identity yet. Re-add it in
 
 - Streaming responses in the UI (the first iteration blocks with a loader in the context panel).
 - Multi-language `OUTPUT_LANGUAGE` per document (one run = one output language; driven by the global lang toggle).
-- Real persistence for Favorites / History at the app level (currently per-section).
 - AI in the remaining sections - the architecture is ready, sections are filled in following the AI Career template.
 
 ## Built with Cursor
@@ -519,8 +520,7 @@ auto-generated one:
 </a>
 ```
 
-Want to help? Branch / commit conventions are documented in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Want to help? Open a PR with clear test steps and screenshots for UI changes.
 
 ## Licence
 
