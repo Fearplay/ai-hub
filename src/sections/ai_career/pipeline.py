@@ -991,7 +991,7 @@ def save_full_analysis() -> SaveResult:
     if STATE.job_spec:
         role = str(STATE.job_spec.get("title") or "")
         company = str(STATE.job_spec.get("company") or "")
-    folder_path = Path(store.new_run_dir(role or "ai-career-run", company))
+    folder_path = Path(store.new_run_dir(role or "ai-career-run", company, section="ai_career"))
     STATE.last_run_folder = str(folder_path)
     logger_service.log_event(
         "INFO",
@@ -1205,6 +1205,7 @@ def save_full_analysis() -> SaveResult:
             model="",
             cost_usd=float(COST.cost_usd),
             docs=docs_list,
+            note="ai_career",
         )
         store.append_run(summary)
     except Exception as exc:

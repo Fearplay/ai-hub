@@ -12,9 +12,12 @@ A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
 in the middle, and a context panel on the right. **AI CV / Career**,
-**AI LinkedIn Profile Builder**, and **AI Finance** are fully wired to
-OpenAI / Anthropic; other sections share the same architecture and are
-being filled in as we go.
+**AI LinkedIn Profile Builder**, **AI Finance**, and **AI Job Search**
+are fully wired to OpenAI / Anthropic. The work-in-progress sections
+(Dashboard, AI Legal, AI Business, AI Marketing, AI Study, AI Documents,
+AI Doc Assistant) are kept in the repo so the architecture stays
+documented but are currently **hidden from the sidebar** - see
+[Hidden UI](#hidden-ui) below to flip them back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
 on the right of any primary AI section and drop it where you want.
@@ -305,6 +308,7 @@ ai-hub/
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # designed mock UI
     │   ├── ai_finance/           # fully wired (budgets / savings / investments / analysis / taxes / insurance / calculators)
+    │   ├── ai_jobs/              # fully wired AI Job Search (12-step setup form, web-search discovery + URL verification + per-position match scoring + skill gap analysis)
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
@@ -351,7 +355,7 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
     - GitHub URL with automatic fetch of public repos,
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
-    - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
+    - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/ai_career/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
   - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
 - **AI LinkedIn Profile Builder** - same two-mode shell (Chat / Builder), aimed at a complete LinkedIn rewrite:
   - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
@@ -360,7 +364,7 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Anti-cringe + no-hallucination** prompts; an unsupported-claims report flags any AI bullet that wasn't backed by source evidence.
   - **Profile completeness checklist** with priority levels (critical / important / nice to have) and a 0-100 profile score.
   - **Output** tab renders every generated section as a card (with copy-to-clipboard) + the checklist + the score.
-  - Save the complete profile to `outputs/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
+  - Save the complete profile to `outputs/ai_linkedin/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
 - **AI Finance** - cautious, no-hallucination personal-finance assistant with eight tabs:
   - **Chat** - free-form questions. A greeting bubble shows your latest budget (donut + breakdown) once you build one in the Budget tab; before that, the chat starts from a clean greeting. Quick-action chips route to the structured tabs and **flow-wrap** so they don't overflow on narrow windows.
   - **Budget** - pick a method (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, custom), enter income + essentials + goals, get a structured `BudgetPlan` JSON (cached) with donut chart, category table, warnings, and next-step suggestions.
@@ -372,6 +376,15 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Templates** - the four static template cards from the original mock layout.
   - **Right-hand context panel** - **live, user-editable market overview** via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**). The card seeds with `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` and exposes an **Upravit / Edit** button - the dialog lets the user add / remove tickers (any Yahoo symbol) and persists the list to `~/AI Hub/settings.json`. The "Recent analyses" and "Tip of the day" cards stay empty until the user runs a real pipeline; nothing fakes the numbers.
   - **Empty-by-default UX** - Budget / Invest / Analysis / Taxes / Insurance start blank and only paint structured cards once you click their primary CTA. The two-column form / result layout collapses into a single column on narrow widths, and the chat quick-action chips wrap onto multiple rows instead of stretching off-screen.
+- **AI Job Search** - find currently-open positions on the public web and score them against your profile:
+  - **12-step setup form** (Setup tab): Role keywords, profile (CV / bio / LinkedIn URL), location preset or custom region, technologies + seniority pill (Junior / Medior / Senior / Lead), exclusions (keywords / companies / locations / work-type chips), sources picker (~70 portals grouped Global / Remote / Europe / CZ-SK / Tech-Startup / Freelance / Recommended + custom URLs textarea - including Czech specialists like JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, Polish Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, remote-only JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), posting age (Any / 24h / 3d / 7d / 14d / 30d) with "verify links" + "show postings without date" toggles, work-mode radios + contract chips (HPP / ICO / contract / DPP-DPC / internship / freelance) + result count, search mode (Exact / Smart / Broad / Career discovery), minimum salary + currency + output language (Auto / EN / CS), pre-run summary with the Run button + secondary actions (Save as template / Clear / Load last search), and a Saved profiles list with per-card actions (Run again / Edit / Duplicate / Delete).
+  - **Active-target over-fetch + top-up** - the result count is the number of **applicable** postings you want, not "raw URLs the AI returned". Internally the discovery pass over-fetches by 2x (capped at 40 candidates), every URL is verified, and a follow-up discovery pass automatically fires (with the already-seen URLs blacklisted in the prompt) if too many came back closed. Result: when you ask for 15, you get up to 15 you can actually apply to, plus a small "closed listings" section for transparency.
+  - **Five-pass pipeline**: (1) hosted **web-search discovery** with rich context (search mode, exclusions, age, sources, salary, optional already-seen-URL list for top-up), (2) strict-JSON **extraction** into `JOB_LISTINGS_SCHEMA` (title / company / location / posted / posted-ISO / salary text / contract type / summary / URL / source / work-mode), (3) **URL verification** through the shared `job_scraper` (httpx + Playwright fallback - listings that return HTTP 404 / 410, redirect to a "Stránka neexistuje" placeholder, or whose page still loads but says "No longer accepting applications" / "Už nepřijímá žádosti" / "Tahle nabídka už je pryč" / "Nabídka není up-to-date" stay visible with a red **"No longer hiring"** badge whose tooltip shows the matched phrase or HTTP status, so you can verify the detection by clicking through; only hard scrape crashes - DNS / SSL / firewall - are dropped), (4) **per-position match scoring** in parallel (`MATCH_SCHEMA`: match %, matched / missing skills, AI recommendation - active postings only, closed ones skip scoring to save tokens), (5) **aggregate skill-gap analysis** (`SKILL_GAP_SCHEMA`: most-requested skills with counts, your strong sides, missing skills, 1-6 actionable advice paragraphs). Pass 4 + 5 are skipped automatically when no profile material was provided.
+  - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable.
+  - **Skill gap tab** with the top requirements, strong sides, missing skills, and advice paragraphs from Pass 5.
+  - **Saved search profiles** persisted to `~/AI Hub/jobs_profiles.json` - one-click rerun, edit, duplicate, delete. No external dependency, no extra secret.
+  - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
+  - **Activity badge** (right context panel) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus a "Open skill gap" quick action that jumps straight to the new tab.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
   - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
@@ -380,6 +393,37 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
 - Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
+
+## Hidden UI
+
+The sidebar currently only shows the four production-ready sections
+(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search) plus
+**Settings** under the divider. Work-in-progress sections still live in
+the repo but their `section.py` sets `hidden=True` so
+`src/sections/__init__.py` skips them when building
+`PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
+and stay in `SECTIONS` / `SECTION_BY_KEY`, so deep-links / saved
+sidebar orders that still reference them do not crash - they just are
+not rendered.
+
+| Section key | Folder | What it will become |
+| --- | --- | --- |
+| `dashboard` | `src/sections/dashboard/` | Landing dashboard / KPI summary. |
+| `ai_legal` | `src/sections/ai_legal/` | Multi-format upload + 4 quick-action legal chat (already wired to AI, hidden until copy is finalised). |
+| `ai_business` | `src/sections/ai_business/` | Business-strategy / SaaS playbook helper. |
+| `ai_marketing` | `src/sections/ai_marketing/` | Marketing copy / Instagram post generator (mock UI in place). |
+| `ai_study` | `src/sections/ai_study/` | Study planner / flashcards. |
+| `ai_documents` | `src/sections/ai_documents/` | Document generator placeholder. |
+| `ai_doc_assistant` | `src/sections/ai_doc_assistant/` | PDF / DOCX summary + Q&A (Version B). |
+
+To bring any of them back, open the section's `section.py` and set
+`hidden=False` (or just delete the line). The `Section.hidden` field
+defaults to `False`.
+
+The sidebar also drops the **user card** ("Jan Novák" placeholder) for
+the same reason - there is no real user identity yet. Re-add it in
+`src/components/sidebar.py` once auth lands; the helper still lives in
+`src/components/user_card.py`.
 
 ## Not yet (deliberately)
 

@@ -55,6 +55,7 @@ from src.qt.widgets import (
     hbox,
     themed_line_edit,
     vbox,
+    wrap_label_slot,
 )
 from src.services import clipboard, logger as logger_service
 from src.services import secrets, settings_store
@@ -149,7 +150,7 @@ def _card(
         }}
         """
     )
-    card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     layout = vbox(spacing=14, margins=(18, 18, 18, 18))
     card.setLayout(layout)
 
@@ -173,11 +174,14 @@ def _card(
 
     text_col = QFrame()
     text_col.setStyleSheet("background: transparent; border: none;")
+    wrap_label_slot(text_col)
     tc_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     text_col.setLayout(tc_layout)
     tc_layout.addWidget(TitleLabel(title, theme=theme, size=15, weight=QFont.Weight.Bold))
     if desc:
-        tc_layout.addWidget(MutedLabel(desc, theme=theme, size=12))
+        desc_label = MutedLabel(desc, theme=theme, size=12)
+        desc_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        tc_layout.addWidget(desc_label)
     head_layout.addWidget(text_col, 1)
     layout.addWidget(head_row)
     layout.addWidget(body)
@@ -591,17 +595,20 @@ def _general_card(
     ) -> QFrame:
         row = QFrame()
         row.setStyleSheet("background: transparent;")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         rl = hbox(spacing=10, margins=(2, 8, 2, 8))
         rl.setAlignment(Qt.AlignmentFlag.AlignTop)
         row.setLayout(rl)
 
         text_holder = QFrame()
         text_holder.setStyleSheet("background: transparent;")
-        text_holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        wrap_label_slot(text_holder)
         tl = vbox(spacing=2, margins=(0, 0, 0, 0))
         text_holder.setLayout(tl)
         tl.addWidget(BodyLabel(label, theme=theme, size=13, weight=QFont.Weight.DemiBold))
-        tl.addWidget(MutedLabel(desc, theme=theme, size=12))
+        desc_label = MutedLabel(desc, theme=theme, size=12)
+        desc_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        tl.addWidget(desc_label)
         rl.addWidget(text_holder, 1)
         rl.addWidget(_toggle_switch(theme, checked=checked, on_change=on_change))
         return row

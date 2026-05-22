@@ -11,9 +11,12 @@ Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
 středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
-**AI LinkedIn Profile Builder** a **AI Finance** jsou plně napojené na
-OpenAI / Anthropic; ostatní sekce jsou postavené na stejné architektuře
-a postupně se napojují.
+**AI LinkedIn Profile Builder**, **AI Finance** a **AI Hledání práce**
+jsou plně napojené na OpenAI / Anthropic. Rozpracované sekce
+(Dashboard, AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
+AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
+aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
+[Schované UI](#schované-ui) níže.
 
 Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Pořadí se ukládá
@@ -302,6 +305,7 @@ ai-hub/
     │   ├── ai_business/          # placeholder
     │   ├── ai_marketing/         # postavené podle návrhu (mock UI)
     │   ├── ai_finance/           # plně napojené (rozpočty / spoření / investice / analýza / daně / pojištění / kalkulačky)
+    │   ├── ai_jobs/              # plně napojené AI Hledání práce (12-krokový formulář, web-search discovery + ověření URL + per-position match scoring + skill gap analýza)
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # AI asistent na PDF / DOCX (summary / Q&A / rewrite / extract)
@@ -348,7 +352,7 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
     - GitHub URL s automatickým fetchem veřejných repos
     - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
     - inline refine ("Problem 1, Problem 2 …" → AI revize)
-    - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
+    - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/ai_career/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
   - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
 - **AI LinkedIn Profile Builder** - kompletní pipeline pro generování / přepis LinkedIn profilu:
   - **Setup** - jméno, město, jazyk profilu (EN/CS), tone (warm / sharp / executive / casual), cílová role, target jobs (URL nebo text), CV / LinkedIn export upload, GitHub URL, do-not-mention seznam (témata, která AI nesmí zmínit) a pin / preferred sekce
@@ -357,7 +361,7 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Anti-cringe** filtr (zakázaný buzzword glossary, no humble-bragging) přímo v system promptech
   - **Profile Completeness Checklist** s prioritami (must-have / nice-to-have / advanced) a celkovým profile score 0-100
   - **Output** tab - náhled per sekce + tlačítka Copy, Refine ("Problem 1 …"), Regenerate
-  - Save complete LinkedIn package → `outputs/linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
+  - Save complete LinkedIn package → `outputs/ai_linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
   - EN/CS strings, doplňující otázky (clarifying questions) když chybí signál pro některou sekci
 - **AI Finance** - opatrný osobní finanční asistent bez halucinací s osmi záložkami:
   - **Chat** - libovolné dotazy. Úvodní bublina ukáže tvůj poslední rozpočet (donut + rozpis) až poté, co si ho v záložce **Rozpočet** sestavíš; do té doby chat startuje s čistým pozdravem. Quick-action chipy navigují do strukturovaných záložek a **flow-wrap** se přelamují, takže nepřetékají v úzkých oknech.
@@ -370,6 +374,15 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Šablony** - čtyři statické šablonové karty z původního mock layoutu.
   - **Pravý kontextový panel** - **živý, uživatelem editovatelný přehled trhů** přes [`yfinance`](https://pypi.org/project/yfinance/) (free, veřejné Yahoo Finance endpointy; **žádný API klíč, účet ani identifikace uživatele**). Karta startuje s `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` a má tlačítko **Upravit** - dialog umožní přidat / odebrat tickery (libovolný Yahoo symbol) a seznam se ukládá do `~/AI Hub/settings.json`. Karty „Nedávné analýzy" a „Tip dne" zůstávají prázdné, dokud nespustíš reálnou pipeline; nikdy nezobrazují vymyšlená čísla.
   - **Empty-by-default UX** - Rozpočet / Investice / Analýza / Daně / Pojištění startují prázdné a strukturované karty se vykreslí až po kliknutí na primární CTA. Dvousloupcový layout (formulář / výsledek) se v úzkých oknech přepne do jednoho sloupce a quick-action chipy v chatu se přelamují na další řádek místo toho, aby přetekly mimo obrazovku.
+- **AI Hledání práce** - hledá aktivně otevřené pozice na webu a porovnává je s tvým profilem:
+  - **12-krokový formulář** (záložka Nastavení): klíčová slova role, profil (CV / bio / LinkedIn URL), lokalita (preset nebo vlastní), technologie + seniorita (Junior / Medior / Senior / Lead), exclusion list (slova / firmy / lokality / typy práce), výběr zdrojů (~70 portálů ve skupinách Globální / Remote / Evropa / CZ-SK / Tech-Startup / Freelance / Doporučené + textarea s vlastními URL - včetně českých specialistů jako JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, polských Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, ryze remote JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), stáří nabídky (Cokoli / 24h / 3d / 7d / 14d / 30d) s přepínači "ověřit odkazy" a "zobrazit i nabídky bez data", forma práce + úvazek (HPP / IČO / kontrakt / DPP-DPČ / stáž / freelance) + počet výsledků, režim hledání (Přesné / Chytré / Široké / Kariérní objevování), minimální plat + měna + jazyk výstupu (Auto / EN / CZ), předběžný souhrn s tlačítkem Hledat + sekundárními akcemi (Uložit jako šablonu / Vymazat / Načíst poslední), a seznam uložených profilů s akcemi (Spustit znovu / Upravit / Duplikovat / Smazat).
+  - **Cíl = aktivní nabídky, over-fetch + top-up** - počet výsledků je počet pozic, na které **se opravdu dá přihlásit**, ne "co AI vrátila". Na pozadí discovery sahá 2x víc kandidátů (max 40), každý URL se ověří, a pokud po ověření zbývá málo aktivních, automaticky doběhne další discovery pass (s už viděnými URL na blacklistu v promptu). Výsledek: když si řekneš o 15, dostaneš až 15 použitelných plus malou sekci „Uzavřené nabídky" pro kontrolu detekce.
+  - **Pětifázová pipeline**: (1) **discovery** s vestavěným web search a bohatým kontextem (režim, exclusion, stáří, zdroje, plat, případně seznam URL k vynechání pro top-up), (2) striktní JSON **extrakce** do `JOB_LISTINGS_SCHEMA` (název / firma / lokalita / vlozeno / ISO datum / plat / typ úvazku / shrnutí / URL / zdroj / forma práce), (3) **ověření URL** přes shared `job_scraper` (httpx + Playwright fallback - nabídky, které vrátí HTTP 404 / 410, přesměrují na placeholder „Stránka neexistuje", nebo se stránka načte ale obsahuje frázi typu „Už nepřijímá žádosti" / „No longer accepting applications" / „Tahle nabídka už je pryč" / „Nabídka není up-to-date", zůstanou viditelné s červeným odznakem **„Už nenabírá"**, jehož tooltip ukazuje konkrétní zachycenou frázi nebo HTTP status, takže můžeš detekci ověřit prokliknutím; zahazují se jen tvrdé pády scraperu - DNS / SSL / firewall), (4) **per-position match scoring** paralelně (`MATCH_SCHEMA`: shoda v %, sedící / chybějící skills, doporučení AI - skóruje se jen aktivní pozice, na uzavřené se neutrácí tokeny), (5) **agregovaná skill gap analýza** (`SKILL_GAP_SCHEMA`: nejčastější požadavky s počty, tvé silné stránky, chybějící skills, 1-6 konkrétních doporučení). Pasy 4 + 5 se automaticky přeskakují, pokud uživatel nedodal žádný profil.
+  - **Lean Výsledky tab** s malou "Shoda XX %" pillou na kartě (zelená / žlutá / červená pásma) plus chip pro plat + úvazek + forma práce. Per-position chipy a doporučení AI se renderují **hlavně do ukládaného HTML**, aby zůstal seznam na obrazovce přehledný.
+  - **Skill gap záložka** s top požadavky, silnými stránkami, chybějícími skills a doporučeními z Passu 5.
+  - **Uložené profily hledání** v `~/AI Hub/jobs_profiles.json` - jedno-klikové spuštění, edit, duplikování, smazání. Žádná nová dependency, žádný nový secret.
+  - **Bohaté HTML** (`Uložit jako HTML`) s match pillou, chip bloky sedí / chybí, doporučením u každé nabídky, samostatnou sekcí „Uzavřené nabídky" pro pozice, které už nenabírají, a kompletní skill gap sekcí. Každé uložení jde do nové složky `outputs/ai_jobs/<dotaz>-search-<timestamp>/` a registruje se v globálním `~/AI Hub/history.json`.
+  - **Activity badge** (pravý kontextový panel) odráží každou fázi pipeline (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus quick action "Otevřít skill gap" který skočí přímo do nové záložky.
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
   - **Multi-formát upload** - přetáhni `PDF`, `DOCX`, `HTML`, `TXT` (nebo `MD`) dokument do pravého panelu; tělo textu krmí prompty, z počítače odchází jen extrahovaný plain text.
@@ -377,6 +390,36 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Disclaimer „nejsem advokát"** - inline banner pod hlavičkou připomíná, že asistent nenahrazuje právní poradenství; každá delší odpověď to znovu zmíní běžným jazykem.
   - **Kompaktní hlavička** - sekce Legal vypíná koncová tlačítka *Jak to použít* / `…` a používá užší top bar, aby chat měl víc vertikálního prostoru; ostatní sekce si zachovávají plnou hlavičku díky novým flagsům `show_help_button` / `show_menu_button` / `compact` v `src/components/header.py`.
 - Pravý kontextový panel s **náklady relace** (calls / tokens / $) a aktivitou pipeline
+
+## Schované UI
+
+V sidebaru jsou teď jen čtyři produkční sekce (AI LinkedIn,
+AI Životopis / Kariéra, AI Finance, AI Hledání práce) plus
+**Nastavení** pod oddělovačem. Rozpracované sekce v repu zůstávají,
+ale jejich `section.py` má `hidden=True`, takže
+`src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
+`SECONDARY_SECTIONS` přeskočí. Pořád se auto-discoverují a zůstávají
+v `SECTIONS` / `SECTION_BY_KEY`, aby staré deep-linky a uložené pořadí
+sidebaru nespadly - jen se nevykreslí.
+
+| Klíč sekce | Složka | K čemu má být |
+| --- | --- | --- |
+| `dashboard` | `src/sections/dashboard/` | Úvodní dashboard / přehled KPI. |
+| `ai_legal` | `src/sections/ai_legal/` | Multi-formátový upload + 4 quick-action chat pro právní dokumenty (už napojené na AI, schované do doladění copy). |
+| `ai_business` | `src/sections/ai_business/` | Pomocník pro byznys strategii / SaaS playbook. |
+| `ai_marketing` | `src/sections/ai_marketing/` | Generátor marketingových textů / Instagram příspěvků (mock UI). |
+| `ai_study` | `src/sections/ai_study/` | Plánovač učení / flashcards. |
+| `ai_documents` | `src/sections/ai_documents/` | Placeholder pro generování dokumentů. |
+| `ai_doc_assistant` | `src/sections/ai_doc_assistant/` | PDF / DOCX shrnutí + Q&A (Verze B). |
+
+Když chceš kteroukoli z nich vrátit, otevři `section.py` dané sekce a
+nastav `hidden=False` (nebo ten řádek prostě smaž). Pole
+`Section.hidden` defaultně `False`.
+
+Sidebar taky aktuálně nevykresluje **uživatelskou kartu** ("Jan Novák"
+placeholder) - žádná reálná identita zatím neexistuje. Až přibyde
+auth, vrať volání zpátky do `src/components/sidebar.py`; helper pořád
+žije v `src/components/user_card.py`.
 
 ## Co zatím **neumí** (záměrně)
 

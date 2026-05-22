@@ -14,4 +14,5 @@ SECTION = Section(
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     order=10,
+    hidden=True,
 )

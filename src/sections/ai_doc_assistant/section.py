@@ -20,4 +20,5 @@ SECTION = Section(
     build_view=build_view,
     order=85,
     nav_group="primary",
+    hidden=True,
 )

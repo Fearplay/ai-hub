@@ -199,29 +199,39 @@ def header(
     """
     bar = QFrame()
     bar.setStyleSheet(f"background-color: {theme.bg};")
-    bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-    margins = (24, 12, 24, 6) if compact else (24, 22, 24, 10)
+    margins = (24, 12, 24, 6) if compact else (24, 18, 24, 12)
     spacing = 12 if compact else 14
-    row = hbox(spacing=spacing, margins=margins)
-    row.setAlignment(Qt.AlignmentFlag.AlignTop)
-    bar.setLayout(row)
+    root = vbox(spacing=6 if subtitle else 0, margins=margins)
+    bar.setLayout(root)
 
-    row.addWidget(_category_icon(theme, icon, compact=compact))
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    row_layout = hbox(spacing=spacing, margins=(0, 0, 0, 0))
+    row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    row.setLayout(row_layout)
+    root.addWidget(row)
 
-    text_col = QFrame()
-    text_col.setStyleSheet("background: transparent;")
-    wrap_label_slot(text_col)
-    text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
-    text_col.setLayout(text_layout)
+    icon_widget = _category_icon(theme, icon, compact=compact)
+    row_layout.addWidget(icon_widget, 0, Qt.AlignmentFlag.AlignTop)
+
+    title_col = QFrame()
+    title_col.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_col)
+    title_layout = vbox(spacing=0, margins=(0, 0, 0, 0))
+    title_col.setLayout(title_layout)
     title_size = 16 if compact else 18
-    text_layout.addWidget(TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold))
-    if subtitle:
-        text_layout.addWidget(MutedLabel(subtitle, theme=theme, size=12))
-    row.addWidget(text_col, 1)
+    title_layout.addWidget(TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold))
+    row_layout.addWidget(title_col, 1, Qt.AlignmentFlag.AlignTop)
 
+    actions = QFrame()
+    actions.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    actions.setLayout(actions_layout)
     if trailing is not None:
-        row.addWidget(trailing)
+        actions_layout.addWidget(trailing)
 
     if show_help_button:
         help_btn = GhostButton(
@@ -231,9 +241,24 @@ def header(
         )
         if on_help_click is not None:
             help_btn.clicked.connect(on_help_click)
-        row.addWidget(help_btn)
+        actions_layout.addWidget(help_btn)
 
     if show_menu_button:
-        row.addWidget(_menu_button(theme, menu_items or []))
+        actions_layout.addWidget(_menu_button(theme, menu_items or []))
+
+    if actions_layout.count():
+        row_layout.addWidget(actions, 0, Qt.AlignmentFlag.AlignTop)
+
+    if subtitle:
+        subtitle_row = QFrame()
+        subtitle_row.setStyleSheet("background: transparent;")
+        subtitle_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+        subtitle_row.setLayout(subtitle_layout)
+        subtitle_indent = (36 if compact else 44) + spacing
+        subtitle_layout.addSpacing(subtitle_indent)
+        subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
+        subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        subtitle_layout.addWidget(subtitle_label, 1)
+        root.addWidget(subtitle_row)
 
     return bar

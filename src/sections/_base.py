@@ -45,6 +45,13 @@ class Section:
     accent: Optional[str] = None
     nav_group: NavGroup = "primary"
     wide_layout: bool = False
+    # Opt out of sidebar rendering without deleting the section folder.
+    # The Section keeps appearing in ``SECTIONS`` / ``SECTION_BY_KEY`` so
+    # leftover deep-links (saved sidebar order, ``set_section`` calls)
+    # do not blow up; ``PRIMARY_SECTIONS`` / ``SECONDARY_SECTIONS`` skip
+    # it. Used for work-in-progress sections we want hidden from end
+    # users until they are ready.
+    hidden: bool = False
 
     def label(self, lang: str) -> str:
         return self.labels.get(lang) or self.labels.get("en") or self.key

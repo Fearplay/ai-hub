@@ -1159,7 +1159,7 @@ def save_full_profile() -> SaveResult:
     target_roles, audience, tone = _resolve_targeting()
     if target_roles:
         role = target_roles[0]
-    folder_path = Path(store.new_run_dir(role or "linkedin-profile"))
+    folder_path = Path(store.new_run_dir(role or "linkedin-profile", section="ai_linkedin"))
     STATE.last_run_folder = str(folder_path)
     output_lang = _resolve_output_lang(STATE.output_lang)
 

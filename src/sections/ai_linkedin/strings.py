@@ -220,6 +220,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "chat_qa_write_learning_post": "Write a learning-update post",
         "chat_qa_critique_about": "Critique my About",
         "chat_qa_recruiter_dm": "Draft a recruiter outreach DM",
+        "chat_intro": (
+            "Hi! I'm your LinkedIn voice expert. Ask me to improve your headline,"
+            " critique your About, draft a learning-update post or write a"
+            " recruiter outreach DM. Switch to **Builder** mode whenever you"
+            " want me to run a full profile pass."
+        ),
         "chat_running": "Thinking…",
         # History tab
         "history_empty_title": "Nothing saved yet",
@@ -277,9 +283,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "header_help": "Jak tohoto asistenta používat",
         # Mode tabs
         "mode_tab_chat": "Chat",
-        "mode_tab_builder": "Builder",
+        "mode_tab_builder": "Stavitel",
         # Builder sub-tabs
-        "builder_tab_setup": "Setup",
+        "builder_tab_setup": "Nastavení",
         "builder_tab_sections": "Sekce",
         "builder_tab_output": "Výstup",
         "builder_tab_history": "Historie",
@@ -475,6 +481,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "chat_qa_write_learning_post": "Napiš learning-update post",
         "chat_qa_critique_about": "Zhodnoť moji About sekci",
         "chat_qa_recruiter_dm": "Naváhej recruiter outreach DM",
+        "chat_intro": (
+            "Ahoj! Jsem tvůj LinkedIn voice expert. Můžeš mě poprosit, abych"
+            " vylepšil tvůj headline, zhodnotil About sekci, napsal"
+            " learning-update post nebo zprávu recruiterovi. Přepni na režim"
+            " **Stavitel**, kdykoliv budeš chtít vygenerovat celý profil."
+        ),
         "chat_running": "Přemýšlím…",
         # History tab
         "history_empty_title": "Zatím nic uloženo",
