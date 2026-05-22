@@ -11,8 +11,10 @@ Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
 středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
-**AI LinkedIn Profile Builder**, **AI Finance** a **AI Hledání práce**
-jsou plně napojené na OpenAI / Anthropic. Rozpracované sekce
+**AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
+a **AI Bug Report** jsou plně napojené na OpenAI / Anthropic (nová
+sekce mluví i s **vision** API obou providerů, takže screenshoty
+zpracovává společně s textovým promptem). Rozpracované sekce
 (Dashboard, AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
 AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
 aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
@@ -56,8 +58,9 @@ python main.py        # macOS / Linux
 ```
 
 Upload zóny v **AI Právní asistent**, **AI Životopis / Kariéra**,
-**AI LinkedIn Profile Builder** i **AI Doc Assistant** sdílí jednu
-komponentu (`src/components/file_drop_zone.py`), která:
+**AI LinkedIn Profile Builder**, **AI Doc Assistant** a **AI Bug
+Report** sdílí jednu komponentu (`src/components/file_drop_zone.py`),
+která:
 
 * Vykreslí zónu s čárkovaným okrajem a výrazným call-to-action
   „Klikni a vyber soubor" - kliknutí otevře nativní file picker. Žádné
@@ -71,7 +74,10 @@ komponentu (`src/components/file_drop_zone.py`), která:
   naplní okamžitě.
 * Přijímá **PDF / DOCX / HTML / HTM / TXT / MD** - extrahovaný text je
   to, co krmí AI prompty v **AI Právním asistentovi**, **AI Career** a
-  podobně.
+  podobně. Sekce **AI Bug Report** si přes malý lokální helper přidává
+  obrázky (PNG / JPG / WEBP / GIF / BMP / HEIC) i `.log` / `.json`
+  navíc, takže screenshoty mířily do vision API modelu a syrové logy
+  šly dovnitř promptu beze změny.
 
 Práce se schránkou je centralizovaná v `src/services/clipboard.py` -
 synchronní obálka nad knihovnou
@@ -104,6 +110,33 @@ Trade-off: PyInstaller zabalí PySide6 (Qt 6 runtime) přímo do .exe -
 drag-and-drop souborů **funguje**, protože ho Qt obsluhuje nativně.
 
 Cursor pravidlo [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc) zajišťuje, že agent spustí `build_exe.bat` na konci každého úkolu, takže `dist\AIHub.exe` zůstává v souladu se zdrojáky.
+
+### Produkční vydání
+
+Doručitelný balík pro běžné uživatele je **jeden samostatný binár**:
+`dist\AIHub.exe`. Postup release:
+
+1. Stáhni si aktuální `main`.
+2. Spusť jednou `build_exe.bat --force` - PyInstaller vyrobí
+   `dist\AIHub.exe` s PySide6 / Qt 6, fontem Material Symbols
+   Rounded a všemi sekcemi vevnitř. Skript navíc přidává
+   `--collect-submodules src.sections`, aby auto-discovery sekcí
+   (`pkgutil.iter_modules`) viděl všechny složky i ve frozen .exe.
+3. Předej `.exe` uživateli. Při prvním spuštění se v jeho domovském
+   adresáři vytvoří `~/AI Hub/`, což je **jediné** místo, kam aplikace
+   mimo install folder zapisuje:
+   * `~/AI Hub/settings.json` - provider / model / pořadí sidebaru /
+     opt-in přepínače,
+   * `~/AI Hub/history.json` - index uložených výstupů ze všech sekcí,
+   * `~/AI Hub/logs/app.log` - rotující debug log (1 MB, 4 soubory),
+   * `outputs/<sekce>/<title-slug>-<timestamp>/` - skutečné artefakty
+     (DOCX, PDF, HTML, MD) vedle .exe.
+
+   Smazání `~/AI Hub/` je tvrdý reset; .exe všechno vytvoří znovu při
+   příštím startu.
+4. API klíče nikdy nepustí počítač - leží v nativním úložišti OS
+   (Windows Credential Manager / macOS Keychain / Linux Secret
+   Service přes [`keyring`](https://pypi.org/project/keyring/)).
 
 ### Pro spoluvývojáře (úplně stejné prostředí, žádné kopírování)
 
@@ -309,6 +342,7 @@ ai-hub/
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # AI asistent na PDF / DOCX (summary / Q&A / rewrite / extract)
+    │   ├── ai_bug_report/         # plně napojené (vision) - text / screenshoty / logy -> Wordový bug report
     │   ├── history/              # placeholder (secondary nav)
     │   ├── favorites/            # placeholder (secondary nav)
     │   └── settings/             # API klíče, provider, obecné, debug logy (secondary nav)
@@ -383,6 +417,12 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
   - **Uložené profily hledání** v `~/AI Hub/jobs_profiles.json` - jedno-klikové spuštění, edit, duplikování, smazání. Žádná nová dependency, žádný nový secret.
   - **Bohaté HTML** (`Uložit jako HTML`) s match pillou, chip bloky sedí / chybí, doporučením u každé nabídky, samostatnou sekcí „Uzavřené nabídky" pro pozice, které už nenabírají, a kompletní skill gap sekcí. Každé uložení jde do nové složky `outputs/ai_jobs/<dotaz>-search-<timestamp>/` a registruje se v globálním `~/AI Hub/history.json`.
   - **Activity badge** (pravý kontextový panel) odráží každou fázi pipeline (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus quick action "Otevřít skill gap" který skočí přímo do nové záložky.
+- **AI Bug Report** - z popisu, screenshotů a podpůrných dokumentů / logů vyrobí pořádný bug report ve Wordu:
+  - **Vision vstup** - kombinovaná drop zóna přijímá screenshoty (PNG / JPG / WEBP / GIF / BMP / HEIC) i textové soubory (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshoty jdou do modelu přes nativní vision API obou providerů (`image_url` content bloky u OpenAI, `image` source bloky u Anthropic), textové soubory parsuje lokálně `src/services/file_parser.py`.
+  - **Jedno strukturované LLM volání** přes striktní `BUG_REPORT_SCHEMA` (název, shrnutí, závažnost, priorita, reprodukovatelnost, tabulka prostředí, předpoklady, číslované kroky k reprodukci, očekávaný vs skutečný výsledek, popis každé přílohy, další poznámky). QA system prompt opakuje no-hallucination klauzuli pro ověřitelná fakta (verze, ID tiketů, stack trace) a zároveň explicitně **dovoluje** modelu odvodit název / kroky / očekávaný vs skutečný z dostupných vstupů a označit odhady v *dalších poznámkách*. Uživateli stačí jediný vstup - popis **nebo** screenshot - a dostane kompletní report.
+  - **Editovatelný náhled** - název, závažnost (Critical / High / Medium / Low) a priorita (P0 / P1 / P2 / P3) se dají před uložením doladit, aby report seděl na slovník vašeho týmu.
+  - **Word export** přes `python-docx` - nadpis, tabulka prostředí, číslované kroky, barevně odlišený očekávaný (zelená) vs skutečný výsledek (červená), screenshoty vložené přímo do dokumentu. Vedle Wordu se ukládá i Markdown verze a `summary.json`, takže další nástroje umí stejný payload sebrat. Vše leží v `outputs/ai_bug_report/<title-slug>-<timestamp>/` a registruje se v `~/AI Hub/history.json`.
+  - **Demo režim** - jedno kliknutí načte připravený příklad, takže sekci jde předvést bez utracení tokenů.
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
   - **Multi-formát upload** - přetáhni `PDF`, `DOCX`, `HTML`, `TXT` (nebo `MD`) dokument do pravého panelu; tělo textu krmí prompty, z počítače odchází jen extrahovaný plain text.
@@ -393,9 +433,9 @@ Detaily v [CONTRIBUTING.md](CONTRIBUTING.md) a v
 
 ## Schované UI
 
-V sidebaru jsou teď jen čtyři produkční sekce (AI LinkedIn,
-AI Životopis / Kariéra, AI Finance, AI Hledání práce) plus
-**Nastavení** pod oddělovačem. Rozpracované sekce v repu zůstávají,
+V sidebaru je teď pět produkčních sekcí (AI LinkedIn,
+AI Životopis / Kariéra, AI Finance, AI Hledání práce, AI Bug Report)
+plus **Nastavení** pod oddělovačem. Rozpracované sekce v repu zůstávají,
 ale jejich `section.py` má `hidden=True`, takže
 `src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
 `SECONDARY_SECTIONS` přeskočí. Pořád se auto-discoverují a zůstávají

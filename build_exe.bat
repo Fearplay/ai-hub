@@ -176,12 +176,28 @@ REM                                            of internal modules (multi.py,
 REM                                            scrapers, utils). Force the bundle
 REM                                            so the AI Finance live tickers
 REM                                            still resolve in the frozen .exe.
+REM   --collect-submodules src.sections    -> sections are auto-discovered at
+REM                                            runtime via pkgutil.iter_modules
+REM                                            (see src\sections\__init__.py).
+REM                                            PyInstaller's static analyser
+REM                                            cannot see the dynamic
+REM                                            ``importlib.import_module(...)``
+REM                                            calls, so without this flag the
+REM                                            frozen .exe sees ZERO sections
+REM                                            and crashes at startup with
+REM                                            ``[WinError 3] ... \src\sections``.
+REM   --collect-submodules src.services    -> defensive; some services (e.g.
+REM                                            html_pdf, ai_provider) lazy-
+REM                                            import their backends only when
+REM                                            actually called.
 pyinstaller --noconfirm --onefile --windowed --name AIHub ^
     --add-data "assets\fonts;assets\fonts" ^
     --hidden-import pyperclip ^
     --collect-submodules PySide6 ^
     --collect-submodules truststore ^
     --collect-submodules yfinance ^
+    --collect-submodules src.sections ^
+    --collect-submodules src.services ^
     %ICON_ARG% ^
     main.py
 if errorlevel 1 (

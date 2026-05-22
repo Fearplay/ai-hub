@@ -12,8 +12,10 @@ A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
 in the middle, and a context panel on the right. **AI CV / Career**,
-**AI LinkedIn Profile Builder**, **AI Finance**, and **AI Job Search**
-are fully wired to OpenAI / Anthropic. The work-in-progress sections
+**AI LinkedIn Profile Builder**, **AI Finance**, **AI Job Search**, and
+**AI Bug Report** are fully wired to OpenAI / Anthropic (the new
+section also speaks the providers' **vision** APIs so screenshots are
+processed alongside the text prompt). The work-in-progress sections
 (Dashboard, AI Legal, AI Business, AI Marketing, AI Study, AI Documents,
 AI Doc Assistant) are kept in the repo so the architecture stays
 documented but are currently **hidden from the sidebar** - see
@@ -57,8 +59,9 @@ python main.py        # macOS / Linux
 ```
 
 The upload zones in **AI Legal assistant**, **AI CV / Career**,
-**AI LinkedIn Profile Builder**, and **AI Doc Assistant** all share one
-component (`src/components/file_drop_zone.py`) that:
+**AI LinkedIn Profile Builder**, **AI Doc Assistant**, and **AI Bug
+Report** all share one component (`src/components/file_drop_zone.py`)
+that:
 
 * Renders a dashed-border drop zone with a prominent "Click to browse"
   call-to-action - clicking opens the native file picker. There is no
@@ -72,7 +75,10 @@ component (`src/components/file_drop_zone.py`) that:
   directly onto the zone and it loads instantly.
 * Accepts **PDF / DOCX / HTML / HTM / TXT / MD** files - the extracted
   text body is what feeds the AI prompts in **AI Legal**, **AI Career**
-  and friends.
+  and friends. The AI Bug Report section opts in to **image files**
+  (PNG / JPG / WEBP / GIF / BMP / HEIC) and `.log` / `.json` on top of
+  the shared list via a small local helper, so screenshots are sent to
+  the model's vision API and raw logs are forwarded verbatim.
 
 The clipboard handling itself is centralised in
 `src/services/clipboard.py`. It is a thin synchronous wrapper around
@@ -112,6 +118,35 @@ natively.
 The Cursor rule [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc)
 makes the agent run `build_exe.bat` at the end of every task, so
 `dist\AIHub.exe` stays in sync with the sources.
+
+### Production release
+
+The deliverable for non-developer users is a **single self-contained
+binary**: `dist\AIHub.exe`. To cut a release:
+
+1. Pull the latest `main`.
+2. Run `build_exe.bat --force` once - PyInstaller produces
+   `dist\AIHub.exe` with PySide6 / Qt 6, the Material Symbols Rounded
+   icon font, and every section module baked in. The script also
+   passes `--collect-submodules src.sections` so the section
+   auto-discovery (`pkgutil.iter_modules`) finds every section folder
+   when the .exe runs from a frozen bundle.
+3. Hand the `.exe` to the user. First launch creates `~/AI Hub/`
+   under the user's home directory, which is the **single** place the
+   app writes anything outside the install folder:
+   * `~/AI Hub/settings.json` - provider / model / sidebar order /
+     opt-in flags,
+   * `~/AI Hub/history.json` - run index for every section's saved
+     outputs,
+   * `~/AI Hub/logs/app.log` - rotating debug log (1 MB, 4 files),
+   * `outputs/<section>/<run-slug>-<timestamp>/` - the actual run
+     artefacts (DOCX, PDF, HTML, MD), created next to the .exe.
+
+   Wiping `~/AI Hub/` is a hard reset; the .exe re-creates everything
+   on the next launch.
+4. API keys never leave the machine - they live in the OS native
+   secret store (Windows Credential Manager / macOS Keychain / Linux
+   Secret Service via [`keyring`](https://pypi.org/project/keyring/)).
 
 ### For collaborators (identical environment, no copy/paste)
 
@@ -312,6 +347,7 @@ ai-hub/
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
+    │   ├── ai_bug_report/         # fully wired (vision) - text / screenshots / logs -> Word bug report
     │   ├── history/              # placeholder (secondary nav)
     │   ├── favorites/            # placeholder (secondary nav)
     │   └── settings/             # API keys, provider, general, debug logs (secondary nav)
@@ -385,6 +421,12 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - **Saved search profiles** persisted to `~/AI Hub/jobs_profiles.json` - one-click rerun, edit, duplicate, delete. No external dependency, no extra secret.
   - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
   - **Activity badge** (right context panel) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus a "Open skill gap" quick action that jumps straight to the new tab.
+- **AI Bug Report** - turn a description, screenshots, and supporting docs / logs into a polished Word bug report:
+  - **Vision input** - the combined drop zone accepts both screenshots (PNG / JPG / WEBP / GIF / BMP / HEIC) and text-like attachments (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshots are sent to the model via the providers' native vision APIs (`image_url` content blocks for OpenAI, `image` source blocks for Anthropic), text-like docs are parsed locally with `src/services/file_parser.py`.
+  - **One structured LLM call** through a strict `BUG_REPORT_SCHEMA` (title, summary, severity, priority, reproducibility, environment table, preconditions, numbered steps to reproduce, expected vs actual, per-attachment summary, additional notes). The QA system prompt re-states the no-hallucination clause for verifiable facts (versions, ticket IDs, stack traces) while explicitly **allowing** the model to infer the title / STR / expected-vs-actual from the inputs and mark inferences in *additional notes*. The user only needs to provide one input - a description **or** a screenshot - and gets a complete report back.
+  - **Editable preview** - the title, severity (Critical / High / Medium / Low), and priority (P0 / P1 / P2 / P3) can be tweaked inline before saving so the report matches your team's wording.
+  - **Word export** via `python-docx` - heading, environment table, numbered STR, colour-coded expected (green) vs actual (red), embedded screenshots inline. Each save also writes a Markdown mirror and a `summary.json` so other tooling can pick the same payload up. Lands in `outputs/ai_bug_report/<title-slug>-<timestamp>/` and registers in `~/AI Hub/history.json`.
+  - **Demo mode** - one click loads a curated example so the section can be showcased without spending tokens.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
   - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
@@ -396,9 +438,9 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## Hidden UI
 
-The sidebar currently only shows the four production-ready sections
-(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search) plus
-**Settings** under the divider. Work-in-progress sections still live in
+The sidebar currently only shows the five production-ready sections
+(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search, AI Bug Report)
+plus **Settings** under the divider. Work-in-progress sections still live in
 the repo but their `section.py` sets `hidden=True` so
 `src/sections/__init__.py` skips them when building
 `PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering

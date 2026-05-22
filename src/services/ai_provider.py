@@ -17,12 +17,68 @@ something more useful than "openai.AuthenticationError".
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from src.services import secrets, settings_store
 from src.services.cost_tracker import COST, estimate_cost
+
+
+# Vision input types accepted by :func:`run`. ``str`` is treated as a
+# filesystem path; ``bytes`` / ``bytearray`` are raw image bytes; a
+# ``dict`` with at least ``data`` (bytes) is the explicit form when the
+# caller wants to override the inferred MIME type via ``mime``.
+ImageInput = Union[bytes, bytearray, str, dict]
+
+
+_IMAGE_MIME_BY_EXT: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".heic": "image/heic",
+}
+
+
+def _load_image(item: ImageInput) -> tuple[bytes, str]:
+    """Return ``(raw_bytes, mime_type)`` for a single image input.
+
+    Accepts the same shapes ``run(images=...)`` accepts. Raises
+    :class:`ProviderError` with a friendly message when the file is
+    missing or the extension is not recognised - the upstream pipeline
+    catches it and surfaces the message in the section's error pill.
+    """
+    if isinstance(item, (bytes, bytearray)):
+        return bytes(item), "image/png"
+    if isinstance(item, dict):
+        data = item.get("data")
+        mime = str(item.get("mime") or "").strip() or "image/png"
+        if not isinstance(data, (bytes, bytearray)):
+            raise ProviderError(
+                "Image dict must contain a ``data`` bytes payload."
+            )
+        return bytes(data), mime
+    if isinstance(item, str):
+        path = item
+        ext = os.path.splitext(path)[1].lower()
+        mime = _IMAGE_MIME_BY_EXT.get(ext, "image/png")
+        try:
+            with open(path, "rb") as fh:
+                return fh.read(), mime
+        except OSError as exc:
+            raise ProviderError(f"Could not read image: {path} ({exc})") from exc
+    raise ProviderError(f"Unsupported image input type: {type(item).__name__}")
+
+
+def _prepare_images(images: Optional[list[ImageInput]]) -> list[tuple[bytes, str]]:
+    if not images:
+        return []
+    return [_load_image(item) for item in images]
 
 
 NO_HALLUCINATION_CLAUSE = (
@@ -100,6 +156,32 @@ def _try_parse_json(text: str) -> Optional[Any]:
         return None
 
 
+def _build_openai_user_content(
+    user: str, images: list[tuple[bytes, str]]
+) -> Union[str, list[dict[str, Any]]]:
+    """Compose the OpenAI ``user`` message content.
+
+    When ``images`` is empty we keep the plain-string form so existing
+    text-only flows are not perturbed. With one or more screenshots we
+    switch to the multimodal list form (text block + one
+    ``image_url`` data-URL block per image).
+    """
+    if not images:
+        return user
+    blocks: list[dict[str, Any]] = []
+    if user:
+        blocks.append({"type": "text", "text": user})
+    for raw, mime in images:
+        b64 = base64.b64encode(raw).decode("ascii")
+        blocks.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            }
+        )
+    return blocks
+
+
 def _run_openai(
     *,
     model: str,
@@ -111,6 +193,7 @@ def _run_openai(
     temperature: float,
     api_key: str,
     enable_web_search: bool = False,
+    images: Optional[list[tuple[bytes, str]]] = None,
 ) -> tuple[str, Optional[Any], int, int]:
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
@@ -120,13 +203,17 @@ def _run_openai(
         ) from exc
 
     client = OpenAI(api_key=api_key)
+    images = images or []
 
     # Web search is a Responses-API tool, not a Chat-Completions one.
     # When the caller asks for it we route through the Responses API
     # and let the model decide whether to call ``web_search_preview``.
     # We only do this when no JSON schema is requested (schemas need
-    # the dedicated structured-output path on Chat Completions).
-    if enable_web_search and schema is None:
+    # the dedicated structured-output path on Chat Completions). Web
+    # search is also not combined with image inputs in this code path -
+    # the bug-report use case wants structured JSON output, not a chat
+    # transcript, so the schema branch below handles it.
+    if enable_web_search and schema is None and not images:
         try:
             response = client.responses.create(
                 model=model,
@@ -146,11 +233,13 @@ def _run_openai(
         tokens_out = getattr(usage, "output_tokens", 0) or 0
         return text, None, int(tokens_in), int(tokens_out)
 
+    user_content = _build_openai_user_content(user, images)
+
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user", "content": user_content},
         ],
         "max_completion_tokens": max_output_tokens,
         "temperature": temperature,
@@ -181,6 +270,37 @@ def _run_openai(
     return text, data, int(tokens_in), int(tokens_out)
 
 
+def _build_anthropic_user_content(
+    user: str, images: list[tuple[bytes, str]]
+) -> Union[str, list[dict[str, Any]]]:
+    """Compose the Anthropic ``user`` message content.
+
+    Text-only flows keep the plain-string form (the SDK auto-wraps it).
+    With images we switch to a content-block list where every image
+    block precedes the text block - matching the layout Anthropic's
+    docs recommend for "look at this screenshot, then read this
+    description" prompts.
+    """
+    if not images:
+        return user
+    blocks: list[dict[str, Any]] = []
+    for raw, mime in images:
+        b64 = base64.b64encode(raw).decode("ascii")
+        blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": mime,
+                    "data": b64,
+                },
+            }
+        )
+    if user:
+        blocks.append({"type": "text", "text": user})
+    return blocks
+
+
 def _run_anthropic(
     *,
     model: str,
@@ -192,6 +312,7 @@ def _run_anthropic(
     temperature: float,
     api_key: str,
     enable_web_search: bool = False,
+    images: Optional[list[tuple[bytes, str]]] = None,
 ) -> tuple[str, Optional[Any], int, int]:
     try:
         from anthropic import Anthropic  # type: ignore[import-not-found]
@@ -201,11 +322,14 @@ def _run_anthropic(
         ) from exc
 
     client = Anthropic(api_key=api_key)
+    images = images or []
+
+    user_content = _build_anthropic_user_content(user, images)
 
     kwargs: dict[str, Any] = {
         "model": model,
         "system": system,
-        "messages": [{"role": "user", "content": user}],
+        "messages": [{"role": "user", "content": user_content}],
         "max_tokens": max_output_tokens,
         "temperature": temperature,
     }
@@ -266,6 +390,7 @@ def run(
     temperature: float = 0.2,
     skip_no_hallucination_clause: bool = False,
     enable_web_search: bool = False,
+    images: Optional[list[ImageInput]] = None,
 ) -> ProviderResult:
     """Single AI entry point for sections.
 
@@ -281,11 +406,22 @@ def run(
     facts in by hand. Web search is **not** combined with structured
     outputs - the schema path already forces the model into a tool call
     of its own, so the flag is ignored when ``schema`` is provided.
+
+    ``images`` is an optional list of vision inputs (filesystem paths,
+    raw bytes, or ``{"data": bytes, "mime": str}`` dicts) that are
+    forwarded to the model alongside the text prompt. Used by the AI
+    Bug Report section to let the model read screenshots and infer
+    steps / expected / actual values. Works with both providers - OpenAI
+    via ``image_url`` content blocks, Anthropic via ``image`` source
+    blocks. Combines cleanly with structured-output (``schema``); does
+    not combine with ``enable_web_search`` (the image path always wins
+    when both are set, since vision is what the caller actually needs).
     """
     provider_id, model_id = _resolve_provider_and_model(provider, model)
     api_key = _ensure_key(provider_id)
 
     full_system = _build_system(system, allow_no_clause=skip_no_hallucination_clause)
+    prepared_images = _prepare_images(images)
 
     if provider_id == settings_store.PROVIDER_ANTHROPIC:
         text, data, tokens_in, tokens_out = _run_anthropic(
@@ -298,6 +434,7 @@ def run(
             temperature=temperature,
             api_key=api_key,
             enable_web_search=enable_web_search,
+            images=prepared_images,
         )
     else:
         text, data, tokens_in, tokens_out = _run_openai(
@@ -310,6 +447,7 @@ def run(
             temperature=temperature,
             api_key=api_key,
             enable_web_search=enable_web_search,
+            images=prepared_images,
         )
 
     COST.record(
