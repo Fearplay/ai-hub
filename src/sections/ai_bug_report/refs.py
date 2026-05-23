@@ -16,9 +16,10 @@ widgets from a non-GUI thread).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
 
@@ -27,22 +28,32 @@ from src.services import logger as logger_service
 class BugReportRefs:
     rerender_main: Optional[Callable[[], None]] = None
     rerender_context: Optional[Callable[[], None]] = None
+    _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def request_context_refresh(self) -> None:
-        """Schedule the right-hand context panel to repaint on the GUI thread."""
-        fn = self.rerender_context
-        if not callable(fn):
+        """Schedule the right-hand context panel to repaint on the GUI thread.
+
+        Coalesces bursty calls into one queued render.
+        """
+        if self.rerender_context is None:
             return
 
-        def _safe() -> None:
-            try:
-                fn()
-            except Exception as exc:
-                logger_service.log_exception(
-                    "ai_bug_report.refs", "request_context_refresh_failed", exc,
-                )
+        def _provider() -> Optional[Callable[[], None]]:
+            fn = self.rerender_context
+            if not callable(fn):
+                return None
 
-        runtime_dispatch(_safe)
+            def _safe() -> None:
+                try:
+                    fn()
+                except Exception as exc:
+                    logger_service.log_exception(
+                        "ai_bug_report.refs", "request_context_refresh_failed", exc,
+                    )
+
+            return _safe
+
+        self._refresh.schedule(_provider)
 
     def request_main_refresh(self) -> None:
         """Schedule the center column to rebuild on the GUI thread."""

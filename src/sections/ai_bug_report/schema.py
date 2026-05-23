@@ -25,6 +25,95 @@ PRIORITY_ENUM = ["P0", "P1", "P2", "P3"]
 REPRODUCIBILITY_ENUM = ["Always", "Sometimes", "Rare", "Once", "Unknown"]
 
 
+FOLLOWUP_QUESTIONS_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["questions"],
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 8,
+            "description": (
+                "0-8 clarifying questions about the bug that the user's "
+                "description / screenshots / logs do not clearly answer. "
+                "Empty array when the inputs are already enough to file "
+                "a confident bug report."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "topic",
+                    "question",
+                    "rationale",
+                    "options",
+                    "multi_select",
+                    "allow_free_text",
+                ],
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": (
+                            "Short label - 1-3 words, e.g. 'Browser', "
+                            "'Reproducibility', 'Network'."
+                        ),
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "Direct question to the user (you / vy). "
+                            "Answerable in 1-2 sentences. Asked because "
+                            "the inputs do not let the AI answer it "
+                            "without inventing facts."
+                        ),
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": (
+                            "One short sentence: why we are asking and "
+                            "which schema field it would feed."
+                        ),
+                    },
+                    "options": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "items": {"type": "string"},
+                        "description": (
+                            "2-6 short, plausible answer options the user "
+                            "can pick from. Examples for 'Does it happen "
+                            "every time?': ['Always', 'Sometimes', 'Once']. "
+                            "Make options mutually exclusive when "
+                            "multi_select=false; multi_select=true means "
+                            "several can apply. Always written in "
+                            "OUTPUT_LANGUAGE."
+                        ),
+                    },
+                    "multi_select": {
+                        "type": "boolean",
+                        "description": (
+                            "True when several options can apply at once "
+                            "(e.g. 'Which network layers showed errors?'). "
+                            "False for single-choice questions."
+                        ),
+                    },
+                    "allow_free_text": {
+                        "type": "boolean",
+                        "description": (
+                            "True when the user may add an 'Other' answer "
+                            "with their own short text. Default to true "
+                            "unless the options clearly enumerate every "
+                            "possible answer."
+                        ),
+                    },
+                },
+            },
+        },
+    },
+}
+
+
 BUG_REPORT_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,

@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 from src.services import ai_provider, job_scraper, settings_store, store
@@ -400,6 +400,7 @@ def _run_discovery_extraction(
     excluded_urls: tuple[str, ...] = (),
     stage_prefix: str = "",
     relaxed_pass: bool = False,
+    followup_qa: tuple[dict, ...] = (),
 ) -> tuple[list[dict], str]:
     """Run pass 1 (web-search discovery) + pass 2 (JSON extraction).
 
@@ -456,6 +457,7 @@ def _run_discovery_extraction(
         salary_currency=salary_currency,
         excluded_urls=excluded_urls,
         relaxed_pass=relaxed_pass,
+        followup_qa=followup_qa,
     )
     discovery = _provider_call(
         stage=discovery_stage,
@@ -555,6 +557,163 @@ def _run_verification(cleaned: list[dict]) -> tuple[list[dict], int]:
     return survivors, len(cleaned) - len(survivors)
 
 
+# ---------------------------------------------------------------------------
+# Pass 0 - clarifying follow-up questions (optional)
+# ---------------------------------------------------------------------------
+#
+# AI Career runs the same dialog at the view level by splitting the
+# worker into two phases. AI Jobs has a much larger ``run_search``
+# function (5 passes + top-up + relaxed fallback) so splitting it would
+# bloat the view side. Instead, we keep the single ``run_search``
+# function and let the view register a *resolver* callable that the
+# pipeline can call from the worker thread:
+#
+#     pipeline.set_followup_resolver(my_resolver)
+#
+# When the resolver is set AND the user has follow-ups enabled (per
+# ``settings_store.get_ask_followups()``), the pipeline calls
+# ``generate_followup_questions`` between the input-prep step and the
+# discovery pass, then hands the question list to the resolver which is
+# expected to:
+#
+#   1. Open the modal on the GUI thread (via ``REFS.dispatch(...)``).
+#   2. Block until the user finishes answering or cancels (the view
+#      side typically signals a ``threading.Event``).
+#   3. Return the list of answer dicts (empty list = "skip"). Returning
+#      ``None`` means the user cancelled - the pipeline aborts cleanly.
+#
+# The resolver is module-level state but the view sets it once per
+# build_view, so there is no race - the worker is started AFTER the
+# resolver is registered, and the resolver is cleared on every build
+# so a stale closure cannot leak across reloads.
+_followup_resolver: Optional[Callable[[list[dict]], Optional[list[dict]]]] = None
+
+
+def set_followup_resolver(
+    resolver: Optional[Callable[[list[dict]], Optional[list[dict]]]],
+) -> None:
+    """Register / clear the GUI-side follow-up dialog resolver.
+
+    Pass ``None`` from the view's destroyed-signal handler so a
+    rebuilt view does not race against a worker thread holding a
+    stale closure over the previous build's modal.
+    """
+    global _followup_resolver
+    _followup_resolver = resolver
+
+
+def generate_followup_questions(*, output_lang: str) -> PipelineResult:
+    """Run Pass 0 - ask the LLM what facts it would otherwise have to invent.
+
+    Returns ``PipelineResult(ok=True)`` and stores 0-8 questions in
+    ``STATE.followup_questions``. Demo mode and zero-input
+    short-circuit so the call never wastes tokens.
+    """
+    logger_service.log_event(
+        "INFO",
+        "ai_jobs.pipeline",
+        "generate_followup_questions_start",
+        output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
+    )
+
+    if STATE.demo_mode:
+        STATE.followup_questions = []
+        logger_service.log_event(
+            "INFO",
+            "ai_jobs.pipeline",
+            "generate_followup_questions_demo_done",
+        )
+        return PipelineResult(ok=True)
+
+    if not STATE.can_run():
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
+
+    profile_file = STATE.profile_file
+    location_query, location_label = _resolve_location(
+        STATE.location_preset, STATE.location_custom,
+    )
+
+    user_msg = prompts.build_followup_user(
+        output_lang=output_lang,
+        keywords=STATE.keywords,
+        location_label=location_label or location_query,
+        work_mode=STATE.work_mode,
+        seniority=STATE.seniority,
+        profile_text=STATE.profile_text,
+        profile_file_text=(profile_file.text if profile_file else ""),
+        profile_file_name=(profile_file.name if profile_file else ""),
+        linkedin_url=STATE.linkedin_url,
+        tech_skills=STATE.tech_skills,
+        additional_experience=STATE.additional_experience,
+        contract_types=tuple(STATE.contract_types),
+        excluded_keywords=STATE.excluded_keywords,
+        excluded_companies=STATE.excluded_companies,
+        excluded_locations=STATE.excluded_locations,
+        salary_min=int(STATE.salary_min or 0),
+        salary_currency=STATE.salary_currency,
+        search_mode=STATE.search_mode,
+    )
+
+    try:
+        result = ai_provider.run(
+            system=prompts.FOLLOWUP_QUESTIONS_SYSTEM,
+            user=user_msg,
+            schema=schema.FOLLOWUP_QUESTIONS_SCHEMA,
+            schema_name="ai_jobs_followup_questions",
+            max_output_tokens=1200,
+            temperature=0.2,
+        )
+    except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_jobs.pipeline",
+            "generate_followup_questions_provider_error",
+            exc,
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=False, error=str(exc))
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_jobs.pipeline", "generate_followup_questions_failed", exc,
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=False, error=str(exc))
+
+    raw = (result.data or {}).get("questions") if isinstance(result.data, dict) else []
+    cleaned: list[dict] = []
+    for q in raw or []:
+        if not isinstance(q, dict):
+            continue
+        topic = str(q.get("topic") or "").strip()
+        question = str(q.get("question") or "").strip()
+        if not topic or not question:
+            continue
+        options = [
+            str(opt).strip()
+            for opt in (q.get("options") or [])
+            if isinstance(opt, (str, int, float)) and str(opt).strip()
+        ]
+        cleaned.append(
+            {
+                "topic": topic,
+                "question": question,
+                "rationale": str(q.get("rationale") or "").strip(),
+                "options": options,
+                "multi_select": bool(q.get("multi_select")),
+                "allow_free_text": bool(q.get("allow_free_text", True)),
+            }
+        )
+    STATE.followup_questions = cleaned
+    logger_service.log_event(
+        "INFO",
+        "ai_jobs.pipeline",
+        "generate_followup_questions_done",
+        count=len(cleaned),
+    )
+    return PipelineResult(ok=True)
+
+
 @logger_service.timed_call("ai_jobs.pipeline", "run_search")
 def run_search(*, output_lang: str) -> PipelineResult:
     """Run the full discovery -> extraction -> verification -> scoring -> gap pipeline.
@@ -608,6 +767,76 @@ def run_search(*, output_lang: str) -> PipelineResult:
     STATE.results = []
     STATE.summary = ""
     STATE.skill_gap = {}
+    STATE.followup_questions = []
+    STATE.followup_qa = []
+
+    # --- pass 0: clarifying follow-up questions (optional) -----------
+    #
+    # The resolver is registered by ``tab_setup.build_setup_tab`` and
+    # cleared on view rebuild, so a missing resolver here means either
+    # (a) we are in a smoke test, or (b) the section was destroyed
+    # between ``_on_run`` and this point. Either way we silently skip
+    # the dialog and proceed with whatever the user has already typed.
+    resolver = _followup_resolver
+    if (
+        resolver is not None
+        and not STATE.demo_mode
+        and settings_store.get_ask_followups()
+    ):
+        _set_activity("followups")
+        fu_res = generate_followup_questions(output_lang=output_lang)
+        if not fu_res.ok:
+            # Provider failure on the optional Pass 0 should not crash
+            # the run - log + skip so the search still happens.
+            logger_service.log_event(
+                "WARNING",
+                "ai_jobs.pipeline",
+                "followup_questions_skipped_after_error",
+                error=fu_res.error,
+            )
+            STATE.followup_questions = []
+            STATE.followup_qa = []
+        elif STATE.followup_questions:
+            _set_activity("waiting_user")
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "followup_dialog_open",
+                count=len(STATE.followup_questions),
+            )
+            try:
+                answers = resolver(list(STATE.followup_questions))
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.pipeline", "followup_resolver_failed", exc,
+                )
+                answers = None
+            if answers is None:
+                logger_service.log_event(
+                    "INFO",
+                    "ai_jobs.pipeline",
+                    "followup_dialog_cancelled",
+                )
+                _set_activity("ready")
+                STATE.last_error = ""
+                return PipelineResult(ok=False, error="cancelled_by_user")
+            STATE.followup_qa = list(answers)
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "phase2_start",
+                followup_answers=len(STATE.followup_qa),
+            )
+            _set_activity("searching")
+        else:
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "followup_dialog_skipped_zero_questions",
+            )
+            _set_activity("searching")
+
+    followup_qa_tuple = tuple(STATE.followup_qa or ())
 
     common_args = dict(
         output_lang=output_lang,
@@ -633,6 +862,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
         search_mode=STATE.search_mode,
         salary_min=int(STATE.salary_min or 0),
         salary_currency=STATE.salary_currency,
+        followup_qa=followup_qa_tuple,
     )
 
     # --- pass 1 + 2: discovery + extraction --------------------------
@@ -841,6 +1071,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa_tuple,
         )
     elif active_items:
         logger_service.log_event(
@@ -892,6 +1123,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa_tuple,
         )
 
     STATE.activity = "ready"
@@ -932,6 +1164,7 @@ def _score_one_position(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Run Pass 4 for one position. Errors are logged but never raised."""
     try:
@@ -945,6 +1178,7 @@ def _score_one_position(
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa,
         )
         result = _provider_call(
             stage="match",
@@ -991,6 +1225,7 @@ def _score_positions(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Score every position in parallel. Mutates ``positions`` in place."""
     _set_activity("scoring")
@@ -1018,6 +1253,7 @@ def _score_positions(
                 profile_file_text=profile_file_text,
                 profile_file_name=profile_file_name,
                 linkedin_url=linkedin_url,
+                followup_qa=followup_qa,
             )
             for item in positions
         ]
@@ -1051,6 +1287,7 @@ def _aggregate_skill_gap(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Run Pass 5 - populate :data:`STATE.skill_gap`."""
     _set_activity("gap_analysis")
@@ -1080,6 +1317,7 @@ def _aggregate_skill_gap(
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa,
         )
         result = _provider_call(
             stage="skill_gap",

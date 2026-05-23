@@ -172,6 +172,14 @@ REM                                            of internal modules (multi.py,
 REM                                            scrapers, utils). Force the bundle
 REM                                            so the AI Finance live tickers
 REM                                            still resolve in the frozen .exe.
+REM   --collect-data certifi                -> bundle the Mozilla CA pem so
+REM                                            certifi.where() resolves to a
+REM                                            real file inside the .exe; main.py
+REM                                            uses that path for CURL_CA_BUNDLE
+REM                                            so libcurl (curl_cffi -> yfinance)
+REM                                            stops failing with "unable to get
+REM                                            local issuer certificate" on stock
+REM                                            Windows Python.
 REM   --collect-all qtawesome              -> qtawesome ships icon font files
 REM                                            (Font Awesome / Material Design
 REM                                            Icons / Phosphor / Remix /
@@ -208,6 +216,8 @@ pyinstaller --noconfirm --onefile --windowed --name AIHub ^
     --collect-submodules PySide6 ^
     --collect-submodules truststore ^
     --collect-submodules yfinance ^
+    --collect-data certifi ^
+    --collect-submodules curl_cffi ^
     --collect-all qtawesome ^
     --collect-submodules qtpy ^
     --additional-hooks-dir hooks ^

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
 from src.qt.widgets import (
@@ -210,6 +211,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     panel_holder.setLayout(panel_layout)
 
     def _clear() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         while panel_layout.count():
             item = panel_layout.takeAt(0)
             if item is None:
@@ -219,6 +222,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 w.deleteLater()
 
     def _render() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         _clear()
         cards: list[QWidget] = [
             section_card(theme, icon=Icons.PAYMENTS_OUTLINED, title=txt["ctx_cost_title"], body=_cost_body(theme, txt)),
@@ -246,6 +251,21 @@ def build_context(theme: Theme, lang: str) -> QWidget:
             )
     _PREV_UNSUBSCRIBE["fn"] = COST.subscribe(_on_cost_change)
     REFS.rerender_context = _render
+
+    def _on_panel_destroyed() -> None:
+        # Section switch / theme swap deletes the C++ panel. Drop the
+        # closure ref and unsubscribe from COST so future LLM calls in
+        # other sections do not enqueue work against a dead layout.
+        if REFS.rerender_context is _render:
+            REFS.rerender_context = None
+        prev_fn = _PREV_UNSUBSCRIBE.get("fn")
+        if callable(prev_fn):
+            try:
+                prev_fn()
+            finally:
+                _PREV_UNSUBSCRIBE["fn"] = None
+
+    on_destroyed(panel_holder, _on_panel_destroyed)
 
     _render()
     return panel_holder

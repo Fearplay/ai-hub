@@ -21,9 +21,22 @@ prime anything at startup.
 
 from __future__ import annotations
 
+import os
+
+import certifi
 import truststore
 
 truststore.inject_into_ssl()
+
+# Point libcurl (used by curl_cffi -> yfinance) at certifi's CA bundle.
+# truststore patches Python's ssl module so httpx / openai / anthropic
+# trust the OS root store, but curl_cffi calls into libcurl native TLS
+# which has its own bundle search path - on stock Windows Python that
+# path is empty and every Yahoo Finance request fails with
+# "curl: (60) SSL certificate problem". setdefault keeps any explicit
+# user override (corporate MITM root) intact.
+os.environ.setdefault("CURL_CA_BUNDLE", certifi.where())
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 import sys
 

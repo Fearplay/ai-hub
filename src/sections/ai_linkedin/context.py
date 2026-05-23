@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
+from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
@@ -300,6 +302,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     panel_holder.setLayout(panel_layout)
 
     def _clear() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         while panel_layout.count():
             item = panel_layout.takeAt(0)
             if item is None:
@@ -309,6 +313,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 w.deleteLater()
 
     def _render() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         _clear()
         cards: list[QWidget] = [
             section_card(theme, icon=Icons.PERSON_OUTLINE, title=txt["ctx_brand_title"], body=_brief_content(theme, lang)),
@@ -323,7 +329,10 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         panel_layout.addWidget(shell)
 
     def _on_cost_change() -> None:
-        _render()
+        # COST.subscribe fires from worker threads (any AI provider
+        # call). We MUST hop to the GUI thread before mutating widgets
+        # - direct ``_render()`` here is a Qt threading violation.
+        runtime_dispatch(_render)
 
     prev = _PREV_UNSUBSCRIBE.get("fn")
     if callable(prev):
@@ -335,6 +344,18 @@ def build_context(theme: Theme, lang: str) -> QWidget:
             )
     _PREV_UNSUBSCRIBE["fn"] = COST.subscribe(_on_cost_change)
     REFS.rerender_context = _render
+
+    def _on_panel_destroyed() -> None:
+        if REFS.rerender_context is _render:
+            REFS.rerender_context = None
+        prev_fn = _PREV_UNSUBSCRIBE.get("fn")
+        if callable(prev_fn):
+            try:
+                prev_fn()
+            finally:
+                _PREV_UNSUBSCRIBE["fn"] = None
+
+    on_destroyed(panel_holder, _on_panel_destroyed)
 
     try:
         store.list_runs()

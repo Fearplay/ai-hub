@@ -63,9 +63,17 @@ compatible with the MIT License above.
 - markdown2 (https://github.com/trentm/python-markdown2) - MIT License
 - reportlab (https://www.reportlab.com) - BSD-3-Clause License
 - pyperclip (https://github.com/asweigart/pyperclip) - BSD-3-Clause License
+- truststore (https://github.com/sethmlarson/truststore) - MIT License
+- certifi (https://github.com/certifi/python-certifi) - Mozilla Public
+  License 2.0 (the bundled cacert.pem is a Mozilla CA bundle - MPL-2.0
+  applies to that file; the wrapper Python code is MIT)
+- yfinance (https://github.com/ranaroussi/yfinance) - Apache License 2.0
+- curl_cffi (https://github.com/yifeikong/curl_cffi) - MIT License
+  (transitive dependency of yfinance)
 
 All listed licenses are permissive (Apache-2.0, BSD, MIT, SIL OFL,
-CC BY, Pictogrammers Free) or copyleft with a dynamic-linking exception
-(LGPL-3.0 for PySide6 / Qt) and compatible with the MIT License above.
-Each library retains its own copyright notice; consult the linked
-repositories for the full text.
+CC BY, Pictogrammers Free, MPL-2.0 for the certifi CA bundle) or
+copyleft with a dynamic-linking exception (LGPL-3.0 for PySide6 / Qt)
+and compatible with the MIT License above. Each library retains its
+own copyright notice; consult the linked repositories for the full
+text.

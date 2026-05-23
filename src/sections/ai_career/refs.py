@@ -7,9 +7,10 @@ We route those repaints through `src.qt.runtime.dispatch`, which uses
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
 
@@ -18,6 +19,7 @@ from src.services import logger as logger_service
 class CareerRefs:
     rerender_context: Optional[Callable[[], None]] = None
     page: Optional[Any] = None
+    _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def dispatch(self, callback: Callable[[], None]) -> None:
         try:
@@ -28,10 +30,9 @@ class CareerRefs:
             )
 
     def request_context_refresh(self) -> None:
-        callback = self.rerender_context
-        if callback is None:
+        if self.rerender_context is None:
             return
-        self.dispatch(callback)
+        self._refresh.schedule(lambda: self.rerender_context)
 
 
 REFS = CareerRefs()

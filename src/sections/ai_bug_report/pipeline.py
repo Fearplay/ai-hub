@@ -206,12 +206,133 @@ def _normalise_report(data: Any) -> dict[str, Any]:
 # --- AI call -----------------------------------------------------------------
 
 
+def generate_followup_questions(*, output_lang: str) -> StepResult:
+    """Ask the LLM what facts it is missing before filing the report.
+
+    Returns ``StepResult(ok=True)`` on success and stores the cleaned
+    list in ``STATE.followup_questions`` (may be an empty list when
+    the inputs are already good enough). Demo mode and zero-input
+    short-circuit so the call never wastes tokens.
+    """
+    logger_service.log_event(
+        "INFO",
+        "ai_bug_report.pipeline",
+        "generate_followup_questions_start",
+        output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
+        description_chars=len(STATE.description or ""),
+        images=len(STATE.images),
+        documents=len(STATE.documents),
+    )
+
+    if STATE.demo_mode:
+        STATE.followup_questions = []
+        logger_service.log_event(
+            "INFO",
+            "ai_bug_report.pipeline",
+            "generate_followup_questions_demo_done",
+        )
+        return StepResult(ok=True)
+
+    if not STATE.can_generate():
+        STATE.followup_questions = []
+        return StepResult(ok=True)
+
+    _set_activity("followups")
+
+    documents_payload = [
+        {"name": d.name, "ext": d.ext, "text": d.text}
+        for d in STATE.documents
+        if d.text
+    ]
+    image_payload = [
+        {"data": img.bytes_data, "mime": img.mime}
+        for img in STATE.images
+        if img.bytes_data
+    ]
+    user_prompt = prompts.build_followup_user(
+        description=STATE.description,
+        environment_hint=STATE.environment_hint,
+        documents=documents_payload,
+        image_count=len(image_payload),
+        output_lang=output_lang,
+    )
+
+    try:
+        result = ai_provider.run(
+            system=prompts.FOLLOWUP_QUESTIONS_SYSTEM,
+            user=user_prompt,
+            schema=schema.FOLLOWUP_QUESTIONS_SCHEMA,
+            schema_name="bug_report_followup_questions",
+            max_output_tokens=1200,
+            temperature=0.2,
+            images=image_payload or None,
+        )
+    except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline",
+            "generate_followup_questions_provider_error",
+            exc,
+        )
+        STATE.last_error = str(exc)
+        _set_activity("error")
+        return StepResult(ok=False, error=str(exc))
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline", "generate_followup_questions_failed", exc,
+        )
+        STATE.last_error = f"Follow-up questions failed: {exc}"
+        _set_activity("error")
+        return StepResult(ok=False, error=STATE.last_error)
+
+    if not isinstance(result.data, dict):
+        STATE.last_error = "AI did not return a follow-up questions JSON."
+        _set_activity("error")
+        return StepResult(ok=False, error=STATE.last_error)
+
+    raw = result.data.get("questions") or []
+    cleaned: list[dict] = []
+    for q in raw:
+        if not isinstance(q, dict):
+            continue
+        topic = str(q.get("topic") or "").strip()
+        question = str(q.get("question") or "").strip()
+        if not topic or not question:
+            continue
+        options = [
+            str(opt).strip()
+            for opt in (q.get("options") or [])
+            if isinstance(opt, (str, int, float)) and str(opt).strip()
+        ]
+        cleaned.append(
+            {
+                "topic": topic,
+                "question": question,
+                "rationale": str(q.get("rationale") or "").strip(),
+                "options": options,
+                "multi_select": bool(q.get("multi_select")),
+                "allow_free_text": bool(q.get("allow_free_text", True)),
+            }
+        )
+    STATE.followup_questions = cleaned
+    logger_service.log_event(
+        "INFO",
+        "ai_bug_report.pipeline",
+        "generate_followup_questions_done",
+        count=len(cleaned),
+    )
+    return StepResult(ok=True)
+
+
 def generate_bug_report(*, output_lang: str) -> StepResult:
     """Run the structured-output AI call with the current STATE.
 
     Returns ``StepResult(ok=True)`` on success and stores the parsed
     payload in ``STATE.last_report``. Demo mode short-circuits and
-    loads :data:`_DEMO_REPORT` without spending tokens.
+    loads :data:`_DEMO_REPORT` without spending tokens. The optional
+    ``STATE.followup_qa`` answers (collected from the clarifying-
+    questions modal) are forwarded to the prompt builder as ground
+    truth.
     """
     logger_service.log_event(
         "INFO",
@@ -223,6 +344,7 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
         env_hint_chars=len(STATE.environment_hint or ""),
         images=len(STATE.images),
         documents=len(STATE.documents),
+        followups=len(STATE.followup_qa or []),
     )
 
     if STATE.demo_mode:
@@ -255,6 +377,7 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
         documents=documents_payload,
         image_count=len(image_payload),
         output_lang=output_lang,
+        followup_qa=list(STATE.followup_qa or []),
     )
 
     try:
@@ -681,6 +804,7 @@ __all__ = [
     "StepResult",
     "SaveResult",
     "load_demo",
+    "generate_followup_questions",
     "generate_bug_report",
     "save_bug_report_docx",
 ]

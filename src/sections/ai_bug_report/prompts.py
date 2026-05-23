@@ -80,6 +80,56 @@ Follow these rules strictly:
 SYSTEM_PROMPT = BUG_REPORT_RULES
 
 
+FOLLOWUP_QUESTIONS_SYSTEM = (
+    BUG_REPORT_RULES
+    + "\n\nTASK: Read the user's free-form description, optional "
+    "environment hints, attached screenshots and supporting documents. "
+    "Then surface CLARIFYING QUESTIONS the user should answer BEFORE "
+    "we generate the structured bug report. Rules:\n\n"
+    "* Ask only about facts you would otherwise have to INVENT to fill "
+    "the schema. The schema requires title, summary, severity, "
+    "priority, reproducibility, environment (browser/os/device/"
+    "app_version/url), preconditions, steps, expected vs actual, "
+    "attachments_summary, additional_notes.\n"
+    "* Do NOT ask about things that are obviously visible in the "
+    "screenshots or already in the description. The user typed those "
+    "for a reason - asking again is annoying.\n"
+    "* Examples of GOOD questions:\n"
+    "    - 'How often does this happen?' when the description does not "
+    "mention frequency -> options ['Always', 'Sometimes', 'Once'], "
+    "multi_select=false, allow_free_text=false\n"
+    "    - 'Which browser / version?' when the screenshots do not show "
+    "a browser chrome -> options ['Chrome', 'Firefox', 'Edge', "
+    "'Safari'], multi_select=false, allow_free_text=true\n"
+    "    - 'Does it block your work or is there a workaround?' when "
+    "the user did not state impact -> options ['Blocks me', "
+    "'Workaround exists', 'Cosmetic'], multi_select=false, "
+    "allow_free_text=true\n"
+    "    - 'Which user role hits this?' when role might matter -> "
+    "options ['Admin', 'Standard user', 'Guest', 'All'], "
+    "multi_select=true, allow_free_text=true\n"
+    "* Output 0-8 questions total. Zero is fine - it means the inputs "
+    "are already enough. Do NOT ask filler questions just to hit a "
+    "quota.\n"
+    "* Each question must be a direct yes/no or 1-2 sentence question "
+    "to the user ('you' / 'vy'), with a short rationale tied to the "
+    "schema field it would feed.\n"
+    "* Topics must be short labels (1-3 words). No duplicate topics in "
+    "the same response.\n\n"
+    "ANSWER OPTIONS (every question must include them):\n"
+    "* Always provide 2-6 short answer options the user can click on. "
+    "Keep each option short - ideally 1-4 words, never a full "
+    "sentence.\n"
+    "* Set multi_select=true ONLY when several options can apply at "
+    "once. Otherwise multi_select=false.\n"
+    "* Set allow_free_text=true unless the options clearly enumerate "
+    "every possible answer.\n\n"
+    "LANGUAGE (HARD REQUIREMENT):\n"
+    "* OUTPUT_LANGUAGE applies to topic, question, rationale AND every "
+    "option. Never mix English options into a Czech question."
+)
+
+
 def _truncate(text: str, max_chars: int = MAX_DOC_CHARS) -> str:
     if not text:
         return ""
@@ -114,7 +164,7 @@ def _render_documents(documents: Iterable[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_bug_report_user(
+def build_followup_user(
     *,
     description: str,
     environment_hint: str,
@@ -122,12 +172,90 @@ def build_bug_report_user(
     image_count: int,
     output_lang: str,
 ) -> str:
+    """Compose the user message for the follow-up-questions call.
+
+    Same inputs as the main bug-report call so the model sees exactly
+    what the user submitted; the system prompt steers it toward asking
+    only about gaps rather than producing the full report.
+    """
+    description = (description or "").strip()
+    environment_hint = (environment_hint or "").strip()
+    docs_block = _render_documents(documents)
+
+    parts: list[str] = [
+        f"OUTPUT_LANGUAGE: {output_lang}",
+        "",
+        "TASK: Read the inputs and decide what clarifying questions you "
+        "would ask BEFORE filing the structured bug report. Return JSON "
+        "matching the follow-up-questions schema. Empty array is "
+        "acceptable when the inputs are already enough.",
+        "",
+        f"NUMBER OF ATTACHED SCREENSHOTS: {int(image_count)}",
+    ]
+    if environment_hint:
+        parts.extend(
+            [
+                "",
+                "ENVIRONMENT HINTS (user-supplied, may be incomplete):",
+                environment_hint,
+            ]
+        )
+    parts.extend(
+        [
+            "",
+            "--- USER DESCRIPTION START ---",
+            description or "(no description was typed; rely on screenshots / documents)",
+            "--- USER DESCRIPTION END ---",
+        ]
+    )
+    if docs_block:
+        parts.extend(["", docs_block])
+    parts.extend(["", "Return only the questions JSON."])
+    return "\n".join(parts)
+
+
+def _format_followup_qa(qa_pairs: list[dict]) -> str:
+    """Render answered follow-up questions for the bug-report prompt."""
+    if not qa_pairs:
+        return ""
+    lines: list[str] = ["=== ADDITIONAL CLARIFICATIONS FROM USER ==="]
+    for pair in qa_pairs:
+        topic = (pair.get("topic") or "").strip() or "-"
+        question = (pair.get("question") or "").strip()
+        answer = (pair.get("answer") or "").strip()
+        if not answer:
+            continue
+        lines.append(f"- Topic: {topic}")
+        if question:
+            lines.append(f"  Q: {question}")
+        lines.append(f"  A: {answer}")
+    if len(lines) == 1:
+        return ""
+    lines.append(
+        "\nUse these clarifications as TRUTH when filling the report. "
+        "Do not contradict them. Do not add facts beyond what the user "
+        "stated above."
+    )
+    return "\n".join(lines)
+
+
+def build_bug_report_user(
+    *,
+    description: str,
+    environment_hint: str,
+    documents: list[dict],
+    image_count: int,
+    output_lang: str,
+    followup_qa: list[dict] | None = None,
+) -> str:
     """Compose the user message string sent to the AI.
 
     ``image_count`` is the number of screenshots passed alongside via
     ``ai_provider.run(images=...)``. We mention it explicitly so the
     model knows how many ``Screenshot N:`` lines belong in
-    ``attachments_summary`` and can match them by index.
+    ``attachments_summary`` and can match them by index. ``followup_qa``
+    carries the answers to the optional clarifying-questions step so
+    the model can treat them as ground truth.
     """
     description = (description or "").strip()
     environment_hint = (environment_hint or "").strip()
@@ -161,4 +289,7 @@ def build_bug_report_user(
     )
     if docs_block:
         parts.extend(["", docs_block])
+    extras = _format_followup_qa(followup_qa or [])
+    if extras:
+        parts.extend(["", extras])
     return "\n".join(parts)

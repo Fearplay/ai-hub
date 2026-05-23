@@ -32,6 +32,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services.file_parser import ParsedFile
 from src.sections.ai_finance import pipeline
+from src.sections.ai_finance._charts import severity_heatmap
 from src.sections.ai_finance._widgets import (
     card_title,
     disclaimer_pill,
@@ -214,41 +215,24 @@ def _result_view(theme: Theme, lang: str, plan: dict) -> QWidget:
 
     gaps = plan.get("coverage_gaps") or []
     if gaps:
-        card, gap_layout = section_card(theme)
-        gap_layout.addWidget(
+        heatmap_card, heatmap_layout = section_card(theme)
+        heatmap_layout.addWidget(
             card_title(
                 theme,
-                title=txt["insurance_gaps_title"],
+                title=txt["insurance_heatmap_title"],
                 icon=Icons.WARNING_AMBER_ROUNDED,
             )
         )
-        for g in gaps:
-            row = QFrame()
-            row.setStyleSheet("background: transparent;")
-            row_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-            row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-            row.setLayout(row_layout)
-            severity = (g.get("severity") or "low").lower()
-            color = _SEVERITY_COLORS.get(severity, "#3B82F6")
-            badge = QFrame()
-            badge.setStyleSheet(
-                f"background-color: {rgba(color, 0.16)}; border-radius: 999px;"
+        heatmap_layout.addWidget(
+            severity_heatmap(
+                theme,
+                gaps,
+                high_label=txt["insurance_severity_high"],
+                medium_label=txt["insurance_severity_medium"],
+                low_label=txt["insurance_severity_low"],
             )
-            badge_layout = hbox(spacing=4, margins=(8, 2, 10, 2))
-            badge.setLayout(badge_layout)
-            badge_layout.addWidget(custom_label(severity.upper(), color=color, size=10))
-            row_layout.addWidget(badge)
-            text_holder = QFrame()
-            text_holder.setStyleSheet("background: transparent;")
-            text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
-            text_holder.setLayout(text_layout)
-            text_layout.addWidget(
-                BodyLabel(g.get("topic", ""), theme=theme, size=13)
-            )
-            text_layout.addWidget(MutedLabel(g.get("risk", ""), theme=theme, size=12))
-            row_layout.addWidget(text_holder, 1)
-            gap_layout.addWidget(row)
-        layout.addWidget(card)
+        )
+        layout.addWidget(heatmap_card)
 
     duplicates = plan.get("duplicates") or []
     if duplicates:

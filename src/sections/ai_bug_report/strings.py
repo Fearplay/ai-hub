@@ -57,9 +57,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "footer_demo_btn": "Try demo data",
         "footer_generate_btn": "Generate bug report",
         "footer_generate_running": "Generating...",
+        "footer_followup_running": "Asking clarifying questions...",
+        "footer_ask_followups_label": "Let the AI ask clarifying questions first",
+        "footer_ask_followups_hint": (
+            "When something is missing, the AI pauses and asks you instead "
+            "of making it up. Toggle off in Settings to skip the modal."
+        ),
         "generate_disabled_hint": "Add a description or at least one attachment first.",
         "input_requirement_hint": "Minimum input: add a description or at least one attachment.",
         "no_key_template": "Missing API key for {provider}. Open Settings and save your key first.",
+
+        "followup_title": "Quick clarifications",
+        "followup_intro": (
+            "Before I file the report, I want to confirm a few things "
+            "instead of inventing them. Pick one or more options or use "
+            "Other... to type your own. Skip leaves the field blank."
+        ),
+        "followup_skip_btn": "Skip all",
+        "followup_continue_btn": "Generate the report",
+        "followup_cancel": "Cancel",
+        "followup_other_label": "Other...",
+        "followup_other_hint": "Type your own answer in 1-2 sentences.",
+        "followup_answer_hint": "",
 
         "preview_empty": "Nothing to show yet. Run Generate on the Input tab.",
         "preview_back_btn": "Back to Input",
@@ -127,6 +146,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ctx_activity_title": "Activity",
         "ctx_activity_ready": "Ready",
         "ctx_activity_generating": "Generating bug report...",
+        "ctx_activity_followups": "Asking clarifying questions...",
+        "ctx_activity_waiting_user": "Waiting for your clarifications...",
         "ctx_activity_saving": "Saving Word document...",
         "ctx_activity_error": "Error",
         "ctx_attachments_title": "Attachments",
@@ -183,9 +204,29 @@ STRINGS: dict[str, dict[str, str]] = {
         "footer_demo_btn": "Vyzkoušet ukázková data",
         "footer_generate_btn": "Vygenerovat bug report",
         "footer_generate_running": "Generuji...",
+        "footer_followup_running": "Ptám se na upřesňující otázky...",
+        "footer_ask_followups_label": "Nejdřív se zeptat na upřesnění",
+        "footer_ask_followups_hint": (
+            "Když AI něco chybí, raději se zeptá, než aby si to vymýšlela. "
+            "V Nastavení můžeš tuhle pauzu vypnout."
+        ),
         "generate_disabled_hint": "Přidej popis nebo aspoň jednu přílohu.",
         "input_requirement_hint": "Minimum vstup: vyplň popis nebo přidej aspoň jednu přílohu.",
         "no_key_template": "Chybí API klíč pro {provider}. Otevři Nastavení a klíč ulož.",
+
+        "followup_title": "Krátké upřesnění",
+        "followup_intro": (
+            "Než zapíšu report, ráda bych si pár věcí ověřila místo toho, "
+            "abych je vymýšlela. Vyber jednu nebo více možností nebo "
+            "použij Jiné... a napiš vlastní odpověď. Přeskočit nechá pole "
+            "prázdné."
+        ),
+        "followup_skip_btn": "Přeskočit vše",
+        "followup_continue_btn": "Vygenerovat report",
+        "followup_cancel": "Zrušit",
+        "followup_other_label": "Jiné...",
+        "followup_other_hint": "Napiš vlastní odpověď v 1-2 větách.",
+        "followup_answer_hint": "",
 
         "preview_empty": "Zatím nic. Spusť Generování na záložce Vstup.",
         "preview_back_btn": "Zpět na Vstup",
@@ -252,6 +293,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ctx_activity_title": "Aktivita",
         "ctx_activity_ready": "Připraveno",
         "ctx_activity_generating": "Generuji bug report...",
+        "ctx_activity_followups": "Připravuji upřesňující otázky...",
+        "ctx_activity_waiting_user": "Čekám na tvé odpovědi...",
         "ctx_activity_saving": "Ukládám Word...",
         "ctx_activity_error": "Chyba",
         "ctx_attachments_title": "Přílohy",

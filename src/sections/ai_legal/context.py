@@ -30,6 +30,7 @@ from src.components.context_panel import (
 from src.components.document_chip import document_chip
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
@@ -178,6 +179,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     stack.addWidget(_build_panel(theme, lang))
 
     def _rerender_context() -> None:
+        if not is_widget_alive(holder):
+            return
         while stack.count():
             w = stack.widget(0)
             stack.removeWidget(w)
@@ -185,4 +188,10 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         stack.addWidget(_build_panel(theme, lang))
 
     REFS.rerender_context = _rerender_context
+
+    def _on_holder_destroyed() -> None:
+        if REFS.rerender_context is _rerender_context:
+            REFS.rerender_context = None
+
+    on_destroyed(holder, _on_holder_destroyed)
     return holder

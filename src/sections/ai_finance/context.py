@@ -45,6 +45,7 @@ from src.components.context_panel import (
 )
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.runtime import get_main_window
 from src.qt.widgets import (
     BodyLabel,
@@ -445,8 +446,75 @@ def _analyses_card(theme: Theme, lang: str) -> QFrame:
 
 
 def _tip_body(theme: Theme, lang: str) -> QWidget:
+    """Render the AI-generated tip card body.
+
+    Three states:
+
+    * ``STATE.tip_running`` -> shimmer label.
+    * ``STATE.tip`` populated -> title + body + next-step pill +
+      "Generate new tip" button.
+    * Empty -> static empty-state copy plus a button to kick off a
+      generation if at least one analysis already exists.
+    """
     txt = s(lang)
-    return BodyLabel(txt["tip_empty"], theme=theme, size=12, selectable=True)
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
+    if STATE.tip_running:
+        layout.addWidget(SubtleLabel(txt["tip_thinking"], theme=theme, size=12, italic=True))
+        return holder
+
+    tip = STATE.tip
+    if isinstance(tip, dict) and (tip.get("title") or tip.get("body")):
+        title = tip.get("title") or ""
+        body = tip.get("body") or ""
+        next_step = tip.get("next_step") or ""
+        if title:
+            layout.addWidget(BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+        if body:
+            layout.addWidget(BodyLabel(body, theme=theme, size=12, selectable=True))
+        if next_step:
+            step_holder = QFrame()
+            step_holder.setStyleSheet(
+                f"background-color: {theme.surface_2}; border-radius: 8px;"
+            )
+            step_layout = vbox(spacing=2, margins=(10, 8, 10, 8))
+            step_holder.setLayout(step_layout)
+            step_layout.addWidget(SubtleLabel(txt["tip_next_step_label"], theme=theme, size=10, italic=True))
+            step_layout.addWidget(BodyLabel(next_step, theme=theme, size=12, selectable=True))
+            layout.addWidget(step_holder)
+    else:
+        layout.addWidget(BodyLabel(txt["tip_empty"], theme=theme, size=12, selectable=True))
+
+    # "Generate new tip" button - only enabled if at least one analysis
+    # is cached on STATE; otherwise the tip generator returns early
+    # anyway and the user just gets the empty state again.
+    if STATE.has_any_analysis():
+        btn = GhostButton(txt["tip_regenerate_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
+        btn.setMinimumHeight(28)
+        btn.setStyleSheet(
+            btn.styleSheet() + "QPushButton { padding: 4px 12px; font-size: 11px; }"
+        )
+        btn.setToolTip(txt["tip_regenerate_tooltip"])
+        btn.clicked.connect(lambda: _on_regenerate_tip(lang))
+        layout.addWidget(btn)
+    return holder
+
+
+def _on_regenerate_tip(lang: str) -> None:
+    """Spawn a daemon thread that regenerates the AI tip from STATE."""
+
+    def _worker() -> None:
+        try:
+            pipeline.generate_tip(output_lang=lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_finance.context", "regenerate_tip_failed", exc,
+            )
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _open_tickers_dialog(theme: Theme, lang: str) -> None:
@@ -743,6 +811,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     panel_holder.setLayout(panel_layout)
 
     def _clear() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         while panel_layout.count():
             item = panel_layout.takeAt(0)
             if item is None:
@@ -752,6 +822,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 w.deleteLater()
 
     def _render() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         _clear()
         cards: list[QWidget] = [
             section_card(
@@ -784,6 +856,13 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         panel_layout.addWidget(shell)
 
     REFS.rerender_context = _render
+
+    def _on_panel_destroyed() -> None:
+        if REFS.rerender_context is _render:
+            REFS.rerender_context = None
+
+    on_destroyed(panel_holder, _on_panel_destroyed)
+
     _render()
 
     QTimer.singleShot(50, _maybe_refresh_markets)

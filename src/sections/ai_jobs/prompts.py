@@ -120,6 +120,170 @@ def _seniority_hint(level: str) -> str:
     )
 
 
+def _format_followup_qa(qa_pairs: Optional[Iterable[dict]]) -> str:
+    """Render answered follow-up questions for inclusion in downstream prompts.
+
+    The block is appended to the user message of the discovery /
+    extraction / match / skill-gap prompts so the model treats the
+    user's clarifications as ground truth rather than something it
+    might have to invent (no-hallucination clause).
+    """
+    qa_pairs = [p for p in (qa_pairs or []) if isinstance(p, dict)]
+    if not qa_pairs:
+        return ""
+    lines: list[str] = ["=== ADDITIONAL CLARIFICATIONS FROM USER ==="]
+    appended = False
+    for pair in qa_pairs:
+        topic = (pair.get("topic") or "").strip() or "-"
+        question = (pair.get("question") or "").strip()
+        answer = (pair.get("answer") or "").strip()
+        if not answer:
+            continue
+        appended = True
+        lines.append(f"- Topic: {topic}")
+        if question:
+            lines.append(f"  Q: {question}")
+        lines.append(f"  A: {answer}")
+    if not appended:
+        return ""
+    lines.append(
+        "\nUse these clarifications as TRUTH when filtering, scoring, "
+        "and writing recommendations. Do not contradict them. Do not "
+        "invent additional facts beyond what the user stated above."
+    )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Pass 0 - clarifying follow-up questions (optional)
+# ---------------------------------------------------------------------------
+
+
+FOLLOWUP_QUESTIONS_SYSTEM = (
+    "You are a senior career coach screening a candidate's job-search "
+    "brief BEFORE running the actual search. Your one job is to surface "
+    "CLARIFYING QUESTIONS the user should answer first - things the "
+    "search would otherwise have to guess at and might get wrong.\n\n"
+    "Hard rules:\n"
+    "* Ask only about ambiguities that would change which postings the "
+    "search returns or how each posting is scored. Examples of GOOD "
+    "questions:\n"
+    "    - 'You listed Python in skills but no years - how many years "
+    "of Python?' -> options ['<1', '1-3', '3-5', '5+'], "
+    "multi_select=false, allow_free_text=false\n"
+    "    - 'Are you open to hybrid work or strictly remote?' -> options "
+    "['Remote only', 'Hybrid OK', 'Onsite OK'], multi_select=false, "
+    "allow_free_text=true\n"
+    "    - 'Which seniority should we target?' when the profile shows "
+    "mixed signals -> options ['Junior', 'Medior', 'Senior', 'Lead'], "
+    "multi_select=true, allow_free_text=false\n"
+    "    - 'Do you require a minimum salary?' when none was given -> "
+    "options ['<60k CZK', '60-90k CZK', '90k+ CZK', 'No preference'], "
+    "multi_select=false, allow_free_text=true\n"
+    "* Do NOT ask about things the user already filled in (location, "
+    "selected sources, work-mode radio, contract types, age window, "
+    "search mode). Those are explicit inputs - asking again is "
+    "annoying.\n"
+    "* Do NOT ask filler questions just to hit a quota. Zero questions "
+    "is a perfectly valid output when the brief is already coherent.\n"
+    "* Output 0-8 questions total.\n"
+    "* Each question must be a direct yes/no or 1-2 sentence question "
+    "to the user ('you' / 'vy'), with a short rationale.\n"
+    "* Topics must be short labels (1-3 words). No duplicate topics in "
+    "the same response.\n\n"
+    "ANSWER OPTIONS (every question must include them):\n"
+    "* Always provide 2-6 short answer options the user can click on. "
+    "Keep each option short - ideally 1-4 words, never a full sentence.\n"
+    "* Set multi_select=true ONLY when several options can apply at "
+    "once. Otherwise multi_select=false.\n"
+    "* Set allow_free_text=true unless the options clearly enumerate "
+    "every possible answer.\n\n"
+    "LANGUAGE (HARD REQUIREMENT):\n"
+    "* OUTPUT_LANGUAGE applies to topic, question, rationale AND every "
+    "option. Never mix English options into a Czech question."
+)
+
+
+def build_followup_user(
+    *,
+    output_lang: str,
+    keywords: str,
+    location_label: str,
+    work_mode: str,
+    seniority: str,
+    profile_text: str,
+    profile_file_text: str,
+    profile_file_name: str,
+    linkedin_url: str,
+    tech_skills: str,
+    additional_experience: str,
+    contract_types: Optional[Iterable[str]],
+    excluded_keywords: str,
+    excluded_companies: str,
+    excluded_locations: str,
+    salary_min: int,
+    salary_currency: str,
+    search_mode: str,
+) -> str:
+    """Compose the user message for the follow-up-questions call.
+
+    Hands every brief field to the model in a digest so it can decide
+    which gaps deserve a question. Same digest shape as the discovery
+    user message minus the structural goals (max_results, target_active).
+    """
+    language = _localise(output_lang)
+    contracts = _format_list(contract_types or (), fallback="any")
+    profile_block = _profile_block(
+        tech_skills=tech_skills,
+        additional_experience=additional_experience,
+        seniority=seniority,
+        profile_text=profile_text,
+        profile_file_text=profile_file_text,
+        profile_file_name=profile_file_name,
+        linkedin_url=linkedin_url,
+    )
+
+    lines: list[str] = [
+        f"OUTPUT_LANGUAGE: {output_lang}",
+        f"Reply in {language}.",
+        "",
+        "TASK: Read the user's job-search brief below and decide what "
+        "clarifying questions you would ask BEFORE running the search. "
+        "Return JSON matching the follow-up-questions schema. Empty "
+        "array is acceptable when the brief is already coherent.",
+        "",
+        "# Brief",
+        f"Keywords: {keywords.strip() or '(none provided)'}",
+        f"Location: {location_label.strip() or '(any)'}",
+        f"Work mode: {(work_mode or 'any').strip()}",
+        f"Search mode: {(search_mode or 'smart').strip()}",
+        f"Self-declared seniority: {(seniority or 'any').strip()}",
+        f"Contract preference: {contracts}",
+        (
+            f"Salary preference: {int(salary_min)} {salary_currency}/month"
+            if salary_min and salary_currency and salary_currency.lower() != "any"
+            else "Salary preference: not specified"
+        ),
+    ]
+    excluded = []
+    if excluded_keywords.strip():
+        excluded.append(f"keywords: {excluded_keywords.strip()}")
+    if excluded_companies.strip():
+        excluded.append(f"companies: {excluded_companies.strip()}")
+    if excluded_locations.strip():
+        excluded.append(f"locations: {excluded_locations.strip()}")
+    if excluded:
+        lines.append("Exclusions: " + "; ".join(excluded))
+    else:
+        lines.append("Exclusions: none")
+    lines.append("")
+    lines.append("# Profile")
+    lines.append(profile_block)
+    lines.append("")
+    lines.append("Return only the questions JSON.")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Pass 1 - discovery (web search, no schema)
 # ---------------------------------------------------------------------------
@@ -154,6 +318,7 @@ def build_search_prompt(
     excluded_urls: Optional[Iterable[str]] = None,
     target_active: int = 0,
     relaxed_pass: bool = False,
+    followup_qa: Optional[Iterable[dict]] = None,
 ) -> tuple[str, str]:
     """Build the (system, user) prompt for the web-search discovery pass.
 
@@ -469,6 +634,11 @@ def build_search_prompt(
         "list, mention them briefly so the user can audit."
     )
 
+    extras = _format_followup_qa(followup_qa)
+    if extras:
+        user_lines.append("")
+        user_lines.append(extras)
+
     return system, "\n".join(user_lines)
 
 
@@ -599,6 +769,7 @@ def build_match_prompt(
     profile_file_text: str = "",
     profile_file_name: str = "",
     linkedin_url: str = "",
+    followup_qa: Optional[Iterable[dict]] = None,
 ) -> tuple[str, str]:
     """Build the (system, user) prompt for the per-position scoring pass.
 
@@ -653,12 +824,15 @@ def build_match_prompt(
         linkedin_url=linkedin_url,
     )
 
+    extras = _format_followup_qa(followup_qa)
     user = (
         "# Posting to score\n"
         f"{posting_json}\n\n"
         "# Candidate profile\n"
         f"{profile_block}\n"
     )
+    if extras:
+        user += f"\n{extras}\n"
 
     return system, user
 
@@ -679,6 +853,7 @@ def build_skill_gap_prompt(
     profile_file_text: str = "",
     profile_file_name: str = "",
     linkedin_url: str = "",
+    followup_qa: Optional[Iterable[dict]] = None,
 ) -> tuple[str, str]:
     """Build the (system, user) prompt for the skill-gap aggregation.
 
@@ -731,11 +906,14 @@ def build_skill_gap_prompt(
         linkedin_url=linkedin_url,
     )
 
+    extras = _format_followup_qa(followup_qa)
     user = (
         "# Positions found in this search\n"
         f"{posting_json}\n\n"
         "# Candidate profile\n"
         f"{profile_block}\n"
     )
+    if extras:
+        user += f"\n{extras}\n"
 
     return system, user

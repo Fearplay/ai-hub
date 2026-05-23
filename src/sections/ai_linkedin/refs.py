@@ -14,9 +14,10 @@ API and the underlying dispatcher routes the call to the GUI thread.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
 
@@ -26,6 +27,7 @@ class LinkedInRefs:
     """Cross-cutting handles shared between view + worker threads."""
 
     rerender_context: Optional[Callable[[], None]] = None
+    _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def dispatch(self, callback: Callable[[], None]) -> None:
         """Run ``callback`` on the GUI thread."""
@@ -37,11 +39,14 @@ class LinkedInRefs:
             )
 
     def request_context_refresh(self) -> None:
-        """Request a right-hand context panel refresh from any thread."""
-        callback = self.rerender_context
-        if callback is None:
+        """Request a right-hand context panel refresh from any thread.
+
+        Coalesces multiple bursty calls (e.g. COST listener firing on
+        every LLM call) into one queued render.
+        """
+        if self.rerender_context is None:
             return
-        self.dispatch(callback)
+        self._refresh.schedule(lambda: self.rerender_context)
 
 
 REFS = LinkedInRefs()

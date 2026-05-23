@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.components.followup_dialog import open_followup_dialog
 from src.qt.dialog import BaseDialog, show_dialog
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
@@ -1511,6 +1512,10 @@ def build_setup_tab(
     def _label_for(activity: str) -> str:
         if activity == "searching":
             return txt["run_running"]
+        if activity == "followups":
+            return txt["run_followups"]
+        if activity == "waiting_user":
+            return txt["ctx_activity_waiting_user"]
         if activity == "extracting":
             return txt["run_extracting"]
         if activity == "verifying":
@@ -1522,7 +1527,10 @@ def build_setup_tab(
         return txt["run_btn"]
 
     def _refresh_run_button() -> None:
-        running = STATE.activity in {"searching", "extracting", "verifying", "scoring", "gap_analysis"}
+        running = STATE.activity in {
+            "searching", "followups", "waiting_user",
+            "extracting", "verifying", "scoring", "gap_analysis",
+        }
         enabled = STATE.can_run() and not running
         try:
             run_btn.setText(_label_for(STATE.activity))
@@ -1539,6 +1547,53 @@ def build_setup_tab(
     def _go_to_results() -> None:
         STATE.active_tab = TAB_RESULTS
         REFS.dispatch(_request_full_refresh)
+
+    def _resolve_followups(questions: list[dict]) -> Optional[list[dict]]:
+        """Worker-thread side of the follow-up dialog.
+
+        Called from inside ``pipeline.run_search`` once the LLM produced
+        clarifying questions. We dispatch the actual modal onto the GUI
+        thread, block this worker on a ``threading.Event``, and return
+        the answers (or ``None`` if the user cancelled).
+        """
+        done = threading.Event()
+        result_holder: dict[str, Optional[list[dict]]] = {"answers": None}
+
+        def _open_now() -> None:
+            def _on_submit(answers: list[dict]) -> None:
+                result_holder["answers"] = list(answers or [])
+                done.set()
+
+            def _on_cancel() -> None:
+                result_holder["answers"] = None
+                done.set()
+
+            try:
+                open_followup_dialog(
+                    get_main_window(),
+                    theme,
+                    title=txt["followup_title"],
+                    intro=txt["followup_intro"],
+                    cancel_label=txt["followup_cancel"],
+                    continue_label=txt["followup_continue_btn"],
+                    answer_hint=txt["followup_answer_hint"],
+                    skip_all_label=txt["followup_skip_btn"],
+                    other_label=txt["followup_other_label"],
+                    other_hint=txt["followup_other_hint"],
+                    questions=list(questions),
+                    on_submit=_on_submit,
+                    on_cancel=_on_cancel,
+                )
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.tab_setup", "followup_dialog_failed", exc,
+                )
+                result_holder["answers"] = None
+                done.set()
+
+        runtime_dispatch(_open_now)
+        done.wait()
+        return result_holder["answers"]
 
     def _on_run() -> None:
         if not STATE.can_run():
@@ -1559,6 +1614,8 @@ def build_setup_tab(
         REFS.request_context_refresh()
         _refresh_run_button()
 
+        pipeline.set_followup_resolver(_resolve_followups)
+
         def _worker() -> None:
             try:
                 result = pipeline.run_search(output_lang=lang)
@@ -1574,7 +1631,10 @@ def build_setup_tab(
                 return
 
             if not result.ok:
-                runtime_dispatch(lambda: _set_status(txt["search_failed_template"].format(error=result.error), error=True))
+                if result.error == "cancelled_by_user":
+                    runtime_dispatch(lambda: _set_status(txt["search_cancelled"], error=False))
+                else:
+                    runtime_dispatch(lambda: _set_status(txt["search_failed_template"].format(error=result.error), error=True))
                 runtime_dispatch(_refresh_run_button)
                 return
 
@@ -1733,7 +1793,8 @@ def build_setup_tab(
     if STATE.setup_scroll_pos > 0:
         QTimer.singleShot(0, _restore_scroll_pos)
 
-    # Footer just hosts the status label - the Run button lives in Step 11.
+    # Footer hosts the status label + the "ask clarifying questions" toggle.
+    # The Run button itself lives in Step 11 (no duplicate footer button).
     footer = QFrame()
     footer.setObjectName("JobsSetupFooter")
     footer.setStyleSheet(
@@ -1744,9 +1805,38 @@ def build_setup_tab(
         }}
         """
     )
-    footer_layout = vbox(spacing=4, margins=(24, 12, 24, 12))
+    footer_layout = vbox(spacing=6, margins=(24, 12, 24, 12))
     footer.setLayout(footer_layout)
+
+    fu_check = QCheckBox(txt["footer_ask_followups_label"])
+    fu_check.setChecked(settings_store.get_ask_followups())
+    fu_check.setStyleSheet(
+        f"""
+        QCheckBox {{ color: {theme.text}; font-size: 11px; font-weight: 600; spacing: 8px; }}
+        QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {theme.border}; border-radius: 4px; background-color: {theme.surface_2}; }}
+        QCheckBox::indicator:checked {{ background-color: {theme.primary}; border: 1px solid {theme.primary}; }}
+        """
+    )
+    fu_check.stateChanged.connect(
+        lambda _state: settings_store.set_ask_followups(bool(fu_check.isChecked()))
+    )
+    fu_hint = SubtleLabel(txt["footer_ask_followups_hint"], theme=theme, size=11)
+    footer_layout.addWidget(fu_check)
+    footer_layout.addWidget(fu_hint)
     footer_layout.addWidget(status_label)
     layout.addWidget(footer)
+
+    # Clear the pipeline-level resolver when this view is destroyed so a
+    # rebuilt setup tab does not race against a worker holding a stale
+    # closure over deleted widgets.
+    def _on_destroyed(_obj=None) -> None:
+        try:
+            pipeline.set_followup_resolver(None)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_jobs.tab_setup", "clear_followup_resolver_failed", exc,
+            )
+
+    container.destroyed.connect(_on_destroyed)
 
     return container

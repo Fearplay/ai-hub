@@ -286,6 +286,18 @@ class JobsState:
     # respects it per ``.cursor/rules/ai-section.mdc``.
     demo_mode: bool = False
 
+    # Follow-up clarifying questions (analogous to AI Career):
+    # Pass 0 inspects the user's profile + criteria and lists 0-8
+    # questions about ambiguities (seniority mismatch, missing
+    # remote/salary preference, "you said Python but not how many
+    # years" etc.). The modal opens BEFORE Pass 1 (discovery) so the
+    # search prompt - and every later prompt - can include the user's
+    # clarifications as ground truth. Skipped when
+    # ``settings_store.get_ask_followups()`` is False or when the AI
+    # produces zero questions.
+    followup_questions: list[dict] = field(default_factory=list)
+    followup_qa: list[dict] = field(default_factory=list)
+
     # --- mutators -----------------------------------------------------
 
     def reset_results(self) -> None:
@@ -301,6 +313,8 @@ class JobsState:
         self.skill_gap = {}
         self.activity = "ready"
         self.last_error = ""
+        self.followup_questions = []
+        self.followup_qa = []
         # The Results tab is empty after a reset - sending the user to
         # an old scroll position would either clamp to 0 anyway or
         # restore a confusing offset. Reset explicitly for clarity.

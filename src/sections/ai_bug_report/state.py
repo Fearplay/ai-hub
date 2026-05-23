@@ -75,6 +75,18 @@ class BugReportState:
     activity: str = "ready"
     demo_mode: bool = False
 
+    # Follow-up clarifying questions (analogous to AI Career):
+    # the AI inspects the description + attachments, and lists
+    # gaps it would otherwise have to invent. ``followup_questions``
+    # is the AI's output (filled by ``generate_followup_questions``);
+    # ``followup_qa`` carries the user's answers back into the second
+    # pass via ``prompts._format_followup_qa``. ``run_stage`` mirrors
+    # AI Career's worker semantics so the footer button can show
+    # "Generating..." while either phase is in flight.
+    followup_questions: list[dict] = field(default_factory=list)
+    followup_qa: list[dict] = field(default_factory=list)
+    run_stage: str = ""
+
     def can_generate(self) -> bool:
         if self.demo_mode:
             return True
@@ -90,6 +102,8 @@ class BugReportState:
         self.last_report = None
         self.last_error = ""
         self.last_save_path = ""
+        self.followup_questions = []
+        self.followup_qa = []
 
 
 STATE = BugReportState()

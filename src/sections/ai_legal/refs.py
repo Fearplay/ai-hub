@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
 
@@ -35,6 +36,7 @@ class LegalRefs:
     rerender_main: Optional[Callable[[], None]] = None
     rerender_tab_body: Optional[Callable[[], None]] = None
     rerender_context: Optional[Callable[[], None]] = field(default=None)
+    _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def request_context_refresh(self) -> None:
         """Schedule the right-hand context panel to repaint on the GUI thread.
@@ -43,20 +45,27 @@ class LegalRefs:
         mutating ``STATE.activity`` / ``STATE.uploaded_file`` /
         ``STATE.last_error`` so the badge, document chip and error
         labels reflect the new values on the next event loop tick.
+        Coalesces bursty calls into one queued render.
         """
-        fn = self.rerender_context
-        if not callable(fn):
+        if self.rerender_context is None:
             return
 
-        def _safe() -> None:
-            try:
-                fn()
-            except Exception as exc:
-                logger_service.log_exception(
-                    "ai_legal.refs", "request_context_refresh_failed", exc,
-                )
+        def _provider() -> Optional[Callable[[], None]]:
+            fn = self.rerender_context
+            if not callable(fn):
+                return None
 
-        runtime_dispatch(_safe)
+            def _safe() -> None:
+                try:
+                    fn()
+                except Exception as exc:
+                    logger_service.log_exception(
+                        "ai_legal.refs", "request_context_refresh_failed", exc,
+                    )
+
+            return _safe
+
+        self._refresh.schedule(_provider)
 
     def request_tab_body_refresh(self) -> None:
         """Schedule the active tab body to rebuild on the GUI thread."""

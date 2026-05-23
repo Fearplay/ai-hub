@@ -16,6 +16,12 @@ qtawesome>=1.4.0
 # entry point - never inside library / section code.
 truststore~=0.10
 
+# Mozilla CA bundle. Required by libcurl (curl_cffi -> yfinance) which
+# does NOT inherit Python's SSL configuration patched by truststore. We
+# point libcurl at certifi's PEM via the CURL_CA_BUNDLE env var in
+# main.py so live market data works on stock Windows Python builds.
+certifi>=2024.2.2
+
 # AI providers (called only via src.services.ai_provider; sections never import these directly)
 openai>=1.50.0
 anthropic>=0.39.0

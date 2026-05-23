@@ -314,6 +314,7 @@ STRINGS: dict[str, dict[str, str]] = {
         # footer ---------------------------------------------------------
         "run_btn": "Search positions",
         "run_running": "Searching the web...",
+        "run_followups": "Asking clarifying questions...",
         "run_extracting": "Structuring results...",
         "run_verifying": "Verifying links...",
         "run_scoring": "Scoring matches...",
@@ -321,9 +322,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "run_disabled_hint": "Add a job title (or your CV / bio) to start searching.",
         "error_no_key_template": "Your {provider} API key is not saved yet. Open Settings to add it.",
         "search_failed_template": "Search failed: {error}",
+        "search_cancelled": "Search cancelled.",
         "search_done_template": "Found {count} active positions ({dropped} link(s) skipped because they were dead or redirected).",
         "search_done_no_drops_template": "Found {count} active positions.",
         "search_zero_results": "AI returned no positions for this query. Try broader keywords or a different location.",
+
+        "footer_ask_followups_label": "Let the AI ask clarifying questions first",
+        "footer_ask_followups_hint": (
+            "When something is missing or contradictory, the AI pauses "
+            "and asks you instead of guessing. Toggle off to skip the modal."
+        ),
+        "followup_title": "Quick clarifications",
+        "followup_intro": (
+            "Before I run the search, I want to confirm a few things "
+            "instead of guessing. Pick one or more options or use Other... "
+            "to type your own. Skip leaves the field blank."
+        ),
+        "followup_skip_btn": "Skip all",
+        "followup_continue_btn": "Run the search",
+        "followup_cancel": "Cancel",
+        "followup_other_label": "Other...",
+        "followup_other_hint": "Type your own answer in 1-2 sentences.",
+        "followup_answer_hint": "",
 
         # results tab ----------------------------------------------------
         "results_title": "Found positions",
@@ -395,6 +415,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ctx_activity_ready": "Ready",
         "ctx_activity_searching": "Searching the web...",
         "ctx_activity_extracting": "Structuring results...",
+        "ctx_activity_followups": "Asking clarifying questions...",
+        "ctx_activity_waiting_user": "Waiting for your clarifications...",
         "ctx_activity_verifying": "Verifying links...",
         "ctx_activity_scoring": "Scoring matches...",
         "ctx_activity_gap": "Computing skill gap...",
@@ -747,6 +769,7 @@ STRINGS: dict[str, dict[str, str]] = {
         # footer ---------------------------------------------------------
         "run_btn": "Hledat pozice",
         "run_running": "Prohled\u00e1v\u00e1m web...",
+        "run_followups": "P\u0159ipravuji up\u0159es\u0148uj\u00edc\u00ed ot\u00e1zky...",
         "run_extracting": "Strukturalizuju v\u00fdsledky...",
         "run_verifying": "Ov\u011b\u0159uji odkazy...",
         "run_scoring": "Po\u010d\u00edt\u00e1m shodu s profilem...",
@@ -754,9 +777,30 @@ STRINGS: dict[str, dict[str, str]] = {
         "run_disabled_hint": "Doplnit n\u00e1zev pozice (nebo \u017eivotopis / bio), ab\u016fch mohl/a hledat.",
         "error_no_key_template": "API kl\u00ed\u010d pro {provider} je\u0161t\u011b nen\u00ed ulo\u017een. Otev\u0159i Nastaven\u00ed a p\u0159idej ho.",
         "search_failed_template": "Hled\u00e1n\u00ed selhalo: {error}",
+        "search_cancelled": "Hled\u00e1n\u00ed zru\u0161eno.",
         "search_done_template": "Na\u0161el jsem {count} aktivn\u00edch pozic ({dropped} odkaz(\u016f) jsem zahodil, proto\u017ee byly mrtv\u00e9 nebo p\u0159esm\u011brovan\u00e9).",
         "search_done_no_drops_template": "Na\u0161el jsem {count} aktivn\u00edch pozic.",
         "search_zero_results": "AI nena\u0161la \u017e\u00e1dnou pozici pro tento dotaz. Zkus \u0161ir\u0161\u00ed kl\u00ed\u010dov\u00e1 slova nebo jinou lokalitu.",
+
+        "footer_ask_followups_label": "Nejd\u0159\u00edv se zeptat na up\u0159esn\u011bn\u00ed",
+        "footer_ask_followups_hint": (
+            "Kdy\u017e n\u011bco chyb\u00ed nebo si AI nen\u00ed jist\u00e1, "
+            "rad\u011bji se zept\u00e1, ne\u017e aby si dom\u00fd\u0161lela. "
+            "Vypni, kdy\u017e chce\u0161 modal p\u0159esko\u010dit."
+        ),
+        "followup_title": "Rychl\u00e9 up\u0159esn\u011bn\u00ed",
+        "followup_intro": (
+            "Ne\u017e spust\u00edm hled\u00e1n\u00ed, chci si pot\u0159\u00e1st p\u00e1r v\u011bc\u00ed, "
+            "abych necelovala. Vyber jednu nebo v\u00edce mo\u017enost\u00ed, nebo "
+            "pou\u017eij Vlastn\u00ed... a vepi\u0161 si svoji odpov\u011b\u010f. "
+            "P\u0159esko\u010dit nech\u00e1 pole pr\u00e1zdn\u00e9."
+        ),
+        "followup_skip_btn": "P\u0159esko\u010dit v\u0161e",
+        "followup_continue_btn": "Spustit hled\u00e1n\u00ed",
+        "followup_cancel": "Zru\u0161it",
+        "followup_other_label": "Vlastn\u00ed...",
+        "followup_other_hint": "Vepi\u0161 si vlastn\u00ed odpov\u011b\u010f v 1-2 v\u011bt\u00e1ch.",
+        "followup_answer_hint": "",
 
         # results tab ----------------------------------------------------
         "results_title": "Nalezen\u00e9 pozice",
@@ -828,6 +872,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ctx_activity_ready": "P\u0159ipraveno",
         "ctx_activity_searching": "Prohled\u00e1v\u00e1m web...",
         "ctx_activity_extracting": "Strukturalizuju v\u00fdsledky...",
+        "ctx_activity_followups": "P\u0159ipravuji up\u0159es\u0148uj\u00edc\u00ed ot\u00e1zky...",
+        "ctx_activity_waiting_user": "\u010cek\u00e1m na tv\u00e9 odpov\u011bdi...",
         "ctx_activity_verifying": "Ov\u011b\u0159uji odkazy...",
         "ctx_activity_scoring": "Po\u010d\u00edt\u00e1m shodu...",
         "ctx_activity_gap": "Sestavuji skill gap...",

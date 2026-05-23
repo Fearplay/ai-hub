@@ -26,6 +26,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QScrollArea,
     QSizePolicy,
@@ -35,10 +36,12 @@ from PySide6.QtWidgets import (
 )
 
 from src.components.file_drop_zone import file_drop_zone
+from src.components.followup_dialog import open_followup_dialog
 from src.components.header import header
 from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch
+from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
@@ -999,6 +1002,30 @@ def _build_footer(
 
     demo_btn = GhostButton(txt["footer_demo_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
     layout.addWidget(demo_btn)
+
+    # "Let the AI ask clarifying questions first" checkbox - same
+    # pattern as AI Career, so the user can flip it off when they
+    # want a one-click run without the modal.
+    fu_col = QWidget()
+    fu_col.setStyleSheet("background: transparent;")
+    fu_col_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+    fu_col.setLayout(fu_col_layout)
+    fu_check = QCheckBox(txt["footer_ask_followups_label"])
+    fu_check.setChecked(settings_store.get_ask_followups())
+    fu_check.setStyleSheet(
+        f"""
+        QCheckBox {{ color: {theme.text}; font-size: 11px; font-weight: 600; spacing: 8px; }}
+        QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {theme.border}; border-radius: 4px; background-color: {theme.surface_2}; }}
+        QCheckBox::indicator:checked {{ background-color: {theme.primary}; border: 1px solid {theme.primary}; }}
+        """
+    )
+    fu_check.stateChanged.connect(
+        lambda _state: settings_store.set_ask_followups(
+            bool(fu_check.isChecked())
+        )
+    )
+    fu_col_layout.addWidget(fu_check)
+    layout.addWidget(fu_col)
     layout.addStretch(1)
 
     status_label = MutedLabel("", theme=theme, size=11)
@@ -1020,13 +1047,15 @@ def _build_footer(
 
     def _render_run_button() -> None:
         _clear_layout(run_layout)
-        running = bool(state_box["stage"])
+        stage = state_box["stage"]
+        running = bool(stage)
         enabled = STATE.can_generate() and not running
-        label = (
-            txt["footer_generate_running"]
-            if running
-            else txt["footer_generate_btn"]
-        )
+        if stage == "followups":
+            label = txt["footer_followup_running"]
+        elif running:
+            label = txt["footer_generate_running"]
+        else:
+            label = txt["footer_generate_btn"]
         button = PrimaryButton(
             label, theme=theme, icon=Icons.PLAY_ARROW_ROUNDED
         )
@@ -1043,6 +1072,102 @@ def _build_footer(
         pipeline.load_demo()
         on_state_change()
         on_navigate_tab(TAB_PREVIEW)
+
+    def _phase2_generate() -> None:
+        """Run the main report generation in a background thread.
+
+        Called either directly (no follow-up modal needed) or from
+        ``_on_submit`` after the user finished answering. Wrapping the
+        AI call in ``try/except`` is mandatory per ``sections.mdc`` so
+        a provider crash always shows up in Settings -> Debug logs.
+        """
+        state_box["stage"] = "running"
+        STATE.run_stage = "running"
+        STATE.activity = "generating"
+        REFS.request_context_refresh()
+        dispatch(_render_run_button)
+
+        try:
+            result = pipeline.generate_bug_report(output_lang=lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "generate_worker_failed", exc,
+            )
+            STATE.last_error = str(exc)
+            state_box["stage"] = ""
+            STATE.run_stage = ""
+            dispatch(
+                lambda: (
+                    _set_status(str(exc), error=True),
+                    _render_run_button(),
+                )
+            )
+            return
+
+        state_box["stage"] = ""
+        STATE.run_stage = ""
+        if not result.ok:
+            dispatch(
+                lambda: (
+                    _set_status(
+                        result.error or "Run failed.", error=True
+                    ),
+                    _render_run_button(),
+                )
+            )
+            return
+        dispatch(
+            lambda: (
+                _render_run_button(),
+                on_navigate_tab(TAB_PREVIEW),
+            )
+        )
+
+    def _open_followup_dialog_now() -> None:
+        def _on_submit(answers: list[dict]) -> None:
+            STATE.followup_qa = answers
+            STATE.activity = "generating"
+            REFS.request_context_refresh()
+            logger_service.log_event(
+                "INFO",
+                "ai_bug_report.view",
+                "phase2_start",
+                followup_answers=len(answers or []),
+            )
+            threading.Thread(target=_phase2_generate, daemon=True).start()
+
+        def _on_cancel() -> None:
+            logger_service.log_event(
+                "INFO", "ai_bug_report.view", "followup_dialog_cancelled"
+            )
+            STATE.followup_qa = []
+            STATE.activity = "ready"
+            STATE.run_stage = ""
+            state_box["stage"] = ""
+            REFS.request_context_refresh()
+            dispatch(_render_run_button)
+
+        logger_service.log_event(
+            "INFO",
+            "ai_bug_report.view",
+            "followup_dialog_open",
+            count=len(STATE.followup_questions),
+        )
+        open_followup_dialog(
+            get_main_window(),
+            theme,
+            title=txt["followup_title"],
+            intro=txt["followup_intro"],
+            cancel_label=txt["followup_cancel"],
+            continue_label=txt["followup_continue_btn"],
+            answer_hint=txt["followup_answer_hint"],
+            skip_all_label=txt["followup_skip_btn"],
+            other_label=txt["followup_other_label"],
+            other_hint=txt["followup_other_hint"],
+            questions=STATE.followup_questions,
+            on_submit=_on_submit,
+            on_cancel=_on_cancel,
+        )
 
     def _on_generate() -> None:
         if not STATE.can_generate():
@@ -1061,19 +1186,32 @@ def _build_footer(
                 )
                 return
 
+        STATE.followup_questions = []
+        STATE.followup_qa = []
         _set_status("")
-        state_box["stage"] = "running"
+
+        if STATE.demo_mode or not settings_store.get_ask_followups():
+            threading.Thread(target=_phase2_generate, daemon=True).start()
+            return
+
+        state_box["stage"] = "followups"
+        STATE.run_stage = "followups"
+        STATE.activity = "followups"
+        REFS.request_context_refresh()
         _render_run_button()
 
-        def _worker() -> None:
+        def _phase1() -> None:
             try:
-                result = pipeline.generate_bug_report(output_lang=lang)
+                res = pipeline.generate_followup_questions(output_lang=lang)
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_bug_report.view", "generate_worker_failed", exc,
+                    "ai_bug_report.view", "phase1_failed", exc,
                 )
-                STATE.last_error = str(exc)
                 state_box["stage"] = ""
+                STATE.run_stage = ""
+                STATE.activity = "error"
+                STATE.last_error = str(exc)
+                REFS.request_context_refresh()
                 dispatch(
                     lambda: (
                         _set_status(str(exc), error=True),
@@ -1081,25 +1219,35 @@ def _build_footer(
                     )
                 )
                 return
-            state_box["stage"] = ""
-            if not result.ok:
+
+            if not res.ok:
+                state_box["stage"] = ""
+                STATE.run_stage = ""
+                STATE.activity = "error"
+                REFS.request_context_refresh()
                 dispatch(
                     lambda: (
-                        _set_status(
-                            result.error or "Run failed.", error=True
-                        ),
+                        _set_status(res.error or "", error=True),
                         _render_run_button(),
                     )
                 )
                 return
-            dispatch(
-                lambda: (
-                    _render_run_button(),
-                    on_navigate_tab(TAB_PREVIEW),
-                )
-            )
 
-        threading.Thread(target=_worker, daemon=True).start()
+            if STATE.followup_questions:
+                STATE.activity = "waiting_user"
+                REFS.request_context_refresh()
+                REFS.dispatch(_open_followup_dialog_now)
+                return
+
+            # No questions -> straight to the main pass.
+            logger_service.log_event(
+                "INFO",
+                "ai_bug_report.view",
+                "followup_dialog_skipped_zero_questions",
+            )
+            _phase2_generate()
+
+        threading.Thread(target=_phase1, daemon=True).start()
 
     demo_btn.clicked.connect(_on_demo)
     _render_run_button()

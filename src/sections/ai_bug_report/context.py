@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QFrame, QStackedLayout, QWidget
 from src.components.context_panel import context_panel_shell
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.widgets import (
     BodyLabel,
     MutedLabel,
@@ -43,6 +44,8 @@ from src.theme import Theme
 _ACTIVITY_KEYS = {
     "ready": "ctx_activity_ready",
     "generating": "ctx_activity_generating",
+    "followups": "ctx_activity_followups",
+    "waiting_user": "ctx_activity_waiting_user",
     "saving": "ctx_activity_saving",
     "error": "ctx_activity_error",
 }
@@ -212,6 +215,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     stack.addWidget(_build_panel(theme, lang))
 
     def _rerender_context() -> None:
+        if not is_widget_alive(holder):
+            return
         while stack.count():
             w = stack.widget(0)
             stack.removeWidget(w)
@@ -219,4 +224,10 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         stack.addWidget(_build_panel(theme, lang))
 
     REFS.rerender_context = _rerender_context
+
+    def _on_holder_destroyed() -> None:
+        if REFS.rerender_context is _rerender_context:
+            REFS.rerender_context = None
+
+    on_destroyed(holder, _on_holder_destroyed)
     return holder

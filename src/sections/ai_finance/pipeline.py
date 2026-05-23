@@ -18,6 +18,7 @@ toggle are honoured in one place.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -200,6 +201,18 @@ def create_budget(
         )
 
     _set_activity("generating")
+
+    if STATE.demo_mode:
+        STATE.budget = dict(finance_data.MOCK_BUDGET)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "create_budget_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="create_budget",
@@ -232,6 +245,7 @@ def create_budget(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -245,6 +259,24 @@ def edit_budget(
         return _set_error("edit_budget", "Build a budget before editing it.")
 
     _set_activity("generating")
+
+    if STATE.demo_mode:
+        # Apply a visible-but-fake tweak so the user sees that the
+        # refine call did something without hitting the provider.
+        merged = dict(STATE.budget)
+        merged["summary"] = (
+            "Demo refine: applied your edit notes - splits remain "
+            "consistent with the 50/30/20 rule."
+        )
+        STATE.budget = merged
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "edit_budget_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="edit_budget",
@@ -271,6 +303,7 @@ def edit_budget(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -305,6 +338,18 @@ def generate_savings_plan(
         )
 
     _set_activity("generating")
+
+    if STATE.demo_mode:
+        STATE.savings_plan = dict(finance_data.MOCK_SAVINGS_PLAN)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "generate_savings_plan_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="generate_savings_plan",
@@ -337,6 +382,7 @@ def generate_savings_plan(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -368,6 +414,18 @@ def generate_investment_scenarios(
         )
 
     _set_activity("generating")
+
+    if STATE.demo_mode:
+        STATE.investment_scenario = dict(finance_data.MOCK_INVESTMENT_SCENARIO)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "generate_investment_scenarios_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="generate_investment_scenarios",
@@ -400,6 +458,7 @@ def generate_investment_scenarios(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -429,6 +488,18 @@ def analyze_expenses(
         )
 
     _set_activity("analyzing")
+
+    if STATE.demo_mode:
+        STATE.expense_analysis = dict(finance_data.MOCK_EXPENSE_ANALYSIS)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "analyze_expenses_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="analyze_expenses",
@@ -457,6 +528,7 @@ def analyze_expenses(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -482,6 +554,18 @@ def generate_tax_checklist(
         return _set_error("generate_tax_checklist", s(output_lang)["error_no_input"])
 
     _set_activity("generating")
+
+    if STATE.demo_mode:
+        STATE.tax_checklist = dict(finance_data.MOCK_TAX_CHECKLIST)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "generate_tax_checklist_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="generate_tax_checklist",
@@ -511,6 +595,7 @@ def generate_tax_checklist(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
 
 
@@ -538,6 +623,18 @@ def review_insurance(
         return _set_error("review_insurance", s(output_lang)["error_no_input"])
 
     _set_activity("analyzing")
+
+    if STATE.demo_mode:
+        STATE.insurance_review = dict(finance_data.MOCK_INSURANCE_REVIEW)
+        STATE.activity = "ready"
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "review_insurance_demo_done",
+        )
+        REFS.request_context_refresh()
+        REFS.dispatch(_request_full_refresh)
+        _spawn_tip_refresh(output_lang)
+        return PipelineResult(ok=True)
+
     try:
         result = _provider_call(
             stage="review_insurance",
@@ -566,7 +663,95 @@ def review_insurance(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     REFS.dispatch(_request_full_refresh)
+    _spawn_tip_refresh(output_lang)
     return PipelineResult(ok=True)
+
+
+# -- Personalised AI tip ----------------------------------------------
+
+
+def _structured_context() -> dict[str, Any]:
+    return {
+        "budget": STATE.budget,
+        "savings_plan": STATE.savings_plan,
+        "expense_analysis": STATE.expense_analysis,
+        "investment_scenario": STATE.investment_scenario,
+        "tax_checklist": STATE.tax_checklist,
+        "insurance_review": STATE.insurance_review,
+    }
+
+
+def generate_tip(*, output_lang: str) -> PipelineResult:
+    """Produce ONE personalised AI tip from cached analyses.
+
+    Always safe to call - if no analyses have run yet returns silently
+    so the right-hand Tip card keeps showing the empty-state copy.
+    """
+    output_lang = _resolve_lang(output_lang)
+    context = _structured_context()
+    if not any(value for value in context.values()):
+        STATE.tip = None
+        STATE.tip_running = False
+        return PipelineResult(ok=False, error="no_analyses")
+
+    if STATE.demo_mode:
+        STATE.tip = dict(finance_data.MOCK_TIP)
+        STATE.tip_running = False
+        logger_service.log_event(
+            "INFO", "ai_finance.pipeline", "generate_tip_demo_done",
+        )
+        REFS.request_context_refresh()
+        return PipelineResult(ok=True)
+
+    STATE.tip_running = True
+    REFS.request_context_refresh()
+    try:
+        result = _provider_call(
+            stage="generate_tip",
+            system=prompts.TIP_SYSTEM,
+            user=prompts.build_tip_user(
+                output_lang=output_lang,
+                structured_context=context,
+            ),
+            schema_dict=schema.TIP_SCHEMA,
+            schema_name="FinanceTip",
+            max_output_tokens=400,
+            output_lang=output_lang,
+        )
+    except Exception as exc:
+        STATE.tip_running = False
+        REFS.request_context_refresh()
+        logger_service.log_exception(
+            "ai_finance.pipeline", "generate_tip_failed", exc,
+        )
+        return PipelineResult(ok=False, error=str(exc))
+    if not result.data:
+        STATE.tip_running = False
+        REFS.request_context_refresh()
+        return PipelineResult(ok=False, error="empty")
+    STATE.tip = _clean_json(result.data)
+    STATE.tip_running = False
+    REFS.request_context_refresh()
+    return PipelineResult(ok=True)
+
+
+def _spawn_tip_refresh(output_lang: str) -> None:
+    """Generate the AI tip in a daemon thread - never blocks the caller.
+
+    Pipeline functions that change ``STATE.*`` analyses call this on
+    completion. The user sees their main result immediately; the tip
+    arrives a couple of seconds later.
+    """
+
+    def _worker() -> None:
+        try:
+            generate_tip(output_lang=output_lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_finance.pipeline", "tip_refresh_worker_failed", exc,
+            )
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 # -- Chat -------------------------------------------------------------
@@ -606,14 +791,7 @@ def send_chat_message(*, output_lang: str, user_text: str) -> PipelineResult:
         if m.text
     ]
 
-    structured_context: dict[str, Any] = {
-        "budget": STATE.budget,
-        "savings_plan": STATE.savings_plan,
-        "expense_analysis": STATE.expense_analysis,
-        "investment_scenario": STATE.investment_scenario,
-        "tax_checklist": STATE.tax_checklist,
-        "insurance_review": STATE.insurance_review,
-    }
+    structured_context = _structured_context()
 
     enable_web = settings_store.get_web_search_enabled()
     _set_activity("thinking")
