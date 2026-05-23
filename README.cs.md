@@ -94,9 +94,12 @@ Co skript dělá:
 1. Pokud chybí Python na PATH, zkusí ho doinstalovat přes `winget install -e --id Python.Python.3.13`. Když ani winget není k dispozici, vypíše odkaz na python.org a skončí.
 2. Pokud neexistuje `.venv\`, vytvoří ho.
 3. Aktivuje venv a nainstaluje `requirements.txt` + `pyinstaller`.
-4. Pustí `pyinstaller --onefile --windowed --name AIHub` (s vloženým
-   subsetem fontu **Material Symbols Rounded** z `assets\fonts\`) a
-   vyrobí `dist\AIHub.exe`.
+4. Pustí `pyinstaller --onefile --windowed --name AIHub` a vyrobí
+   `dist\AIHub.exe`. Ikony se renderují přes
+   [QtAwesome](https://github.com/spyder-ide/qtawesome) (sada
+   Material Design Icons 6); fonty s ikonami jsou uvnitř qtawesome
+   wheelu a do bundlu se dostanou automaticky přes
+   `--collect-all qtawesome`.
 
 Použití:
 
@@ -118,10 +121,12 @@ Doručitelný balík pro běžné uživatele je **jeden samostatný binár**:
 
 1. Stáhni si aktuální `main`.
 2. Spusť jednou `build_exe.bat --force` - PyInstaller vyrobí
-   `dist\AIHub.exe` s PySide6 / Qt 6, fontem Material Symbols
-   Rounded a všemi sekcemi vevnitř. Skript navíc přidává
-   `--collect-submodules src.sections`, aby auto-discovery sekcí
-   (`pkgutil.iter_modules`) viděl všechny složky i ve frozen .exe.
+   `dist\AIHub.exe` s PySide6 / Qt 6, sadou QtAwesome Material Design
+   Icons 6 a všemi sekcemi vevnitř. Lokální hook
+   `hooks\hook-src.sections.py` projde každou složku
+   `src\sections\<key>\` při buildu a přidá každý `.py` soubor jako
+   hidden import, aby auto-discovery (`pkgutil.iter_modules`) viděl
+   všechny sekce i ve frozen .exe.
 3. Předej `.exe` uživateli. Při prvním spuštění se v jeho domovském
    adresáři vytvoří `~/AI Hub/`, což je **jediné** místo, kam aplikace
    mimo install folder zapisuje:
@@ -288,15 +293,17 @@ ai-hub/
 ├── README.cs.md                  # tento soubor (čeština)
 ├── LICENSE
 ├── .gitignore
-├── assets/
-│   └── fonts/                     # vložený subset Material Symbols Rounded + codepoints
+├── build_exe.bat                 # jednoklikový Windows PyInstaller build
+├── hooks/                        # lokální PyInstaller hooky
+│   ├── hook-src.sections.py      # při buildu vyjmenuje každý src/sections/<key>/*.py
+│   └── hook-src.services.py      # totéž pro sdílenou service vrstvu
 └── src/
     ├── theme.py                  # barvy a designové tokeny (dark + light)
     ├── app.py                    # AIHubApp - stav, layout, routing (sekce nezná jménem)
     ├── i18n.py                   # globální EN/CS překlady + t(key, lang)
     ├── qt/                        # PySide6 stavební bloky
     │   ├── theme.py              # QSS emitter + rgba helper
-    │   ├── icons.py              # loader fontu Material Symbols Rounded + codepointy
+    │   ├── icons.py              # registr Icons.X přes QtAwesome (Material Design Icons 6)
     │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typografie / tlačítka / Pill
     │   ├── effects.py            # drop shadow + opacity helpery
     │   ├── markdown.py           # bold-spans pro plain QLabel
@@ -524,7 +531,8 @@ Použité knihovny a assety:
 | Položka | Licence | Odkaz |
 | --- | --- | --- |
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (s výjimkou pro dynamické linkování, kterou PyInstaller používá) | https://www.qt.io/licensing |
-| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [QtAwesome](https://github.com/spyder-ide/qtawesome) | MIT License | https://github.com/spyder-ide/qtawesome/blob/master/LICENSE.txt |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) (vložené uvnitř QtAwesome) | Pictogrammers Free License (kompatibilní s Apache-2.0) | https://pictogrammers.com/docs/general/license/ |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 | [yfinance](https://pypi.org/project/yfinance/) | Apache License 2.0 | https://github.com/ranaroussi/yfinance/blob/main/LICENSE.txt |
 

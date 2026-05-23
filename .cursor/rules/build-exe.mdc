@@ -45,6 +45,14 @@ workload required.
   in `.gitignore`).
 - Do **not** hard-code an absolute path inside `build_exe.bat`. The
   script must run from the repo root via `pushd "%~dp0"`.
+- Do **not** delete the repo-local `hooks\` folder. It contains
+  PyInstaller hooks (`hook-src.sections.py`,
+  `hook-src.services.py`) that explicitly enumerate every auto-
+  discovered submodule. Without them, `pyinstaller`'s
+  `--collect-submodules src.sections` silently drops project-local
+  packages when paired with `--collect-all qtawesome`, and the
+  frozen .exe boots with ZERO sections (the debug log shows
+  ``discover_done | count=0 keys=[]``).
 
 ## When NOT to rebuild
 
@@ -64,8 +72,7 @@ In every other case, rebuild.
 
    ```bat
    pyinstaller --noconfirm --onefile --windowed --name AIHub ^
-       --add-data "assets\fonts;assets\fonts" ^
-       --add-data "assets\icon.ico;assets" ^
+       --add-data "assets\my_data;assets\my_data" ^
        --hidden-import pyperclip ^
        --collect-submodules PySide6 ^
        %ICON_ARG% ^
@@ -73,12 +80,44 @@ In every other case, rebuild.
    ```
 3. Re-run the script. The asset is now embedded in the produced exe.
 
-## How the bundled font / icon system works
+## How the bundled icon system works
 
-The Material Icons font (under `assets\fonts\`) is loaded at startup by
-`src.qt.icons.icon_font(...)`. When running from the bundled .exe,
-PyInstaller extracts the assets to the path stored in `sys._MEIPASS`,
-and `src.qt.icons._bundled_root()` already handles both source-mode and
-frozen-mode lookups. If you add another bundled font or asset folder,
-follow the same pattern - read paths through a `_bundled_root()`-style
-helper that respects `sys._MEIPASS`.
+Icons are rendered via [QtAwesome](https://github.com/spyder-ide/qtawesome)
+(see `src/qt/icons.py`). QtAwesome bundles the **Material Design Icons
+6** font (and a handful of others) inside its own wheel and lazy-loads
+them through Qt's font database the first time `qta.icon(...)` is
+called. `build_exe.bat` already pulls every font + char-map into the
+.exe via `--collect-all qtawesome` and `--collect-submodules qtpy`, so
+you do not need to touch the build script when adding a new icon. To
+make a new icon available in the app:
+
+1. Pick a glyph from <https://pictogrammers.com/library/mdi/>.
+2. Add a constant to `src/qt/icons.py`:
+   `MY_NEW_ICON = "mdi6.<kebab-case-name>"`.
+3. Use it the usual way: `IconLabel(Icons.MY_NEW_ICON, color=..., size=...)`.
+
+Do **not** hand-write a `"mdi6.X"` string at a call site - everything
+must go through an `Icons.X` constant so the registry stays the single
+source of truth.
+
+## How the repo-local PyInstaller hooks work
+
+`build_exe.bat` passes `--additional-hooks-dir hooks` to PyInstaller so
+the analyser picks up the `.py` files in `hooks\`. Two hooks live
+there today:
+
+- `hooks\hook-src.sections.py` - walks `src\sections\` at build time
+  and adds every `.py` file inside each section folder as a hidden
+  import. This is what makes the runtime auto-discovery (see
+  `src\sections\__init__.py`) work inside the frozen .exe. Adding a
+  new section folder needs **no** edit to the hook: the next
+  `build_exe.bat` run picks it up automatically.
+- `hooks\hook-src.services.py` - same idea for the shared service
+  layer (`src\services\*.py`). A few services (`html_pdf`,
+  `ai_provider`) import their backends lazily, so we list every
+  public service module explicitly.
+
+If you add a new auto-discovered package under `src\<key>\`, mirror
+this pattern: drop a `hooks\hook-src.<key>.py` next to the existing
+ones, walk the folder with `pathlib.Path`, and append each `.py` file
+to `hiddenimports`. Do **not** invent a different mechanism.

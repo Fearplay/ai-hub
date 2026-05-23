@@ -85,6 +85,7 @@ class Section:
 
 def _error_panel(theme: Theme, *, key: str, message: str) -> QWidget:
     """Red error frame matching the old Flet safety-net look."""
+    from src.qt.icons import Icons
     from src.qt.widgets import IconLabel, vbox
 
     container = QWidget()
@@ -93,7 +94,7 @@ def _error_panel(theme: Theme, *, key: str, message: str) -> QWidget:
     container.setLayout(layout)
     container.setStyleSheet(f"background-color: {theme.bg};")
 
-    icon = IconLabel("error_outline", color="#EF4444", size=28)
+    icon = IconLabel(Icons.ERROR_OUTLINE, color="#EF4444", size=28)
     icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignHCenter)
 

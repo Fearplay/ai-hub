@@ -12,7 +12,7 @@ from src.sections.ai_finance.view import build_view
 
 SECTION = Section(
     key="ai_finance",
-    icon=Icons.SAVINGS_OUTLINED,
+    icon=Icons.ACCOUNT_BALANCE_WALLET_OUTLINED,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,

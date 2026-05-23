@@ -11,7 +11,7 @@ from src.sections.ai_linkedin.view import build_view
 
 SECTION = Section(
     key="ai_linkedin",
-    icon=Icons.ID_CARD,
+    icon=Icons.LINKEDIN,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,

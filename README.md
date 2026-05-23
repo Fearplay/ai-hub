@@ -99,9 +99,11 @@ What the script does:
    available either, it prints a python.org link and exits.
 2. If `.venv\` doesn't exist, it creates one.
 3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
-4. Runs `pyinstaller --onefile --windowed --name AIHub` (with the
-   bundled Material Symbols Rounded icon font subset under
-   `assets\fonts\` baked in) and produces `dist\AIHub.exe`.
+4. Runs `pyinstaller --onefile --windowed --name AIHub` and produces
+   `dist\AIHub.exe`. Icons render via
+   [QtAwesome](https://github.com/spyder-ide/qtawesome) (Material Design
+   Icons 6); the icon fonts ship inside qtawesome's wheel and are
+   pulled into the bundle automatically via `--collect-all qtawesome`.
 
 Usage:
 
@@ -126,11 +128,12 @@ binary**: `dist\AIHub.exe`. To cut a release:
 
 1. Pull the latest `main`.
 2. Run `build_exe.bat --force` once - PyInstaller produces
-   `dist\AIHub.exe` with PySide6 / Qt 6, the Material Symbols Rounded
-   icon font, and every section module baked in. The script also
-   passes `--collect-submodules src.sections` so the section
-   auto-discovery (`pkgutil.iter_modules`) finds every section folder
-   when the .exe runs from a frozen bundle.
+   `dist\AIHub.exe` with PySide6 / Qt 6, the QtAwesome Material Design
+   Icons 6 set, and every section module baked in. The repo-local
+   `hooks\hook-src.sections.py` enumerates every `src\sections\<key>\`
+   folder at build time and adds each `.py` file as a hidden import,
+   so the runtime auto-discovery (`pkgutil.iter_modules`) finds every
+   section folder when the .exe runs from a frozen bundle.
 3. Hand the `.exe` to the user. First launch creates `~/AI Hub/`
    under the user's home directory, which is the **single** place the
    app writes anything outside the install folder:
@@ -292,15 +295,17 @@ ai-hub/
 ├── README.cs.md                  # Czech translation
 ├── LICENSE
 ├── .gitignore
-├── assets/
-│   └── fonts/                     # bundled Material Symbols Rounded subset + codepoints
+├── build_exe.bat                 # one-click Windows PyInstaller build
+├── hooks/                        # repo-local PyInstaller hooks
+│   ├── hook-src.sections.py      # enumerates every src/sections/<key>/*.py at build time
+│   └── hook-src.services.py      # same idea for the shared service layer
 └── src/
     ├── theme.py                  # design tokens (dark + light)
     ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
     ├── i18n.py                   # global EN/CS strings + t(key, lang)
     ├── qt/                        # PySide6 building blocks
     │   ├── theme.py              # QSS emitter + rgba helper
-    │   ├── icons.py              # Material Symbols Rounded font loader + codepoint registry
+    │   ├── icons.py              # QtAwesome-backed Icons.X registry (Material Design Icons 6)
     │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typography / buttons / Pill
     │   ├── effects.py            # drop shadow + opacity helpers
     │   ├── markdown.py           # bold-spans helper for plain QLabel
@@ -531,7 +536,8 @@ Libraries and assets used:
 | Item | License | Link |
 | --- | --- | --- |
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
-| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [QtAwesome](https://github.com/spyder-ide/qtawesome) | MIT License | https://github.com/spyder-ide/qtawesome/blob/master/LICENSE.txt |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) (bundled inside QtAwesome) | Pictogrammers Free License (Apache-2.0 compatible) | https://pictogrammers.com/docs/general/license/ |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 | [yfinance](https://pypi.org/project/yfinance/) | Apache License 2.0 | https://github.com/ranaroussi/yfinance/blob/main/LICENSE.txt |
 

@@ -73,7 +73,7 @@ from src.sections.ai_jobs.state import (
 from src.sections.ai_jobs.strings import s
 
 
-SECTION_ICON = Icons.PERSON_SEARCH_OUTLINED
+SECTION_ICON = Icons.BRIEFCASE_SEARCH_OUTLINED
 
 # Picks a calmer indigo so the section sits visually between AI Career
 # (default blue) and AI Legal (purple) - matches the "search the web"

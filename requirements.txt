@@ -1,6 +1,13 @@
 # Desktop UI - Qt for Python (Qt 6.x)
 PySide6>=6.7.0
 
+# Icon set - QtAwesome bundles Font Awesome / Material Design Icons /
+# Phosphor / Remix / Codicons inside its wheel and renders each glyph
+# to a ``QIcon`` / ``QPixmap`` via the Qt font database. We standardise
+# on Material Design Icons 6 (``mdi6.*``) - see ``src/qt/icons.py``.
+# Used everywhere: sidebar entries, section headers, buttons, pills.
+qtawesome>=1.4.0
+
 # Native OS trust store for HTTPS (Windows CryptoAPI / macOS Security /
 # Linux OpenSSL). Activated once at the top of main.py via
 # truststore.inject_into_ssl(); fixes corporate-proxy / antivirus

@@ -33,14 +33,23 @@ compatible with the MIT License above.
   Copyright (c) The Qt Company Ltd.
   https://www.qt.io/licensing
 
-- Material Symbols Rounded font (https://github.com/google/material-design-icons)
-  Apache License 2.0. The bundled
-  ``assets/fonts/MaterialSymbolsRounded-Regular.otf`` is a glyph-subset
-  of the upstream variable font (only the icon names referenced in
-  ``src/qt/icons.py`` are kept). The accompanying
-  ``MaterialSymbolsRounded-Regular.codepoints`` index file is unmodified.
-  Copyright (c) Google Inc.
-  https://github.com/google/material-design-icons/blob/master/LICENSE
+- QtAwesome (https://github.com/spyder-ide/qtawesome) - MIT License
+  Copyright (c) The Spyder Development Team
+  https://github.com/spyder-ide/qtawesome/blob/master/LICENSE.txt
+  Bundles several open-source icon fonts inside its wheel:
+
+  * Font Awesome 5 / 6 - SIL OFL 1.1 (fonts) + CC BY 4.0 (icons),
+    https://fontawesome.com/license
+  * Material Design Icons (mdi / mdi6) - Pictogrammers Free License
+    (https://pictogrammers.com/docs/general/license/), authored by
+    the Pictogrammers community. This is the icon family AI Hub uses
+    by default (see ``src/qt/icons.py``).
+  * Phosphor Icons - MIT License,
+    https://github.com/phosphor-icons/core/blob/main/LICENSE
+  * Remix Icon - Apache License 2.0,
+    https://github.com/Remix-Design/RemixIcon/blob/master/License
+  * Codicons - Creative Commons CC BY 4.0,
+    https://github.com/microsoft/vscode-codicons/blob/main/LICENSE
 
 - openai (https://github.com/openai/openai-python) - Apache License 2.0
 - anthropic (https://github.com/anthropics/anthropic-sdk-python) - MIT License
@@ -55,7 +64,8 @@ compatible with the MIT License above.
 - reportlab (https://www.reportlab.com) - BSD-3-Clause License
 - pyperclip (https://github.com/asweigart/pyperclip) - BSD-3-Clause License
 
-All listed licenses are permissive (Apache-2.0, BSD, MIT) or copyleft with
-a dynamic-linking exception (LGPL-3.0 for PySide6 / Qt) and compatible
-with the MIT License above. Each library retains its own copyright
-notice; consult the linked repositories for the full text.
+All listed licenses are permissive (Apache-2.0, BSD, MIT, SIL OFL,
+CC BY, Pictogrammers Free) or copyleft with a dynamic-linking exception
+(LGPL-3.0 for PySide6 / Qt) and compatible with the MIT License above.
+Each library retains its own copyright notice; consult the linked
+repositories for the full text.

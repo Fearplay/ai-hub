@@ -14,9 +14,9 @@ REM      - if neither works, install via winget; if winget is missing,
 REM        print a python.org link and exit
 REM   2. Create / activate a project-local .venv\
 REM   3. Upgrade pip and install requirements.txt + pyinstaller
-REM   4. Run "pyinstaller" to bundle main.py into one .exe (with the
-REM      Material Symbols Rounded icon font baked into
-REM      ``assets\fonts\`` so glyphs render on a clean machine)
+REM   4. Run "pyinstaller" to bundle main.py into one .exe (the
+REM      Material Design Icons 6 font ships inside qtawesome's wheel,
+REM      so PyInstaller picks it up automatically via --collect-data)
 REM   5. Print the output path
 REM
 REM Skips the rebuild when dist\AIHub.exe is newer than every .py
@@ -155,10 +155,6 @@ if exist "assets\icon.ico" set "ICON_ARG=--icon assets\icon.ico"
 REM PyInstaller flags:
 REM   --onefile --windowed                 -> single-file GUI app, no console
 REM   --name AIHub                         -> output name
-REM   --add-data "src;dst"                 -> bundle the Material Symbols
-REM                                            Rounded font subset (.otf)
-REM                                            and the codepoints map
-REM                                            (Windows uses ; as separator)
 REM   --hidden-import pyperclip             -> defensive; pyperclip is sometimes
 REM                                            picked up via lazy try/except
 REM   --collect-submodules PySide6         -> bring all of PySide6's dynamic
@@ -176,28 +172,45 @@ REM                                            of internal modules (multi.py,
 REM                                            scrapers, utils). Force the bundle
 REM                                            so the AI Finance live tickers
 REM                                            still resolve in the frozen .exe.
-REM   --collect-submodules src.sections    -> sections are auto-discovered at
-REM                                            runtime via pkgutil.iter_modules
-REM                                            (see src\sections\__init__.py).
-REM                                            PyInstaller's static analyser
-REM                                            cannot see the dynamic
-REM                                            ``importlib.import_module(...)``
-REM                                            calls, so without this flag the
-REM                                            frozen .exe sees ZERO sections
-REM                                            and crashes at startup with
-REM                                            ``[WinError 3] ... \src\sections``.
-REM   --collect-submodules src.services    -> defensive; some services (e.g.
-REM                                            html_pdf, ai_provider) lazy-
-REM                                            import their backends only when
-REM                                            actually called.
+REM   --collect-all qtawesome              -> qtawesome ships icon font files
+REM                                            (Font Awesome / Material Design
+REM                                            Icons / Phosphor / Remix /
+REM                                            Codicons) + .json char-maps
+REM                                            inside its wheel. --collect-all
+REM                                            pulls submodules **and** data
+REM                                            files so the frozen .exe can
+REM                                            actually render icons - without
+REM                                            it qta.icon(...) silently
+REM                                            returns empty pixmaps.
+REM   --collect-submodules qtpy            -> qtawesome routes through qtpy
+REM                                            which lazy-imports a binding
+REM                                            shim at first use. Bundling the
+REM                                            submodules lets QtPy detect
+REM                                            PySide6 inside the .exe.
+REM   --additional-hooks-dir hooks         -> repo-local PyInstaller hooks for
+REM                                            our auto-discovered packages
+REM                                            (``src.sections`` /
+REM                                            ``src.services``). The hooks
+REM                                            walk those folders at build
+REM                                            time and explicitly add every
+REM                                            ``.py`` file as a hidden
+REM                                            import. Without this, the
+REM                                            frozen .exe boots with ZERO
+REM                                            sections (the discover log
+REM                                            shows ``count=0 keys=[]``)
+REM                                            because PyInstaller's
+REM                                            ``--collect-submodules`` flag
+REM                                            silently drops project-local
+REM                                            packages when used together
+REM                                            with ``--collect-all qtawesome``.
 pyinstaller --noconfirm --onefile --windowed --name AIHub ^
-    --add-data "assets\fonts;assets\fonts" ^
     --hidden-import pyperclip ^
     --collect-submodules PySide6 ^
     --collect-submodules truststore ^
     --collect-submodules yfinance ^
-    --collect-submodules src.sections ^
-    --collect-submodules src.services ^
+    --collect-all qtawesome ^
+    --collect-submodules qtpy ^
+    --additional-hooks-dir hooks ^
     %ICON_ARG% ^
     main.py
 if errorlevel 1 (

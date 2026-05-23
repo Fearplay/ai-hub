@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QFont, QIcon, QPixmap
+from PySide6.QtGui import QAction, QFont
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.i18n import t
-from src.qt.icons import Icons, glyph, icon_font
+from src.qt.icons import Icons, qicon
 from src.qt.widgets import (
     GhostButton,
     IconLabel,
@@ -136,12 +136,10 @@ def _menu_button(theme: Theme, menu_items: Sequence[HeaderMenuItem]) -> QWidget:
 
     for item in menu_items:
         action = QAction(item.label, menu)
-        # The Material Icons font isn't rendered as an image, so embed
-        # the glyph as a small rendered pixmap so the menu shows an
-        # icon next to each label.
-        pix = _glyph_to_pixmap(item.icon, color=theme.text_muted, size=16)
-        if pix is not None:
-            action.setIcon(QIcon(pix))
+        # QtAwesome returns a ``QIcon`` we can hand straight to the
+        # ``QAction`` - Qt picks the pixmap size on the fly based on
+        # the menu's icon size, so we don't need to pre-rasterise.
+        action.setIcon(qicon(item.icon, color=theme.text_muted))
         action.setEnabled(item.enabled and item.on_click is not None)
         if item.enabled and item.on_click is not None:
             action.triggered.connect(item.on_click)
@@ -150,26 +148,6 @@ def _menu_button(theme: Theme, menu_items: Sequence[HeaderMenuItem]) -> QWidget:
     btn.setMenu(menu)
     btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
     return btn
-
-
-def _glyph_to_pixmap(name: str, *, color: str, size: int) -> Optional[QPixmap]:
-    """Render a Material Icons glyph to a transparent ``QPixmap`` for menus."""
-    from PySide6.QtCore import QRect, Qt as QtCore_Qt
-    from PySide6.QtGui import QColor, QPainter
-
-    g = glyph(name)
-    if not g or g == "?":
-        return None
-    pix = QPixmap(size, size)
-    pix.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pix)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-    painter.setFont(icon_font(size))
-    painter.setPen(QColor(color))
-    painter.drawText(QRect(0, 0, size, size), QtCore_Qt.AlignmentFlag.AlignCenter, g)
-    painter.end()
-    return pix
 
 
 def header(

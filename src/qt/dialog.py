@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.qt.icons import Icons
 from src.qt.widgets import IconOnlyButton, hbox, vbox
 from src.theme import Theme
 
@@ -103,7 +104,7 @@ class BaseDialog(QDialog):
         title_row.addWidget(title_label)
         title_row.addStretch(1)
         close_btn = IconOnlyButton(
-            "close",
+            Icons.CLOSE,
             color=theme.text_muted,
             size=16,
             bg="transparent",
