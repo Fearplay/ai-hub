@@ -7,7 +7,7 @@ Usage::
 
     from src.i18n import t
 
-    label = t("new_chat", lang)  # "New chat" or "Nová konverzace"
+    label = t("app_name", lang)  # "AI Hub"
 """
 
 from __future__ import annotations
@@ -20,8 +20,6 @@ LANGUAGES = ("en", "cs")
 GLOBAL_STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "app_name": "AI Hub",
-        "new_chat": "New chat",
-        "new_chat_shortcut": "Ctrl + N",
         "language": "Language",
         "czech": "Czech",
         "light_mode": "Light mode",
@@ -45,8 +43,6 @@ GLOBAL_STRINGS: dict[str, dict[str, str]] = {
         "conversation_history": "Conversation history",
         "recent_conversations": "Recent conversations",
         "coming_soon": "This section is being prepared.",
-        "history": "History",
-        "favorites": "Favorites",
         "settings": "Settings",
         "how_to_use": "How to use this assistant?",
         "mock_in_preparation": "This module is being prepared. The form below is a preview - no AI is wired up yet.",
@@ -66,8 +62,6 @@ GLOBAL_STRINGS: dict[str, dict[str, str]] = {
     },
     "cs": {
         "app_name": "AI Hub",
-        "new_chat": "Nová konverzace",
-        "new_chat_shortcut": "Ctrl + N",
         "language": "Jazyk",
         "czech": "Čeština",
         "light_mode": "Světlý režim",
@@ -91,8 +85,6 @@ GLOBAL_STRINGS: dict[str, dict[str, str]] = {
         "conversation_history": "Historie konverzace",
         "recent_conversations": "Nedávné konverzace",
         "coming_soon": "Tato sekce se právě připravuje.",
-        "history": "Historie",
-        "favorites": "Oblíbené",
         "settings": "Nastavení",
         "how_to_use": "Jak používat tohoto asistenta?",
         "mock_in_preparation": "Tento modul se právě připravuje. Formulář níže je jen náhled - AI zatím není napojené.",

@@ -34,6 +34,7 @@ from src.components.context_panel import (
 )
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
@@ -64,6 +65,8 @@ _ACTIVITY_KEYS = {
     "ready": "ctx_activity_ready",
     "searching": "ctx_activity_searching",
     "extracting": "ctx_activity_extracting",
+    "followups": "ctx_activity_followups",
+    "waiting_user": "ctx_activity_waiting_user",
     "verifying": "ctx_activity_verifying",
     "scoring": "ctx_activity_scoring",
     "gap_analysis": "ctx_activity_gap",
@@ -266,6 +269,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     panel_holder.setLayout(panel_layout)
 
     def _clear() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         while panel_layout.count():
             item = panel_layout.takeAt(0)
             if item is None:
@@ -275,6 +280,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 w.deleteLater()
 
     def _render() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         _clear()
         cards: list[QWidget] = [
             section_card(
@@ -300,5 +307,12 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         panel_layout.addWidget(shell)
 
     REFS.rerender_context = _render
+
+    def _on_panel_destroyed() -> None:
+        if REFS.rerender_context is _render:
+            REFS.rerender_context = None
+
+    on_destroyed(panel_holder, _on_panel_destroyed)
+
     _render()
     return panel_holder

@@ -26,8 +26,9 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QFont, QMouseEvent
+from PySide6.QtGui import QFont, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -38,13 +39,14 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from src.qt.icons import glyph, icon_font
+from src.qt.icons import Icons, icon_pixmap
 from src.qt.theme import rgba
 from src.theme import Theme
 
@@ -118,9 +120,15 @@ def MutedLabel(
     size: int = 12,
     weight: int | QFont.Weight = QFont.Weight.Normal,
     italic: bool = False,
+    selectable: bool = False,
 ) -> QLabel:
     return _make_label(
-        text, color=theme.text_muted, size=size, weight=weight, italic=italic
+        text,
+        color=theme.text_muted,
+        size=size,
+        weight=weight,
+        italic=italic,
+        selectable=selectable,
     )
 
 
@@ -131,9 +139,15 @@ def SubtleLabel(
     size: int = 11,
     weight: int | QFont.Weight = QFont.Weight.Normal,
     italic: bool = False,
+    selectable: bool = False,
 ) -> QLabel:
     return _make_label(
-        text, color=theme.text_subtle, size=size, weight=weight, italic=italic
+        text,
+        color=theme.text_subtle,
+        size=size,
+        weight=weight,
+        italic=italic,
+        selectable=selectable,
     )
 
 
@@ -221,12 +235,18 @@ def custom_label(
 
 
 class IconLabel(QLabel):
-    """Single Material Icons glyph rendered with the bundled font.
+    """Single MDI6 icon rendered as a ``QPixmap`` via QtAwesome.
 
     Acts like ``ft.Icon(name, color=..., size=...)``: pass the icon
     name (from :class:`src.qt.icons.Icons`), a colour, and a pixel
-    size. The colour is applied via QSS so the icon repaints without
-    the parent having to call ``update()``.
+    size. The colour is baked into the pixmap by QtAwesome, so any
+    state mutation (active / hover / theme switch) re-rasterises the
+    icon - cheap because the underlying font glyph is cached inside
+    QtAwesome's icon engine.
+
+    The ``size + 6`` fixed box matches the pre-migration text-glyph
+    label so existing row layouts (sidebar, header, chat bubbles)
+    keep their spacing without retuning every container.
     """
 
     def __init__(
@@ -237,33 +257,41 @@ class IconLabel(QLabel):
         size: int = 18,
         parent: Optional[QWidget] = None,
     ) -> None:
-        super().__init__(glyph(name), parent)
+        super().__init__(parent)
+        self._name = name
         self._color = color
         self._size = size
-        self.setFont(icon_font(size))
-        self.setStyleSheet(f"color: {color}; background: transparent;")
-        # Material Symbols glyphs sit slightly higher in the em-box
-        # than the old Material Icons font - the extra vertical room
-        # plus an explicit centre alignment keeps them visually
-        # centred inside their fixed-size box.
+        self.setStyleSheet("background: transparent;")
         self.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
         self.setFixedSize(size + 6, size + 6)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        if self._name:
+            self.setPixmap(
+                icon_pixmap(self._name, color=self._color, size=self._size)
+            )
+        else:
+            self.setPixmap(QPixmap())
 
     def set_color(self, color: str) -> None:
         if color == self._color:
             return
         self._color = color
-        self.setStyleSheet(f"color: {color}; background: transparent;")
+        self._refresh()
 
     def set_icon(self, name: str) -> None:
-        self.setText(glyph(name))
+        if name == self._name:
+            return
+        self._name = name
+        self._refresh()
 
     def set_size(self, size: int) -> None:
         if size == self._size:
             return
         self._size = size
-        self.setFont(icon_font(size))
         self.setFixedSize(size + 6, size + 6)
+        self._refresh()
 
 
 # --- containers / cards -----------------------------------------------------
@@ -588,7 +616,7 @@ def status_pill(theme: Theme, *, ok: bool, label: str) -> Pill:
         text=label,
         bg=rgba(color, 0.12),
         fg=color,
-        icon="check_circle" if ok else "radio_button_unchecked",
+        icon=Icons.CHECK_CIRCLE if ok else Icons.RADIO_BUTTON_UNCHECKED,
     )
 
 
@@ -911,6 +939,39 @@ def themed_text_edit(
     return edit
 
 
+# --- scroll-safe pickers ----------------------------------------------------
+
+
+class ScrollSafeComboBox(QComboBox):
+    """``QComboBox`` that ignores mouse-wheel events.
+
+    Qt's default ``QComboBox.wheelEvent`` cycles through the selected
+    item when the user hovers the field and turns the wheel. Inside the
+    AI Hub the combo box is usually parked inside a scroll area (the
+    Setup tab for AI Jobs, the meta row in AI Bug Report, every select
+    field in AI Finance) so any incidental wheel motion silently
+    mutates a setting instead of scrolling the page - the user's
+    "Lokalita" jumps from Brno to Praha while they think they are
+    paging down. Ignoring the event lets the parent ``QScrollArea``
+    handle the scroll exactly as the user expects.
+    """
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
+class ScrollSafeSpinBox(QSpinBox):
+    """``QSpinBox`` that ignores mouse-wheel events.
+
+    Same rationale as :class:`ScrollSafeComboBox` - "Max výsledků" /
+    other numeric pickers must not silently increment when the user
+    scrolls the surrounding form.
+    """
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
 # --- separators -------------------------------------------------------------
 
 
@@ -962,11 +1023,23 @@ def wrap_label_slot(widget: QWidget) -> QWidget:
     collapses to the unwrapped single-line height and the second line
     overlaps the sibling icons.
 
+    We also flip ``heightForWidth`` on the size policy: by default
+    ``QHBoxLayout`` does not honor a child's ``heightForWidth`` even
+    when the child has ``setWordWrap(True)``, which clips the second
+    line of long descriptions ("Povolit vyhledávání na webu v AI chatu"
+    in Settings, "Předchozí hledání" subtitle in AI Jobs History, …).
+    Setting the bit forces the parent layout to ask the child how tall
+    it wants to be at the current width and the wrap survives.
+
     See `.cursor/rules/qt-text.mdc` rule 3 ("the label slot must be
     Expanding / Preferred"). Use this helper instead of inlining the
     policy so a single grep finds every label slot in the app.
     """
-    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    policy = QSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+    )
+    policy.setHeightForWidth(True)
+    widget.setSizePolicy(policy)
     return widget
 
 
@@ -995,6 +1068,8 @@ __all__ = [
     "MutedLabel",
     "Pill",
     "PrimaryButton",
+    "ScrollSafeComboBox",
+    "ScrollSafeSpinBox",
     "SecondaryButton",
     "SubtleLabel",
     "TitleLabel",

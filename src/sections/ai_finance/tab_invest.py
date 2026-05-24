@@ -33,6 +33,11 @@ from src.qt.widgets import (
 )
 from src.services import logger as logger_service
 from src.sections.ai_finance import pipeline
+from src.sections.ai_finance._charts import (
+    AllocationStackedBar,
+    ProjectionSparkline,
+    allocation_legend,
+)
 from src.sections.ai_finance._widgets import (
     amount_bar,
     card_title,
@@ -182,7 +187,15 @@ def _build_form(theme: Theme, lang: str) -> QFrame:
     return card
 
 
-def _scenario_card(theme: Theme, lang: str, scenario: dict, currency: str) -> QFrame:
+def _scenario_card(
+    theme: Theme,
+    lang: str,
+    scenario: dict,
+    currency: str,
+    *,
+    amount: float = 0.0,
+    horizon_years: float = 5.0,
+) -> QFrame:
     txt = s(lang)
     risk_level = scenario.get("risk_level", "moderate")
     risk_color = {
@@ -251,16 +264,33 @@ def _scenario_card(theme: Theme, lang: str, scenario: dict, currency: str) -> QF
     stats_layout.addStretch(1)
     layout.addWidget(stats)
 
-    layout.addWidget(SubtleLabel(txt["invest_scenario_allocation"], theme=theme, size=11))
-    for i, alloc in enumerate(scenario.get("allocation") or []):
-        color = _ASSET_COLORS[i % len(_ASSET_COLORS)]
+    # -- Stacked allocation bar + legend ----
+    allocations = scenario.get("allocation") or []
+    if allocations:
+        segments: list[tuple[str, float, str]] = []
+        for i, alloc in enumerate(allocations):
+            color = _ASSET_COLORS[i % len(_ASSET_COLORS)]
+            segments.append(
+                (
+                    str(alloc.get("asset_class", "")),
+                    float(alloc.get("percent", 0) or 0.0),
+                    color,
+                )
+            )
+        layout.addWidget(SubtleLabel(txt["invest_scenario_allocation"], theme=theme, size=11))
+        layout.addWidget(AllocationStackedBar(segments=segments, theme=theme))
+        layout.addWidget(allocation_legend(theme, segments))
+
+    # -- Projection sparkline (synthesised compounding curve) ----
+    if amount > 0 and horizon_years > 0:
+        layout.addWidget(SubtleLabel(txt["invest_projection_label"], theme=theme, size=11))
         layout.addWidget(
-            amount_bar(
-                theme,
-                label=str(alloc.get("asset_class", "")),
-                value=f"{alloc.get('percent', 0):.0f}%",
-                percent=float(alloc.get("percent", 0)),
-                color=color,
+            ProjectionSparkline(
+                amount=amount,
+                annual_return_pct=float(expected or 0.0),
+                horizon_years=horizon_years,
+                color=risk_color,
+                theme=theme,
             )
         )
     return card
@@ -274,8 +304,19 @@ def _result_view(theme: Theme, lang: str, plan: dict) -> QWidget:
     holder.setLayout(layout)
 
     currency = plan.get("currency") or txt["currency_code"]
+    amount = float(plan.get("amount") or 0.0)
+    horizon_years = float(plan.get("horizon_years") or 0.0)
     for scenario in plan.get("scenarios") or []:
-        layout.addWidget(_scenario_card(theme, lang, scenario, currency))
+        layout.addWidget(
+            _scenario_card(
+                theme,
+                lang,
+                scenario,
+                currency,
+                amount=amount,
+                horizon_years=horizon_years,
+            )
+        )
 
     notes_card, notes_layout = section_card(theme)
     notes_layout.addWidget(

@@ -29,10 +29,12 @@ from src.qt.widgets import (
     PrimaryButton,
     SubtleLabel,
     TitleLabel,
+    custom_label,
     hbox,
     vbox,
     wrap_label_slot,
 )
+from PySide6.QtWidgets import QPlainTextEdit
 from src.services import logger as logger_service
 from src.sections.ai_finance import pipeline
 from src.sections.ai_finance._widgets import (
@@ -293,8 +295,204 @@ def _result_view(theme: Theme, lang: str, budget: dict) -> QWidget:
                 icon=Icons.LIGHTBULB_OUTLINE,
             )
         )
+    layout.addWidget(_build_edit_card(theme, lang))
+    layout.addWidget(_build_savings_card(theme, lang, budget))
     layout.addWidget(disclaimer_pill(theme, label=txt["disclaimer_long"]))
     return holder
+
+
+def _build_edit_card(theme: Theme, lang: str) -> QWidget:
+    """Refine card - sends the user's edit notes through ``edit_budget``.
+
+    Same pattern as AI Career's ``refine_document`` text + button: paste
+    a freeform request, hit *Apply edits*, and the cached budget is
+    rebuilt with the constraints applied. Disabled while a refine is
+    in flight.
+    """
+    txt = s(lang)
+    card, layout = section_card(theme)
+    layout.addWidget(
+        card_title(
+            theme,
+            title=txt["edit_budget_title"],
+            subtitle=txt["edit_budget_hint"],
+            icon=Icons.EDIT_OUTLINED,
+        )
+    )
+
+    editor = QPlainTextEdit()
+    editor.setPlaceholderText(txt["edit_budget_hint"])
+    editor.setStyleSheet(
+        f"""
+        QPlainTextEdit {{
+            background-color: {theme.surface_2};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 13px;
+        }}
+        QPlainTextEdit:focus {{ border-color: {theme.primary}; }}
+        """
+    )
+    editor.setFixedHeight(80)
+    layout.addWidget(editor)
+
+    apply_btn = PrimaryButton(txt["edit_budget_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
+
+    def _on_apply() -> None:
+        text = editor.toPlainText().strip()
+        if not text:
+            return
+        instructions = [line.strip() for line in text.splitlines() if line.strip()]
+        if not instructions:
+            return
+        apply_btn.setEnabled(False)
+
+        def _worker() -> None:
+            try:
+                pipeline.edit_budget(output_lang=lang, instructions=instructions)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_finance.tab_budget", "edit_budget_worker_failed", exc,
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    apply_btn.clicked.connect(_on_apply)
+    btn_row = QFrame()
+    btn_row.setStyleSheet("background: transparent;")
+    btn_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    btn_row.setLayout(btn_layout)
+    btn_layout.addWidget(apply_btn)
+    btn_layout.addStretch(1)
+    layout.addWidget(btn_row)
+    return card
+
+
+def _build_savings_card(theme: Theme, lang: str, budget: dict) -> QWidget:
+    """Savings plan card sourced from ``STATE.savings_plan``.
+
+    Renders milestones and tips when populated; offers a primary
+    "Generate savings plan" button when empty. Pre-fills the call with
+    the budget's saving bucket as a sensible default monthly target.
+    """
+    txt = s(lang)
+    card, layout = section_card(theme)
+    layout.addWidget(
+        card_title(
+            theme,
+            title=txt["savings_card_title"],
+            subtitle=txt["savings_card_subtitle"],
+            icon=Icons.SAVINGS_OUTLINED,
+        )
+    )
+
+    plan = STATE.savings_plan
+    currency = (
+        (plan.get("currency") if isinstance(plan, dict) else None)
+        or budget.get("currency")
+        or txt["currency_code"]
+    )
+
+    if isinstance(plan, dict):
+        stats_row = QFrame()
+        stats_row.setStyleSheet("background: transparent;")
+        stats_layout = hbox(spacing=24, margins=(0, 0, 0, 0))
+        stats_row.setLayout(stats_layout)
+
+        def _stat(label: str, value: str) -> QFrame:
+            col = QFrame()
+            col.setStyleSheet("background: transparent;")
+            col_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
+            col.setLayout(col_layout)
+            col_layout.addWidget(SubtleLabel(label, theme=theme, size=11))
+            col_layout.addWidget(BodyLabel(value, theme=theme, size=15))
+            return col
+
+        monthly = float(plan.get("monthly_contribution") or 0.0)
+        months = float(plan.get("months_to_goal") or 0.0)
+        pct = float(plan.get("percent_of_income") or 0.0)
+        stats_layout.addWidget(_stat(
+            txt["savings_card_monthly"], f"{monthly:,.0f} {currency}".replace(",", " ")
+        ))
+        stats_layout.addWidget(_stat(
+            txt["savings_card_months"], f"{months:.0f}"
+        ))
+        stats_layout.addWidget(_stat(
+            txt["savings_card_percent"], f"{pct:.1f}%"
+        ))
+        stats_layout.addStretch(1)
+        layout.addWidget(stats_row)
+
+        milestones = plan.get("milestones") or []
+        if milestones:
+            ms_items = [
+                f"**{m.get('label', '')}** - {m.get('amount', 0):,.0f} {currency} ({m.get('after_months', 0)} mo)".replace(",", " ")
+                for m in milestones
+            ]
+            layout.addWidget(
+                list_card(
+                    theme,
+                    title=txt["savings_milestones_title"],
+                    items=ms_items,
+                    icon=Icons.FLAG_OUTLINED,
+                )
+            )
+        tips = plan.get("tips") or []
+        if tips:
+            layout.addWidget(
+                list_card(
+                    theme,
+                    title=txt["savings_tips_title"],
+                    items=list(tips),
+                    icon=Icons.LIGHTBULB_OUTLINE,
+                )
+            )
+    else:
+        layout.addWidget(MutedLabel(txt["savings_empty"], theme=theme, size=12))
+
+    btn = GhostButton(
+        txt["savings_card_title"], theme=theme, icon=Icons.AUTO_AWESOME,
+    )
+
+    def _on_generate() -> None:
+        btn.setEnabled(False)
+        income = float(budget.get("income") or 0.0)
+        saving_split = (budget.get("splits") or {}).get("saving") or {}
+        monthly_default = float(saving_split.get("amount") or 0.0)
+        goal_amount = max(monthly_default * 12.0, monthly_default)
+        if goal_amount <= 0:
+            goal_amount = max(income * 0.5, 10000.0)
+
+        def _worker() -> None:
+            try:
+                pipeline.generate_savings_plan(
+                    output_lang=lang,
+                    currency=currency,
+                    income=income,
+                    current_savings=0.0,
+                    goal_amount=goal_amount,
+                    goal_label="3-month emergency fund",
+                    target_months=12,
+                    notes="Auto-derived from your budget's saving bucket.",
+                )
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_finance.tab_budget", "generate_savings_plan_worker_failed", exc,
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    btn.clicked.connect(_on_generate)
+    btn_row = QFrame()
+    btn_row.setStyleSheet("background: transparent;")
+    btn_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    btn_row.setLayout(btn_layout)
+    btn_layout.addStretch(1)
+    btn_layout.addWidget(btn)
+    layout.addWidget(btn_row)
+    return card
 
 
 def build_budget_tab(theme: Theme, lang: str) -> QWidget:

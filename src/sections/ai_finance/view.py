@@ -22,7 +22,6 @@ import threading
 from PySide6.QtWidgets import QFrame, QMessageBox, QWidget
 
 from src.components.header import HeaderMenuItem, header
-from src.components.mock_panel import mock_card_grid_panel
 from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
@@ -51,6 +50,7 @@ from src.sections.ai_finance.tab_chat import build_chat_tab
 from src.sections.ai_finance.tab_insurance import build_insurance_tab
 from src.sections.ai_finance.tab_invest import build_invest_tab
 from src.sections.ai_finance.tab_taxes import build_taxes_tab
+from src.sections.ai_finance.tab_templates import build_templates_tab
 from src.services import logger as logger_service
 from src.services import store
 from src.theme import Theme
@@ -105,46 +105,8 @@ def _navigate_tab(index: int) -> None:
 
 
 def _build_templates_panel(theme: Theme, lang: str) -> QWidget:
-    """Static template grid - keeps the old four cards intact."""
-    txt = s(lang)
-    cards = [
-        {
-            "icon": Icons.PIE_CHART_OUTLINE,
-            "title": txt["fin_tpl_budget_title"],
-            "description": txt["fin_tpl_budget_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#22C55E",
-        },
-        {
-            "icon": Icons.SHOW_CHART,
-            "title": txt["fin_tpl_invest_title"],
-            "description": txt["fin_tpl_invest_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#3B82F6",
-        },
-        {
-            "icon": Icons.CREDIT_CARD,
-            "title": txt["fin_tpl_debt_title"],
-            "description": txt["fin_tpl_debt_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#F59E0B",
-        },
-        {
-            "icon": Icons.HEALTH_AND_SAFETY,
-            "title": txt["fin_tpl_emergency_title"],
-            "description": txt["fin_tpl_emergency_desc"],
-            "action_label": txt["fin_tpl_use"],
-            "color": "#EF4444",
-        },
-    ]
-    return mock_card_grid_panel(
-        theme,
-        lang,
-        icon=Icons.GRID_VIEW_OUTLINED,
-        title=txt["fin_tpl_title"],
-        description=txt["fin_tpl_desc"],
-        cards=cards,
-    )
+    """Real saved-runs grid - lists outputs/ai_finance/<run-slug>/."""
+    return build_templates_tab(theme, lang)
 
 
 def _build_tab_body(theme: Theme, lang: str) -> QWidget:
@@ -238,7 +200,20 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     def _menu_how_to() -> None:
         open_finance_how_to(get_main_window(), theme, lang)
 
+    def _menu_toggle_demo() -> None:
+        new_value = not STATE.demo_mode
+        STATE.demo_mode = new_value
+        logger_service.log_event(
+            "INFO", "ai_finance.view", "demo_mode_toggle",
+            enabled=new_value,
+        )
+        _show_message(
+            txt["menu_demo_on"] if new_value else txt["menu_demo_off"]
+        )
+        _refresh()
+
     has_analyses = STATE.has_any_analysis()
+    demo_label = txt["menu_demo_off"] if STATE.demo_mode else txt["menu_demo_on"]
     menu_items: list[HeaderMenuItem] = [
         HeaderMenuItem(
             icon=Icons.POST_ADD,
@@ -255,6 +230,11 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             icon=Icons.FOLDER_OPEN,
             label=txt["menu_open_folder"],
             on_click=_menu_open_folder,
+        ),
+        HeaderMenuItem(
+            icon=Icons.AUTO_AWESOME,
+            label=demo_label,
+            on_click=_menu_toggle_demo,
         ),
         HeaderMenuItem(
             icon=Icons.MENU_BOOK_OUTLINED,

@@ -429,6 +429,50 @@ def build_insurance_user(
     return "\n".join(parts)
 
 
+# Personalised AI tip --------------------------------------------------
+
+
+TIP_SYSTEM = (
+    FINANCE_EXPERT_RULES
+    + "\n\nTASK: Write ONE personalised, actionable finance tip based on "
+    "the user's cached analyses. Return ONLY the FinanceTip JSON.\n\n"
+    "RULES:\n"
+    "* The tip must reference at least one concrete number from the "
+    "cached analyses (e.g. 'You spend 4 200 Kč/mo on subscriptions'). "
+    "Never invent numbers.\n"
+    "* ``title``: 3-6 words, no emoji, no markdown.\n"
+    "* ``body``: 2-3 short sentences explaining the insight in plain "
+    "language. Avoid jargon.\n"
+    "* ``next_step``: ONE concrete action the user can take this week.\n"
+    "* ``category``: pick the bucket the tip applies to.\n"
+    "* If multiple analyses exist, pick the one with the most concrete "
+    "number/leverage (typically expense_analysis recurring + budget)."
+)
+
+
+def build_tip_user(
+    *,
+    output_lang: str,
+    structured_context: dict[str, Any],
+) -> str:
+    """Render the cached analyses for the tip generator."""
+    parts = [
+        language_directive(output_lang),
+        "",
+        "=== CACHED ANALYSES (use as ground truth, do not invent) ===",
+    ]
+    for key, value in structured_context.items():
+        if value is None:
+            continue
+        parts.append(f"--- {key} ---")
+        parts.append(json.dumps(value, ensure_ascii=False))
+    parts += [
+        "",
+        "Return ONLY the FinanceTip JSON described by the schema.",
+    ]
+    return "\n".join(parts)
+
+
 # Chat mode ------------------------------------------------------------
 
 

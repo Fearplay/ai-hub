@@ -1,6 +1,13 @@
 # Desktop UI - Qt for Python (Qt 6.x)
 PySide6>=6.7.0
 
+# Icon set - QtAwesome bundles Font Awesome / Material Design Icons /
+# Phosphor / Remix / Codicons inside its wheel and renders each glyph
+# to a ``QIcon`` / ``QPixmap`` via the Qt font database. We standardise
+# on Material Design Icons 6 (``mdi6.*``) - see ``src/qt/icons.py``.
+# Used everywhere: sidebar entries, section headers, buttons, pills.
+qtawesome>=1.4.0
+
 # Native OS trust store for HTTPS (Windows CryptoAPI / macOS Security /
 # Linux OpenSSL). Activated once at the top of main.py via
 # truststore.inject_into_ssl(); fixes corporate-proxy / antivirus
@@ -8,6 +15,12 @@ PySide6>=6.7.0
 # resolve. Per upstream guidance, only injected from the application
 # entry point - never inside library / section code.
 truststore~=0.10
+
+# Mozilla CA bundle. Required by libcurl (curl_cffi -> yfinance) which
+# does NOT inherit Python's SSL configuration patched by truststore. We
+# point libcurl at certifi's PEM via the CURL_CA_BUNDLE env var in
+# main.py so live market data works on stock Windows Python builds.
+certifi>=2024.2.2
 
 # AI providers (called only via src.services.ai_provider; sections never import these directly)
 openai>=1.50.0

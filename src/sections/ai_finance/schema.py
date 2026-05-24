@@ -335,6 +335,30 @@ TAX_CHECKLIST_SCHEMA: dict = {
 }
 
 
+TIP_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title", "body", "next_step", "category"],
+    "properties": {
+        "title": {"type": "string"},
+        "body": {"type": "string"},
+        "next_step": {"type": "string"},
+        "category": {
+            "type": "string",
+            "enum": [
+                "budget",
+                "savings",
+                "investing",
+                "expenses",
+                "taxes",
+                "insurance",
+                "general",
+            ],
+        },
+    },
+}
+
+
 INSURANCE_REVIEW_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,

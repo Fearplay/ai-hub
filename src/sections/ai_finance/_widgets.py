@@ -14,7 +14,6 @@ from typing import Callable, Optional, Sequence
 from PySide6.QtCore import QEvent, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -33,6 +32,7 @@ from src.qt.widgets import (
     BodyLabel,
     IconLabel,
     MutedLabel,
+    ScrollSafeComboBox,
     SubtleLabel,
     TitleLabel,
     custom_label,
@@ -269,7 +269,7 @@ def labelled_combo(
     label: str,
     options: Sequence[tuple[str, str]],
     initial_value: str = "",
-) -> tuple[QFrame, QComboBox]:
+) -> tuple[QFrame, ScrollSafeComboBox]:
     """Combo box with paired ``(value, label)`` tuples.
 
     ``initial_value`` matches one of the option values; the visible
@@ -281,7 +281,7 @@ def labelled_combo(
     layout = vbox(spacing=4, margins=(0, 0, 0, 0))
     holder.setLayout(layout)
     layout.addWidget(BodyLabel(label, theme=theme, size=12, weight=QFont.Weight.DemiBold))
-    combo = QComboBox()
+    combo = ScrollSafeComboBox()
     combo.setStyleSheet(
         f"""
         QComboBox {{

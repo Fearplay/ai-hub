@@ -595,8 +595,8 @@ def _general_card(
     ) -> QFrame:
         row = QFrame()
         row.setStyleSheet("background: transparent;")
-        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        rl = hbox(spacing=10, margins=(2, 8, 2, 8))
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        rl = hbox(spacing=12, margins=(2, 10, 2, 10))
         rl.setAlignment(Qt.AlignmentFlag.AlignTop)
         row.setLayout(rl)
 
@@ -610,7 +610,8 @@ def _general_card(
         desc_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         tl.addWidget(desc_label)
         rl.addWidget(text_holder, 1)
-        rl.addWidget(_toggle_switch(theme, checked=checked, on_change=on_change))
+        switch = _toggle_switch(theme, checked=checked, on_change=on_change)
+        rl.addWidget(switch, 0, Qt.AlignmentFlag.AlignTop)
         return row
 
     def _on_web_search_change(value: bool) -> None:

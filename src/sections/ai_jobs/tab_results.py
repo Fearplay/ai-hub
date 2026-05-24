@@ -181,6 +181,31 @@ def _inactive_pill(theme: Theme, txt: dict, *, marker: str = "") -> QFrame:
     return pill
 
 
+def _relaxed_pill(theme: Theme, txt: dict) -> QFrame:
+    """Amber "Less relevant" pill for results from the relaxed pass.
+
+    The pipeline runs a final relaxed broad pass when the strict
+    top-ups cannot fill the user's active target; this pill warns the
+    user that the posting still active but came from a broader search
+    (adjacent role or nearby city). Mirrors :func:`_inactive_pill`'s
+    structure so the title row keeps a consistent visual rhythm.
+    """
+    color = "#F59E0B"  # warn - matches the relaxed-pill CSS in the HTML export
+    pill = QFrame()
+    pill.setStyleSheet(
+        f"background-color: {rgba(color, 0.18)}; border-radius: 9px;"
+    )
+    layout = hbox(spacing=4, margins=(8, 3, 8, 3))
+    pill.setLayout(layout)
+    layout.addWidget(custom_label(
+        txt["results_relaxed_pill"],
+        color=color, size=10, weight=QFont.Weight.Bold,
+    ))
+    pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    pill.setToolTip(txt["results_relaxed_tooltip"])
+    return pill
+
+
 def _skill_chip(theme: Theme, label: str, *, color: str, fill: str) -> QFrame:
     """Small pill that mirrors the saved-HTML ``.skill-chip`` look.
 
@@ -269,17 +294,23 @@ def _position_card(
     on_link_copied: Callable[[str], None],
 ) -> QFrame:
     is_active = bool(item.get("is_active", True))
+    is_relaxed = bool(item.get("is_relaxed", False))
     card = QFrame()
     card.setObjectName("JobsResultCard")
-    if is_active:
-        border = theme.border
-        bg = theme.surface
-    else:
+    if not is_active:
         # Muted look for closed listings so the live ones pop visually,
         # without hiding them - the user has to be able to verify the
         # marker detection by clicking through.
         border = rgba("#EF4444", 0.32)
         bg = rgba(theme.surface, 0.7)
+    elif is_relaxed:
+        # Subtle amber border for relaxed active postings - same colour
+        # as the pill so the two visual cues reinforce each other.
+        border = rgba("#F59E0B", 0.32)
+        bg = theme.surface
+    else:
+        border = theme.border
+        bg = theme.surface
     card.setStyleSheet(
         f"""
         QFrame#JobsResultCard {{
@@ -303,6 +334,8 @@ def _position_card(
     if not is_active:
         marker = (item.get("inactive_reason") or "").strip()
         title_layout.addWidget(_inactive_pill(theme, txt, marker=marker))
+    elif is_relaxed:
+        title_layout.addWidget(_relaxed_pill(theme, txt))
     match_pill = _match_pill(theme, txt, item.get("match_score"))
     if match_pill is not None:
         title_layout.addWidget(match_pill)

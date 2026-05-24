@@ -45,12 +45,14 @@ from src.components.context_panel import (
 )
 from src.components.section_card import section_card
 from src.qt.icons import Icons
+from src.qt.lifecycle import is_widget_alive, on_destroyed
 from src.qt.runtime import get_main_window
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
     GhostButton,
     IconLabel,
+    IconOnlyButton,
     MutedLabel,
     PrimaryButton,
     SubtleLabel,
@@ -177,7 +179,11 @@ def _format_change(pct: float) -> str:
 
 def _ticker_row(theme: Theme, ticker: dict) -> ClickFrame:
     trend = ticker.get("trend") or ("up" if (ticker.get("change_pct") or 0) >= 0 else "down")
-    trend_color = TREND_UP if trend == "up" else TREND_DOWN
+    trend_color = (
+        TREND_UP if trend == "up"
+        else TREND_DOWN if trend == "down"
+        else theme.text_muted
+    )
 
     row = ClickFrame()
     row.setStyleSheet(
@@ -232,6 +238,21 @@ def _ticker_row(theme: Theme, ticker: dict) -> ClickFrame:
     return row
 
 
+def _ticker_label(txt: dict, symbol: str, fallback: str) -> str:
+    """Return a localised ticker label when we have one."""
+    if symbol == "^GSPC":
+        return txt["ticker_sp500"]
+    if symbol == "^IXIC":
+        return txt["ticker_nasdaq"]
+    if symbol == "^DJI":
+        return txt["ticker_dow"]
+    if symbol == "BTC-USD":
+        return txt["ticker_btc"]
+    if symbol == "EURCZK=X":
+        return txt["ticker_eur"]
+    return fallback or symbol
+
+
 def _live_tickers(lang: str) -> list[dict]:
     """Map ``STATE.markets`` (LiveQuote payload) onto the panel format."""
     txt = s(lang)
@@ -241,17 +262,7 @@ def _live_tickers(lang: str) -> list[dict]:
     for q in STATE.markets:
         symbol = q.get("symbol", "")
         friendly, color = market_meta_for(symbol)
-        # honour the per-language labels for the headline tickers
-        if symbol == "^GSPC":
-            friendly = txt["ticker_sp500"]
-        elif symbol == "^IXIC":
-            friendly = txt["ticker_nasdaq"]
-        elif symbol == "^DJI":
-            friendly = txt["ticker_dow"]
-        elif symbol == "BTC-USD":
-            friendly = txt["ticker_btc"]
-        elif symbol == "EURCZK=X":
-            friendly = txt["ticker_eur"]
+        friendly = _ticker_label(txt, symbol, friendly)
         rows.append({
             "symbol": symbol,
             "symbol_label": friendly,
@@ -294,12 +305,35 @@ def _markets_body(theme: Theme, lang: str) -> QFrame:
         )
         return rows_holder
     if STATE.markets_error and not live_rows:
+        # ``markets_error`` holds either a localisation key (e.g. set
+        # by ``refresh_markets`` on a zero-quote response) or a raw
+        # exception string. Try the localised version first so the user
+        # always sees translated copy when we have it.
+        error_msg = txt.get(STATE.markets_error)
+        if not error_msg:
+            error_msg = txt["markets_error_generic"].format(
+                error=STATE.markets_error
+            )
         rows_layout.addWidget(custom_label(
-            STATE.markets_error, color=theme.text_muted, size=11, italic=True,
+            error_msg, color="#EF4444", size=11, italic=True,
         ))
         return rows_holder
     if not live_rows:
         if STATE.markets_loading:
+            # Show the user's saved watchlist immediately while live data
+            # is still in flight so the card does not look empty.
+            for symbol in configured[:5]:
+                fallback_name, color = market_meta_for(symbol)
+                rows_layout.addWidget(_ticker_row(theme, {
+                    "symbol": symbol,
+                    "symbol_label": _ticker_label(txt, symbol, fallback_name),
+                    "icon": _ICON_OVERRIDES.get(symbol, Icons.SHOW_CHART),
+                    "icon_color": color,
+                    "value": "...",
+                    "change": "...",
+                    "trend": "flat",
+                    "spark": [],
+                }))
             rows_layout.addWidget(
                 SubtleLabel(txt["markets_loading"], theme=theme, size=11, italic=True)
             )
@@ -412,8 +446,75 @@ def _analyses_card(theme: Theme, lang: str) -> QFrame:
 
 
 def _tip_body(theme: Theme, lang: str) -> QWidget:
+    """Render the AI-generated tip card body.
+
+    Three states:
+
+    * ``STATE.tip_running`` -> shimmer label.
+    * ``STATE.tip`` populated -> title + body + next-step pill +
+      "Generate new tip" button.
+    * Empty -> static empty-state copy plus a button to kick off a
+      generation if at least one analysis already exists.
+    """
     txt = s(lang)
-    return BodyLabel(txt["tip_empty"], theme=theme, size=12, selectable=True)
+    holder = QFrame()
+    holder.setStyleSheet("background: transparent;")
+    layout = vbox(spacing=8, margins=(0, 0, 0, 0))
+    holder.setLayout(layout)
+
+    if STATE.tip_running:
+        layout.addWidget(SubtleLabel(txt["tip_thinking"], theme=theme, size=12, italic=True))
+        return holder
+
+    tip = STATE.tip
+    if isinstance(tip, dict) and (tip.get("title") or tip.get("body")):
+        title = tip.get("title") or ""
+        body = tip.get("body") or ""
+        next_step = tip.get("next_step") or ""
+        if title:
+            layout.addWidget(BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold))
+        if body:
+            layout.addWidget(BodyLabel(body, theme=theme, size=12, selectable=True))
+        if next_step:
+            step_holder = QFrame()
+            step_holder.setStyleSheet(
+                f"background-color: {theme.surface_2}; border-radius: 8px;"
+            )
+            step_layout = vbox(spacing=2, margins=(10, 8, 10, 8))
+            step_holder.setLayout(step_layout)
+            step_layout.addWidget(SubtleLabel(txt["tip_next_step_label"], theme=theme, size=10, italic=True))
+            step_layout.addWidget(BodyLabel(next_step, theme=theme, size=12, selectable=True))
+            layout.addWidget(step_holder)
+    else:
+        layout.addWidget(BodyLabel(txt["tip_empty"], theme=theme, size=12, selectable=True))
+
+    # "Generate new tip" button - only enabled if at least one analysis
+    # is cached on STATE; otherwise the tip generator returns early
+    # anyway and the user just gets the empty state again.
+    if STATE.has_any_analysis():
+        btn = GhostButton(txt["tip_regenerate_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
+        btn.setMinimumHeight(28)
+        btn.setStyleSheet(
+            btn.styleSheet() + "QPushButton { padding: 4px 12px; font-size: 11px; }"
+        )
+        btn.setToolTip(txt["tip_regenerate_tooltip"])
+        btn.clicked.connect(lambda: _on_regenerate_tip(lang))
+        layout.addWidget(btn)
+    return holder
+
+
+def _on_regenerate_tip(lang: str) -> None:
+    """Spawn a daemon thread that regenerates the AI tip from STATE."""
+
+    def _worker() -> None:
+        try:
+            pipeline.generate_tip(output_lang=lang)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_finance.context", "regenerate_tip_failed", exc,
+            )
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _open_tickers_dialog(theme: Theme, lang: str) -> None:
@@ -637,21 +738,67 @@ def _maybe_refresh_markets() -> None:
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def _force_refresh_markets() -> None:
+    """Bypass the 60-second throttle and refetch live quotes now.
+
+    Wired to the icon-only refresh button next to the Edit button. We
+    clear ``markets_fetched_at`` AND the in-process ``_MARKETS_LAST_FETCH``
+    cache so :func:`_maybe_refresh_markets` actually spawns a worker
+    even if the previous fetch finished a few seconds ago. The card
+    rerenders immediately so the loading state is visible while the
+    daemon thread is in flight.
+    """
+    if not settings_store.get_market_data_enabled():
+        return
+    STATE.markets_fetched_at = 0.0
+    STATE.markets_error = ""
+    _MARKETS_LAST_FETCH["at"] = 0.0
+    STATE.markets_loading = True
+    REFS.request_context_refresh()
+    logger_service.log_event(
+        "INFO", "ai_finance.context", "markets_refresh_clicked"
+    )
+    _maybe_refresh_markets()
+
+
 def _markets_card(theme: Theme, lang: str) -> QWidget:
-    """Markets card with an in-header ``Upravit`` editor button."""
+    """Markets card with refresh + Edit buttons in the header.
+
+    The refresh button skips the 60-second throttle so the user can
+    actively pull new quotes; the Edit button opens the ticker editor.
+    Both live in a tiny ``QFrame`` because :func:`section_card`'s
+    ``trailing`` slot only accepts a single widget.
+    """
     txt = s(lang)
+    actions_holder = QFrame()
+    actions_holder.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=6, margins=(0, 0, 0, 0))
+    actions_holder.setLayout(actions_layout)
+
+    refresh_btn = IconOnlyButton(
+        Icons.REFRESH,
+        color=theme.text_muted,
+        size=16,
+        bg_hover=theme.surface_2,
+        tooltip=txt["markets_refresh_tooltip"],
+    )
+    refresh_btn.clicked.connect(_force_refresh_markets)
+    actions_layout.addWidget(refresh_btn)
+
     edit_btn = GhostButton(
         txt["markets_edit"], theme=theme, icon=Icons.EDIT_OUTLINED
     )
     edit_btn.setMinimumHeight(28)
     edit_btn.setStyleSheet(edit_btn.styleSheet() + "QPushButton { padding: 4px 10px; font-size: 11px; }")
     edit_btn.clicked.connect(lambda: _open_tickers_dialog(theme, lang))
+    actions_layout.addWidget(edit_btn)
+
     return section_card(
         theme,
         icon=Icons.SHOW_CHART,
         title=txt["markets_title"],
         body=_markets_body(theme, lang),
-        trailing=edit_btn,
+        trailing=actions_holder,
     )
 
 
@@ -664,6 +811,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
     panel_holder.setLayout(panel_layout)
 
     def _clear() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         while panel_layout.count():
             item = panel_layout.takeAt(0)
             if item is None:
@@ -673,6 +822,8 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 w.deleteLater()
 
     def _render() -> None:
+        if not is_widget_alive(panel_holder):
+            return
         _clear()
         cards: list[QWidget] = [
             section_card(
@@ -705,6 +856,13 @@ def build_context(theme: Theme, lang: str) -> QWidget:
         panel_layout.addWidget(shell)
 
     REFS.rerender_context = _render
+
+    def _on_panel_destroyed() -> None:
+        if REFS.rerender_context is _render:
+            REFS.rerender_context = None
+
+    on_destroyed(panel_holder, _on_panel_destroyed)
+
     _render()
 
     QTimer.singleShot(50, _maybe_refresh_markets)

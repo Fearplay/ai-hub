@@ -170,6 +170,91 @@ MATCH_SCHEMA: dict = {
 # ---------------------------------------------------------------------------
 
 
+FOLLOWUP_QUESTIONS_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["questions"],
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 8,
+            "description": (
+                "0-8 clarifying questions about the user's profile or "
+                "search criteria that would change which postings the "
+                "discovery + scoring passes return. Empty array when "
+                "the inputs already let us search confidently."
+            ),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "topic",
+                    "question",
+                    "rationale",
+                    "options",
+                    "multi_select",
+                    "allow_free_text",
+                ],
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": (
+                            "Short label - 1-3 words, e.g. 'Seniority', "
+                            "'Remote', 'Salary'."
+                        ),
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "Direct question to the user (you / vy). "
+                            "Answerable in 1-2 sentences. Asked because "
+                            "it would change the discovery filter or the "
+                            "match score."
+                        ),
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": (
+                            "One short sentence: why we are asking and "
+                            "which downstream pass it would feed."
+                        ),
+                    },
+                    "options": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "items": {"type": "string"},
+                        "description": (
+                            "2-6 short, plausible answer options the user "
+                            "can pick from. Examples for 'Are you open to "
+                            "hybrid work?': ['Remote only', 'Hybrid OK', "
+                            "'Onsite OK']. Make options mutually exclusive "
+                            "when multi_select=false. Always written in "
+                            "OUTPUT_LANGUAGE."
+                        ),
+                    },
+                    "multi_select": {
+                        "type": "boolean",
+                        "description": (
+                            "True when several options can apply at once. "
+                            "False for single-choice questions."
+                        ),
+                    },
+                    "allow_free_text": {
+                        "type": "boolean",
+                        "description": (
+                            "True when the user may add an 'Other' answer "
+                            "with their own short text."
+                        ),
+                    },
+                },
+            },
+        },
+    },
+}
+
+
 SKILL_GAP_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,

@@ -267,11 +267,24 @@ class ReorderableNavRow(QFrame):
         return self._section_key
 
     def set_active_style(self, theme: Theme, *, active: bool) -> None:
-        if self._grip is None:
-            return
         self._theme_primary = theme.primary
-        # Grip stays subtle until hovered.
-        self._grip.set_color(theme.text_muted if active else theme.text_subtle)
+        if self._grip is not None:
+            # Grip stays subtle until hovered.
+            self._grip.set_color(theme.text_muted if active else theme.text_subtle)
+        if self._click_frame is not None:
+            bg = theme.primary_tint if active else "transparent"
+            hover_bg = rgba(theme.primary, 0.10)
+            self._click_frame.setStyleSheet(
+                f"""
+                ClickFrame {{
+                    background-color: {bg};
+                    border-radius: 10px;
+                }}
+                ClickFrame:hover {{
+                    background-color: {hover_bg if not active else theme.primary_tint};
+                }}
+                """
+            )
 
     # ---- drag source ----
 

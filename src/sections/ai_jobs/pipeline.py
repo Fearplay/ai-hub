@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 from src.services import ai_provider, job_scraper, settings_store, store
@@ -82,12 +82,21 @@ _SCORE_WORKERS = 5
 _CANDIDATE_OVERFETCH = 2
 _CANDIDATE_CAP = 40
 
-# How many extra discovery passes we are willing to spend per run when
-# the first verification round leaves us short of the user's target.
-# One top-up is usually enough to reach the target on regions where
-# many URLs go stale fast (LinkedIn / prace.cz) without doubling the
-# token bill.
-_MAX_TOPUP_ATTEMPTS = 1
+# How many extra strict-mode discovery passes we are willing to spend
+# per run when verification leaves us short of the user's target. We
+# try up to three strict top-ups before falling back to the relaxed
+# pass below - that matches the user contract "always try to hit the
+# active target first, before broadening the search".
+_MAX_TOPUP_ATTEMPTS = 3
+
+# After the strict top-ups exhaust, we are allowed exactly one relaxed
+# pass: search_mode is overridden to ``"broad"`` and the prompt asks
+# the model to widen the geography / consider adjacent roles. The
+# resulting postings are flagged ``is_relaxed=True`` so the UI can
+# render a "Less relevant" pill - they still count toward the active
+# target (per user contract: "if relevance has to drop, that's fine,
+# still give me the number I asked for") but are surfaced as such.
+_MAX_RELAXED_ATTEMPTS = 1
 
 # Inactive-listings transparency cap. The user explicitly asked for
 # closed listings to stay visible "so I can verify detection works",
@@ -343,6 +352,11 @@ def _normalise_position(raw: Any) -> Optional[dict]:
         # verification pass runs.
         "is_active": True,
         "inactive_reason": "",
+        # Whether this row came from the relaxed broad-search pass that
+        # fires when strict top-ups cannot reach ``target_active``.
+        # ``False`` for the initial discovery and every strict top-up;
+        # the relaxed pass below flips this to ``True`` post-extraction.
+        "is_relaxed": False,
         # Pass 4 outputs (filled in later, default to empty for templating).
         "match_score": None,
         "matched_skills": [],
@@ -385,21 +399,32 @@ def _run_discovery_extraction(
     target_active: int,
     excluded_urls: tuple[str, ...] = (),
     stage_prefix: str = "",
+    relaxed_pass: bool = False,
+    followup_qa: tuple[dict, ...] = (),
 ) -> tuple[list[dict], str]:
     """Run pass 1 (web-search discovery) + pass 2 (JSON extraction).
 
     Returns ``(cleaned_positions, summary_text)``. ``cleaned_positions``
     is already deduplicated and capped at ``candidate_target``.
 
-    The same helper drives both the initial discovery and the optional
-    top-up pass that fires when too many URLs verify as inactive. The
-    only differences are ``candidate_target`` (how many candidates to
-    ask for) and ``excluded_urls`` (URLs already on the result list -
-    the prompt asks the model to return DIFFERENT ones).
+    The same helper drives the initial discovery, the strict top-up
+    passes (up to :data:`_MAX_TOPUP_ATTEMPTS`), and the single relaxed
+    pass that fires after the strict top-ups exhaust. The differences
+    are:
+
+    - ``candidate_target`` controls how many candidates we ask for.
+    - ``excluded_urls`` is the URLs the caller already has - the
+      prompt asks the model to return DIFFERENT ones.
+    - ``search_mode`` is whatever the user picked for strict passes
+      and is forced to ``"broad"`` for the relaxed pass.
+    - ``relaxed_pass=True`` adds an explicit "broaden to adjacent
+      roles / nearby cities" instruction block to the prompt and is
+      threaded into the post-extraction ``is_relaxed`` flag.
 
     Raises :class:`ai_provider.ProviderError` on hard provider failure
     so the caller can decide whether to short-circuit (initial pass)
-    or just fall back to whatever it already has (top-up pass).
+    or just fall back to whatever it already has (top-up + relaxed
+    passes both treat the failure as "no extra results").
     """
     discovery_stage = f"{stage_prefix}discovery" if stage_prefix else "discovery"
     extraction_stage = f"{stage_prefix}extraction" if stage_prefix else "extraction"
@@ -431,6 +456,8 @@ def _run_discovery_extraction(
         salary_min=salary_min,
         salary_currency=salary_currency,
         excluded_urls=excluded_urls,
+        relaxed_pass=relaxed_pass,
+        followup_qa=followup_qa,
     )
     discovery = _provider_call(
         stage=discovery_stage,
@@ -483,6 +510,8 @@ def _run_discovery_extraction(
         if normalised["url"] in seen_urls:
             continue
         seen_urls.add(normalised["url"])
+        if relaxed_pass:
+            normalised["is_relaxed"] = True
         cleaned.append(normalised)
         if len(cleaned) >= candidate_target:
             break
@@ -526,6 +555,163 @@ def _run_verification(cleaned: list[dict]) -> tuple[list[dict], int]:
         item["inactive_reason"] = str(status.get("marker") or "")
         survivors.append(item)
     return survivors, len(cleaned) - len(survivors)
+
+
+# ---------------------------------------------------------------------------
+# Pass 0 - clarifying follow-up questions (optional)
+# ---------------------------------------------------------------------------
+#
+# AI Career runs the same dialog at the view level by splitting the
+# worker into two phases. AI Jobs has a much larger ``run_search``
+# function (5 passes + top-up + relaxed fallback) so splitting it would
+# bloat the view side. Instead, we keep the single ``run_search``
+# function and let the view register a *resolver* callable that the
+# pipeline can call from the worker thread:
+#
+#     pipeline.set_followup_resolver(my_resolver)
+#
+# When the resolver is set AND the user has follow-ups enabled (per
+# ``settings_store.get_ask_followups()``), the pipeline calls
+# ``generate_followup_questions`` between the input-prep step and the
+# discovery pass, then hands the question list to the resolver which is
+# expected to:
+#
+#   1. Open the modal on the GUI thread (via ``REFS.dispatch(...)``).
+#   2. Block until the user finishes answering or cancels (the view
+#      side typically signals a ``threading.Event``).
+#   3. Return the list of answer dicts (empty list = "skip"). Returning
+#      ``None`` means the user cancelled - the pipeline aborts cleanly.
+#
+# The resolver is module-level state but the view sets it once per
+# build_view, so there is no race - the worker is started AFTER the
+# resolver is registered, and the resolver is cleared on every build
+# so a stale closure cannot leak across reloads.
+_followup_resolver: Optional[Callable[[list[dict]], Optional[list[dict]]]] = None
+
+
+def set_followup_resolver(
+    resolver: Optional[Callable[[list[dict]], Optional[list[dict]]]],
+) -> None:
+    """Register / clear the GUI-side follow-up dialog resolver.
+
+    Pass ``None`` from the view's destroyed-signal handler so a
+    rebuilt view does not race against a worker thread holding a
+    stale closure over the previous build's modal.
+    """
+    global _followup_resolver
+    _followup_resolver = resolver
+
+
+def generate_followup_questions(*, output_lang: str) -> PipelineResult:
+    """Run Pass 0 - ask the LLM what facts it would otherwise have to invent.
+
+    Returns ``PipelineResult(ok=True)`` and stores 0-8 questions in
+    ``STATE.followup_questions``. Demo mode and zero-input
+    short-circuit so the call never wastes tokens.
+    """
+    logger_service.log_event(
+        "INFO",
+        "ai_jobs.pipeline",
+        "generate_followup_questions_start",
+        output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
+    )
+
+    if STATE.demo_mode:
+        STATE.followup_questions = []
+        logger_service.log_event(
+            "INFO",
+            "ai_jobs.pipeline",
+            "generate_followup_questions_demo_done",
+        )
+        return PipelineResult(ok=True)
+
+    if not STATE.can_run():
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
+
+    profile_file = STATE.profile_file
+    location_query, location_label = _resolve_location(
+        STATE.location_preset, STATE.location_custom,
+    )
+
+    user_msg = prompts.build_followup_user(
+        output_lang=output_lang,
+        keywords=STATE.keywords,
+        location_label=location_label or location_query,
+        work_mode=STATE.work_mode,
+        seniority=STATE.seniority,
+        profile_text=STATE.profile_text,
+        profile_file_text=(profile_file.text if profile_file else ""),
+        profile_file_name=(profile_file.name if profile_file else ""),
+        linkedin_url=STATE.linkedin_url,
+        tech_skills=STATE.tech_skills,
+        additional_experience=STATE.additional_experience,
+        contract_types=tuple(STATE.contract_types),
+        excluded_keywords=STATE.excluded_keywords,
+        excluded_companies=STATE.excluded_companies,
+        excluded_locations=STATE.excluded_locations,
+        salary_min=int(STATE.salary_min or 0),
+        salary_currency=STATE.salary_currency,
+        search_mode=STATE.search_mode,
+    )
+
+    try:
+        result = ai_provider.run(
+            system=prompts.FOLLOWUP_QUESTIONS_SYSTEM,
+            user=user_msg,
+            schema=schema.FOLLOWUP_QUESTIONS_SCHEMA,
+            schema_name="ai_jobs_followup_questions",
+            max_output_tokens=1200,
+            temperature=0.2,
+        )
+    except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_jobs.pipeline",
+            "generate_followup_questions_provider_error",
+            exc,
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=False, error=str(exc))
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_jobs.pipeline", "generate_followup_questions_failed", exc,
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=False, error=str(exc))
+
+    raw = (result.data or {}).get("questions") if isinstance(result.data, dict) else []
+    cleaned: list[dict] = []
+    for q in raw or []:
+        if not isinstance(q, dict):
+            continue
+        topic = str(q.get("topic") or "").strip()
+        question = str(q.get("question") or "").strip()
+        if not topic or not question:
+            continue
+        options = [
+            str(opt).strip()
+            for opt in (q.get("options") or [])
+            if isinstance(opt, (str, int, float)) and str(opt).strip()
+        ]
+        cleaned.append(
+            {
+                "topic": topic,
+                "question": question,
+                "rationale": str(q.get("rationale") or "").strip(),
+                "options": options,
+                "multi_select": bool(q.get("multi_select")),
+                "allow_free_text": bool(q.get("allow_free_text", True)),
+            }
+        )
+    STATE.followup_questions = cleaned
+    logger_service.log_event(
+        "INFO",
+        "ai_jobs.pipeline",
+        "generate_followup_questions_done",
+        count=len(cleaned),
+    )
+    return PipelineResult(ok=True)
 
 
 @logger_service.timed_call("ai_jobs.pipeline", "run_search")
@@ -581,6 +767,76 @@ def run_search(*, output_lang: str) -> PipelineResult:
     STATE.results = []
     STATE.summary = ""
     STATE.skill_gap = {}
+    STATE.followup_questions = []
+    STATE.followup_qa = []
+
+    # --- pass 0: clarifying follow-up questions (optional) -----------
+    #
+    # The resolver is registered by ``tab_setup.build_setup_tab`` and
+    # cleared on view rebuild, so a missing resolver here means either
+    # (a) we are in a smoke test, or (b) the section was destroyed
+    # between ``_on_run`` and this point. Either way we silently skip
+    # the dialog and proceed with whatever the user has already typed.
+    resolver = _followup_resolver
+    if (
+        resolver is not None
+        and not STATE.demo_mode
+        and settings_store.get_ask_followups()
+    ):
+        _set_activity("followups")
+        fu_res = generate_followup_questions(output_lang=output_lang)
+        if not fu_res.ok:
+            # Provider failure on the optional Pass 0 should not crash
+            # the run - log + skip so the search still happens.
+            logger_service.log_event(
+                "WARNING",
+                "ai_jobs.pipeline",
+                "followup_questions_skipped_after_error",
+                error=fu_res.error,
+            )
+            STATE.followup_questions = []
+            STATE.followup_qa = []
+        elif STATE.followup_questions:
+            _set_activity("waiting_user")
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "followup_dialog_open",
+                count=len(STATE.followup_questions),
+            )
+            try:
+                answers = resolver(list(STATE.followup_questions))
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.pipeline", "followup_resolver_failed", exc,
+                )
+                answers = None
+            if answers is None:
+                logger_service.log_event(
+                    "INFO",
+                    "ai_jobs.pipeline",
+                    "followup_dialog_cancelled",
+                )
+                _set_activity("ready")
+                STATE.last_error = ""
+                return PipelineResult(ok=False, error="cancelled_by_user")
+            STATE.followup_qa = list(answers)
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "phase2_start",
+                followup_answers=len(STATE.followup_qa),
+            )
+            _set_activity("searching")
+        else:
+            logger_service.log_event(
+                "INFO",
+                "ai_jobs.pipeline",
+                "followup_dialog_skipped_zero_questions",
+            )
+            _set_activity("searching")
+
+    followup_qa_tuple = tuple(STATE.followup_qa or ())
 
     common_args = dict(
         output_lang=output_lang,
@@ -606,6 +862,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
         search_mode=STATE.search_mode,
         salary_min=int(STATE.salary_min or 0),
         salary_currency=STATE.salary_currency,
+        followup_qa=followup_qa_tuple,
     )
 
     # --- pass 1 + 2: discovery + extraction --------------------------
@@ -648,24 +905,41 @@ def run_search(*, output_lang: str) -> PipelineResult:
         for item in survivors:
             item.setdefault("is_active", True)
             item.setdefault("inactive_reason", "")
+            item.setdefault("is_relaxed", False)
         dropped = 0
         logger_service.log_event(
             "INFO", "ai_jobs.pipeline", "verify_skipped_by_user",
         )
 
     # --- top-up: fire only if verification is on and we are short ---
-    attempts = 0
+    #
+    # User contract:
+    #   1. Try the strict filters first - up to ``_MAX_TOPUP_ATTEMPTS``
+    #      extra passes asking for DIFFERENT URLs (the previous list
+    #      is forwarded to the prompt as ``excluded_urls``).
+    #   2. If we are still short, run ONE relaxed pass with
+    #      ``search_mode="broad"`` AND a prompt hint that broadens the
+    #      geography / accepts adjacent roles. Results from this pass
+    #      are flagged ``is_relaxed=True`` so the UI labels them as
+    #      "less relevant".
+    #   3. Closed / inactive listings are never counted toward
+    #      ``target_active``; they are surfaced separately with their
+    #      own cap (``_INACTIVE_FALLBACK_CAP``).
+    strict_attempts = 0
+    relaxed_attempts = 0
     if STATE.verify_active_links:
         active_count = sum(1 for it in survivors if it.get("is_active", True))
-        while active_count < target_active and attempts < _MAX_TOPUP_ATTEMPTS:
-            attempts += 1
+
+        # Strict top-ups -------------------------------------------------
+        while active_count < target_active and strict_attempts < _MAX_TOPUP_ATTEMPTS:
+            strict_attempts += 1
             needed = target_active - active_count
             topup_target = min(needed * _CANDIDATE_OVERFETCH, _CANDIDATE_CAP)
             seen_urls = tuple(item["url"] for item in survivors)
             logger_service.log_event(
                 "INFO", "ai_jobs.pipeline", "topup_start",
-                attempt=attempts, needed=needed, candidate_target=topup_target,
-                already_seen=len(seen_urls),
+                attempt=strict_attempts, needed=needed,
+                candidate_target=topup_target, already_seen=len(seen_urls),
             )
             _set_activity("searching")
             try:
@@ -674,25 +948,25 @@ def run_search(*, output_lang: str) -> PipelineResult:
                     candidate_target=topup_target,
                     target_active=needed,
                     excluded_urls=seen_urls,
-                    stage_prefix="topup_",
+                    stage_prefix=f"topup{strict_attempts}_",
                 )
             except ai_provider.ProviderError as exc:
                 logger_service.log_event(
                     "WARN", "ai_jobs.pipeline", "topup_provider_error",
-                    attempt=attempts, message=str(exc),
+                    attempt=strict_attempts, message=str(exc),
                 )
                 break
             except Exception as exc:
                 logger_service.log_exception(
                     "ai_jobs.pipeline", "topup_unexpected_error", exc,
-                    attempt=attempts,
+                    attempt=strict_attempts,
                 )
                 break
 
             if not extra_cleaned:
                 logger_service.log_event(
                     "INFO", "ai_jobs.pipeline", "topup_no_new_candidates",
-                    attempt=attempts,
+                    attempt=strict_attempts,
                 )
                 break
 
@@ -704,10 +978,72 @@ def run_search(*, output_lang: str) -> PipelineResult:
             active_count += extra_active
             logger_service.log_event(
                 "INFO", "ai_jobs.pipeline", "topup_done",
-                attempt=attempts, candidates=len(extra_cleaned),
+                attempt=strict_attempts, candidates=len(extra_cleaned),
                 survivors=len(extra_survivors), new_active=extra_active,
                 running_active=active_count, target_active=target_active,
             )
+
+        # Relaxed pass (single attempt, only if strict failed) ----------
+        if active_count < target_active and relaxed_attempts < _MAX_RELAXED_ATTEMPTS:
+            relaxed_attempts += 1
+            needed = target_active - active_count
+            relaxed_target = min(needed * _CANDIDATE_OVERFETCH, _CANDIDATE_CAP)
+            seen_urls = tuple(item["url"] for item in survivors)
+            logger_service.log_event(
+                "INFO", "ai_jobs.pipeline", "relaxed_topup_start",
+                strict_attempts=strict_attempts, needed=needed,
+                candidate_target=relaxed_target, already_seen=len(seen_urls),
+            )
+            _set_activity("searching")
+            # Force broad mode for the relaxed pass; we still feed the
+            # original ``search_mode`` everywhere else so the strict
+            # cycle behaves the way the user asked.
+            relaxed_args = dict(common_args)
+            relaxed_args["search_mode"] = "broad"
+            try:
+                relaxed_cleaned, _relaxed_summary = _run_discovery_extraction(
+                    **relaxed_args,
+                    candidate_target=relaxed_target,
+                    target_active=needed,
+                    excluded_urls=seen_urls,
+                    stage_prefix="relaxed_",
+                    relaxed_pass=True,
+                )
+            except ai_provider.ProviderError as exc:
+                logger_service.log_event(
+                    "WARN", "ai_jobs.pipeline", "relaxed_topup_provider_error",
+                    message=str(exc),
+                )
+                relaxed_cleaned = []
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.pipeline", "relaxed_topup_unexpected_error", exc,
+                )
+                relaxed_cleaned = []
+
+            if relaxed_cleaned:
+                _set_activity("verifying")
+                extra_survivors, extra_dropped = _run_verification(relaxed_cleaned)
+                # Defensive: _run_discovery_extraction already flagged
+                # everything from this pass as relaxed, but flag again
+                # so logic does not break if a future caller mutates
+                # the position dict in between.
+                for item in extra_survivors:
+                    item["is_relaxed"] = True
+                survivors.extend(extra_survivors)
+                dropped += extra_dropped
+                extra_active = sum(1 for it in extra_survivors if it.get("is_active", True))
+                active_count += extra_active
+                logger_service.log_event(
+                    "INFO", "ai_jobs.pipeline", "relaxed_topup_done",
+                    candidates=len(relaxed_cleaned),
+                    survivors=len(extra_survivors), new_active=extra_active,
+                    running_active=active_count, target_active=target_active,
+                )
+            else:
+                logger_service.log_event(
+                    "INFO", "ai_jobs.pipeline", "relaxed_topup_no_new_candidates",
+                )
 
     # --- split + trim before scoring (saves tokens) ------------------
     active_items = [it for it in survivors if it.get("is_active", True)]
@@ -735,6 +1071,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa_tuple,
         )
     elif active_items:
         logger_service.log_event(
@@ -742,15 +1079,22 @@ def run_search(*, output_lang: str) -> PipelineResult:
             survivors=len(active_items),
         )
 
-    # Sort: highest match score on top, then freshest first. Two-pass
-    # sort exploits Python's stable-sort guarantee so the secondary
-    # key (date desc) survives the primary sort by score desc.
+    # Sort: strict matches first, relaxed matches next, then inactive.
+    # Within each tier the primary key is the match score (desc) and
+    # the tie-breaker is the posted date (desc). Python's stable-sort
+    # guarantee lets us layer multiple sort() calls instead of writing
+    # one giant key function.
     active_items.sort(
         key=lambda item: item.get("posted_date_iso") or "",
         reverse=True,
     )
     active_items.sort(
         key=lambda item: -(item.get("match_score") or -1),
+    )
+    # Strict (is_relaxed=False) ends up before relaxed (is_relaxed=True)
+    # because Python sorts False < True in ascending order.
+    active_items.sort(
+        key=lambda item: bool(item.get("is_relaxed", False)),
     )
     inactive_items.sort(
         key=lambda item: item.get("posted_date_iso") or "",
@@ -761,6 +1105,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
     kept_inactive = inactive_items[:inactive_cap]
     final_results = kept_active + kept_inactive
     inactive_count = len(kept_inactive)
+    relaxed_count = sum(1 for it in kept_active if it.get("is_relaxed"))
 
     STATE.results = final_results
     STATE.summary = summary_text
@@ -778,6 +1123,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa_tuple,
         )
 
     STATE.activity = "ready"
@@ -787,12 +1133,14 @@ def run_search(*, output_lang: str) -> PipelineResult:
         "INFO", "ai_jobs.pipeline", "run_search_done",
         kept=len(final_results),
         kept_active=len(kept_active),
+        kept_relaxed=relaxed_count,
         kept_inactive=inactive_count,
         dropped=dropped,
         candidates_total=len(survivors) + dropped,
         target_active=target_active,
         candidate_target=candidate_target,
-        topup_attempts=attempts,
+        strict_topup_attempts=strict_attempts,
+        relaxed_topup_attempts=relaxed_attempts,
         keywords=keywords,
         location=location_label,
         scored=sum(1 for s in final_results if s.get("match_score") is not None),
@@ -816,6 +1164,7 @@ def _score_one_position(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Run Pass 4 for one position. Errors are logged but never raised."""
     try:
@@ -829,6 +1178,7 @@ def _score_one_position(
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa,
         )
         result = _provider_call(
             stage="match",
@@ -875,6 +1225,7 @@ def _score_positions(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Score every position in parallel. Mutates ``positions`` in place."""
     _set_activity("scoring")
@@ -902,6 +1253,7 @@ def _score_positions(
                 profile_file_text=profile_file_text,
                 profile_file_name=profile_file_name,
                 linkedin_url=linkedin_url,
+                followup_qa=followup_qa,
             )
             for item in positions
         ]
@@ -935,6 +1287,7 @@ def _aggregate_skill_gap(
     profile_file_text: str,
     profile_file_name: str,
     linkedin_url: str,
+    followup_qa: tuple[dict, ...] = (),
 ) -> None:
     """Run Pass 5 - populate :data:`STATE.skill_gap`."""
     _set_activity("gap_analysis")
@@ -964,6 +1317,7 @@ def _aggregate_skill_gap(
             profile_file_text=profile_file_text,
             profile_file_name=profile_file_name,
             linkedin_url=linkedin_url,
+            followup_qa=followup_qa,
         )
         result = _provider_call(
             stage="skill_gap",
@@ -1150,6 +1504,21 @@ li.position.inactive h2 a {
   font-size: 12px;
   color: var(--danger);
   font-style: italic;
+}
+li.position.relaxed {
+  border-color: var(--warn-soft);
+}
+.relaxed-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--warn-soft);
+  color: var(--warn);
+  white-space: nowrap;
+  margin-left: 8px;
 }
 h2.inactive-section {
   margin: 32px 0 12px;
@@ -1386,6 +1755,7 @@ def _render_skill_chips(items: list[str], *, kind: str) -> str:
 
 def _render_position(item: dict, txt: dict) -> str:
     is_active = bool(item.get("is_active", True))
+    is_relaxed = bool(item.get("is_relaxed", False))
     inactive_reason = (item.get("inactive_reason") or "").strip()
 
     work_mode = (item.get("work_mode") or "unknown").lower()
@@ -1407,6 +1777,14 @@ def _render_position(item: dict, txt: dict) -> str:
             inactive_note = (
                 f'<span class="inactive-marker">"{_esc(inactive_reason)}"</span>'
             )
+
+    relaxed_pill = ""
+    if is_active and is_relaxed:
+        relaxed_pill = (
+            f'<span class="relaxed-pill" title="{_esc(txt["results_relaxed_tooltip"])}">'
+            f'{_esc(txt["results_relaxed_pill"])}'
+            "</span>"
+        )
 
     score = item.get("match_score")
     match_pill = ""
@@ -1469,12 +1847,17 @@ def _render_position(item: dict, txt: dict) -> str:
             "</div>"
         )
 
-    li_class = "position inactive" if not is_active else "position"
+    classes = ["position"]
+    if not is_active:
+        classes.append("inactive")
+    elif is_relaxed:
+        classes.append("relaxed")
+    li_class = " ".join(classes)
     return (
         f'<li class="{li_class}">'
         '<div class="title-row">'
         f'<h2><a href="{_esc(item["url"])}" target="_blank" rel="noopener">'
-        f'{_esc(item["title"])}</a>{work_pill}{inactive_pill}</h2>'
+        f'{_esc(item["title"])}</a>{work_pill}{relaxed_pill}{inactive_pill}</h2>'
         f'{match_pill}'
         "</div>"
         f'{inactive_note}'

@@ -133,7 +133,7 @@ def _assistant_bubble(theme: Theme, *, text: str, time_label: str) -> QWidget:
     al = hbox(spacing=0, margins=(0, 0, 0, 0))
     al.setAlignment(Qt.AlignmentFlag.AlignCenter)
     avatar.setLayout(al)
-    al.addWidget(IconLabel(Icons.HUB_OUTLINED, color="#FFFFFF", size=18),
+    al.addWidget(IconLabel(Icons.WORKSPACE_PREMIUM_OUTLINED, color="#FFFFFF", size=18),
                  alignment=Qt.AlignmentFlag.AlignCenter)
 
     body = QFrame()

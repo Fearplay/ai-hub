@@ -28,6 +28,7 @@ from src.qt.widgets import (
 )
 from src.services import logger as logger_service
 from src.sections.ai_finance import pipeline
+from src.sections.ai_finance._charts import DeadlineTimeline
 from src.sections.ai_finance._widgets import (
     card_title,
     disclaimer_pill,
@@ -170,6 +171,16 @@ def _result_view(theme: Theme, lang: str, plan: dict) -> QWidget:
 
     deadlines = plan.get("deadlines") or []
     if deadlines:
+        timeline_card, timeline_layout = section_card(theme)
+        timeline_layout.addWidget(
+            card_title(
+                theme,
+                title=txt["taxes_timeline_title"],
+                icon=Icons.SCHEDULE,
+            )
+        )
+        timeline_layout.addWidget(DeadlineTimeline(deadlines=deadlines, theme=theme))
+        layout.addWidget(timeline_card)
         items = [f"**{d.get('label', '')}** - {d.get('date_or_window', '')}" for d in deadlines]
         layout.addWidget(
             list_card(

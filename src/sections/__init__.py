@@ -20,7 +20,7 @@ addressable by key for ``app.set_section``.
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
+import pkgutil
 
 from src.sections._base import Section
 from src.services import logger as logger_service
@@ -28,18 +28,33 @@ from src.services import settings_store
 
 
 def _discover() -> list[Section]:
+    """Enumerate every ``src.sections.<key>`` subpackage and pull its SECTION.
+
+    Uses :func:`pkgutil.iter_modules` instead of a raw ``Path.iterdir``
+    walk so the discovery works identically in dev mode (running from
+    source) and inside a PyInstaller ``--onefile`` bundle. In the
+    frozen ``.exe`` the section ``.py`` files live inside the PYZ
+    archive and the package folder does **not** exist on disk under
+    ``sys._MEIPASS\\src\\sections\\``, which made the previous
+    ``iterdir()`` raise ``FileNotFoundError`` at import time and the
+    whole application failed to start.
+
+    For ``pkgutil.iter_modules`` to actually see the subpackages in a
+    frozen bundle, ``build_exe.bat`` passes
+    ``--collect-submodules src.sections`` to PyInstaller.
+    """
     sections: list[Section] = []
-    package_dir = Path(__file__).parent
+    discovered: list[str] = sorted(
+        info.name
+        for info in pkgutil.iter_modules(__path__)
+        if info.ispkg
+        and not info.name.startswith("_")
+        and not info.name.startswith(".")
+        and info.name != "SECTION_TEMPLATE"
+    )
 
-    for entry in sorted(package_dir.iterdir(), key=lambda p: p.name):
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith("_") or entry.name.startswith("."):
-            continue
-        if entry.name == "SECTION_TEMPLATE":
-            continue
-
-        module_name = f"src.sections.{entry.name}.section"
+    for name in discovered:
+        module_name = f"src.sections.{name}.section"
         try:
             module = importlib.import_module(module_name)
         except ModuleNotFoundError:

@@ -23,16 +23,79 @@ card is empty without digging into a console.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from src.services import logger as logger_service
 from src.services import settings_store
 
 
 CACHE_TTL_SECONDS = 60
+
+
+_SESSION_LOCK = threading.Lock()
+_SHARED_SESSION: Optional[Any] = None
+
+
+def _ca_bundle_path() -> Optional[str]:
+    """Return the best CA bundle path for libcurl (used by curl_cffi).
+
+    Prefers ``CURL_CA_BUNDLE`` (set by ``main.py``), then ``SSL_CERT_FILE``,
+    then ``certifi.where()``. ``None`` means "let curl_cffi use its
+    default", which on Windows is empty and triggers SSL errors - so
+    we always try to provide *something*.
+    """
+    for env in ("CURL_CA_BUNDLE", "SSL_CERT_FILE"):
+        path = os.environ.get(env)
+        if path and os.path.isfile(path):
+            return path
+    try:
+        import certifi  # type: ignore[import-not-found]
+
+        bundle = certifi.where()
+        if bundle and os.path.isfile(bundle):
+            return bundle
+    except Exception:
+        return None
+    return None
+
+
+def _build_session() -> Optional[Any]:
+    """Return a curl_cffi session pre-configured with our CA bundle.
+
+    yfinance>=0.2.40 uses curl_cffi internally and accepts a custom
+    ``session=`` on every ``Ticker(...)``. Passing one wired up with
+    ``verify=<certifi-bundle>`` works around the empty native CA store
+    on stock Windows Python builds.
+    """
+    try:
+        from curl_cffi import requests as curl_requests  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    try:
+        bundle = _ca_bundle_path()
+        if bundle:
+            session = curl_requests.Session(verify=bundle, impersonate="chrome")
+        else:
+            session = curl_requests.Session(impersonate="chrome")
+        return session
+    except Exception as exc:
+        logger_service.log_exception(
+            "market_data", "session_build_failed", exc,
+        )
+        return None
+
+
+def _shared_session() -> Optional[Any]:
+    global _SHARED_SESSION
+    with _SESSION_LOCK:
+        if _SHARED_SESSION is not None:
+            return _SHARED_SESSION
+        _SHARED_SESSION = _build_session()
+        return _SHARED_SESSION
 
 
 @dataclass
@@ -97,7 +160,8 @@ def _fetch_single(yf, symbol: str, *, friendly_name: str = "") -> Optional[Quote
     endpoints.
     """
     try:
-        ticker = yf.Ticker(symbol)
+        session = _shared_session()
+        ticker = yf.Ticker(symbol, session=session) if session is not None else yf.Ticker(symbol)
         hist = ticker.history(period="14d", interval="1d", auto_adjust=False)
         if hist is None or hist.empty:
             return None
@@ -209,7 +273,8 @@ def get_fx(pair: str) -> Optional[float]:
     if cached and (now - cached[0]) < CACHE_TTL_SECONDS:
         return cached[1]
     try:
-        ticker = yf.Ticker(pair)
+        session = _shared_session()
+        ticker = yf.Ticker(pair, session=session) if session is not None else yf.Ticker(pair)
         hist = ticker.history(period="5d", interval="1d", auto_adjust=False)
         if hist is None or hist.empty:
             return None

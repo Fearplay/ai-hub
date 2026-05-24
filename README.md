@@ -12,18 +12,20 @@ A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
 in the middle, and a context panel on the right. **AI CV / Career**,
-**AI LinkedIn Profile Builder**, **AI Finance**, and **AI Job Search**
-are fully wired to OpenAI / Anthropic. The work-in-progress sections
+**AI LinkedIn Profile Builder**, **AI Finance**, **AI Job Search**, and
+**AI Bug Report** are fully wired to OpenAI / Anthropic (the new
+section also speaks the providers' **vision** APIs so screenshots are
+processed alongside the text prompt). The work-in-progress sections
 (Dashboard, AI Legal, AI Business, AI Marketing, AI Study, AI Documents,
 AI Doc Assistant) are kept in the repo so the architecture stays
 documented but are currently **hidden from the sidebar** - see
 [Hidden UI](#hidden-ui) below to flip them back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
-on the right of any primary AI section and drop it where you want.
-Order persists in `~/AI Hub/settings.json` so your layout survives
-restarts. The secondary group (History / Favorites / Settings) stays
-pinned below the divider.
+on the right of any primary AI section and drop it where you want. The
+new order applies instantly (no restart, no language toggle). Order
+persists in `~/AI Hub/settings.json` so your layout survives restarts.
+The secondary group (Settings) stays pinned below the divider.
 
 ## Requirements
 
@@ -57,8 +59,9 @@ python main.py        # macOS / Linux
 ```
 
 The upload zones in **AI Legal assistant**, **AI CV / Career**,
-**AI LinkedIn Profile Builder**, and **AI Doc Assistant** all share one
-component (`src/components/file_drop_zone.py`) that:
+**AI LinkedIn Profile Builder**, **AI Doc Assistant**, and **AI Bug
+Report** all share one component (`src/components/file_drop_zone.py`)
+that:
 
 * Renders a dashed-border drop zone with a prominent "Click to browse"
   call-to-action - clicking opens the native file picker. There is no
@@ -72,7 +75,10 @@ component (`src/components/file_drop_zone.py`) that:
   directly onto the zone and it loads instantly.
 * Accepts **PDF / DOCX / HTML / HTM / TXT / MD** files - the extracted
   text body is what feeds the AI prompts in **AI Legal**, **AI Career**
-  and friends.
+  and friends. The AI Bug Report section opts in to **image files**
+  (PNG / JPG / WEBP / GIF / BMP / HEIC) and `.log` / `.json` on top of
+  the shared list via a small local helper, so screenshots are sent to
+  the model's vision API and raw logs are forwarded verbatim.
 
 The clipboard handling itself is centralised in
 `src/services/clipboard.py`. It is a thin synchronous wrapper around
@@ -93,9 +99,11 @@ What the script does:
    available either, it prints a python.org link and exits.
 2. If `.venv\` doesn't exist, it creates one.
 3. Activates the venv and installs `requirements.txt` + `pyinstaller`.
-4. Runs `pyinstaller --onefile --windowed --name AIHub` (with the
-   bundled Material Symbols Rounded icon font subset under
-   `assets\fonts\` baked in) and produces `dist\AIHub.exe`.
+4. Runs `pyinstaller --onefile --windowed --name AIHub` and produces
+   `dist\AIHub.exe`. Icons render via
+   [QtAwesome](https://github.com/spyder-ide/qtawesome) (Material Design
+   Icons 6); the icon fonts ship inside qtawesome's wheel and are
+   pulled into the bundle automatically via `--collect-all qtawesome`.
 
 Usage:
 
@@ -112,6 +120,36 @@ natively.
 The Cursor rule [`.cursor/rules/build-exe.mdc`](.cursor/rules/build-exe.mdc)
 makes the agent run `build_exe.bat` at the end of every task, so
 `dist\AIHub.exe` stays in sync with the sources.
+
+### Production release
+
+The deliverable for non-developer users is a **single self-contained
+binary**: `dist\AIHub.exe`. To cut a release:
+
+1. Pull the latest `main`.
+2. Run `build_exe.bat --force` once - PyInstaller produces
+   `dist\AIHub.exe` with PySide6 / Qt 6, the QtAwesome Material Design
+   Icons 6 set, and every section module baked in. The repo-local
+   `hooks\hook-src.sections.py` enumerates every `src\sections\<key>\`
+   folder at build time and adds each `.py` file as a hidden import,
+   so the runtime auto-discovery (`pkgutil.iter_modules`) finds every
+   section folder when the .exe runs from a frozen bundle.
+3. Hand the `.exe` to the user. First launch creates `~/AI Hub/`
+   under the user's home directory, which is the **single** place the
+   app writes anything outside the install folder:
+   * `~/AI Hub/settings.json` - provider / model / sidebar order /
+     opt-in flags,
+   * `~/AI Hub/history.json` - run index for every section's saved
+     outputs,
+   * `~/AI Hub/logs/app.log` - rotating debug log (1 MB, 4 files),
+   * `outputs/<section>/<run-slug>-<timestamp>/` - the actual run
+     artefacts (DOCX, PDF, HTML, MD), created next to the .exe.
+
+   Wiping `~/AI Hub/` is a hard reset; the .exe re-creates everything
+   on the next launch.
+4. API keys never leave the machine - they live in the OS native
+   secret store (Windows Credential Manager / macOS Keychain / Linux
+   Secret Service via [`keyring`](https://pypi.org/project/keyring/)).
 
 ### For collaborators (identical environment, no copy/paste)
 
@@ -185,6 +223,17 @@ to use:
 code calls `inject_into_ssl()` - per the upstream warning, only the
 application entry point is allowed to.
 
+`yfinance` (used by **AI Finance** for live market data) talks to Yahoo
+through `curl_cffi`, which uses libcurl's native TLS stack and does
+**not** read the `ssl` module that `truststore` patched. To stop the
+"curl: (60) SSL certificate problem: unable to get local issuer
+certificate" failure on stock Windows Python, `main.py` also exports
+`CURL_CA_BUNDLE` and `SSL_CERT_FILE` to the `certifi` Mozilla CA bundle.
+The bundle ships inside the [`certifi`](https://pypi.org/project/certifi/)
+wheel (Mozilla Public License 2.0) and is bundled into the .exe via
+`--collect-data certifi` so `certifi.where()` resolves to a real PEM
+file even when the app is frozen.
+
 ### Web search in chat (opt-in)
 
 OpenAI (`web_search_preview`) and Anthropic (`web_search_20250305`) both
@@ -206,9 +255,13 @@ AI Finance renders a live ticker strip via
 Finance endpoints only - no API key, no account, no user identification.
 The default symbols are S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), DOW JONES
 (`^DJI`), BTC/USD (`BTC-USD`), and EUR/CZK (`EURCZK=X`). Results are
-cached in-process for 60 seconds. Flip **Settings -> Live market data**
-off to keep AI Finance fully offline; the right-hand panel then falls
-back to mock tickers.
+cached in-process for 60 seconds. The Markets card in the right
+context panel has its own **Refresh** button next to *Edit* that
+bypasses that throttle and triggers a fresh fetch; if Yahoo returns
+no quotes (offline, proxy, dead symbol), the card now surfaces an
+explicit error instead of staying stuck on the generic "no data" hint.
+Flip **Settings -> Live market data** off to keep AI Finance fully
+offline; the right-hand panel then falls back to its empty state.
 
 ### Debug logs
 
@@ -251,18 +304,19 @@ ai-hub/
 ├── requirements.txt
 ├── README.md                     # English (this file)
 ├── README.cs.md                  # Czech translation
-├── CONTRIBUTING.md
 ├── LICENSE
 ├── .gitignore
-├── assets/
-│   └── fonts/                     # bundled Material Symbols Rounded subset + codepoints
+├── build_exe.bat                 # one-click Windows PyInstaller build
+├── hooks/                        # repo-local PyInstaller hooks
+│   ├── hook-src.sections.py      # enumerates every src/sections/<key>/*.py at build time
+│   └── hook-src.services.py      # same idea for the shared service layer
 └── src/
     ├── theme.py                  # design tokens (dark + light)
     ├── app.py                    # AIHubApp - state, layout, routing (no per-section knowledge)
     ├── i18n.py                   # global EN/CS strings + t(key, lang)
     ├── qt/                        # PySide6 building blocks
     │   ├── theme.py              # QSS emitter + rgba helper
-    │   ├── icons.py              # Material Symbols Rounded font loader + codepoint registry
+    │   ├── icons.py              # QtAwesome-backed Icons.X registry (Material Design Icons 6)
     │   ├── widgets.py            # Card / IconLabel / ElidedLabel / typography / buttons / Pill
     │   ├── effects.py            # drop shadow + opacity helpers
     │   ├── markdown.py           # bold-spans helper for plain QLabel
@@ -312,8 +366,7 @@ ai-hub/
     │   ├── ai_study/             # placeholder
     │   ├── ai_documents/         # placeholder
     │   ├── ai_doc_assistant/     # PDF / DOCX assistant (summary / Q&A / rewrite / extract)
-    │   ├── history/              # placeholder (secondary nav)
-    │   ├── favorites/            # placeholder (secondary nav)
+    │   ├── ai_bug_report/         # fully wired (vision) - text / screenshots / logs -> Word bug report
     │   └── settings/             # API keys, provider, general, debug logs (secondary nav)
     └── data/
         └── user.py               # global mock (the signed-in user only)
@@ -328,14 +381,14 @@ Every folder under `src/sections/` has:
 - `context.py` (optional) - the right context panel
 
 Adding a new section never opens `src/app.py` or `src/components/sidebar.py`.
-Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
+Details in
 [src/sections/SECTION_TEMPLATE/README.md](src/sections/SECTION_TEMPLATE/README.md).
 
 ## What it does
 
 - Three-column layout, scrollable sidebar (header / scroll / footer).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
-- Section auto-discovery (primary + secondary; History / Favorites / Settings live in secondary).
+- Section auto-discovery (primary + secondary; Settings is the only secondary entry).
 - Light / dark mode toggle - the **Windows OS title bar** (caption strip with
   X / minimise / maximise + app name) is tinted to match the active theme via
   the DWM API, so dark mode no longer leaves a bright white strip on top of
@@ -367,24 +420,35 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
   - Save the complete profile to `outputs/ai_linkedin/<target-role>-<timestamp>/` as MD per section, the comprehensive `full_linkedin_profile.html` summary, and a JSON snapshot for future runs.
 - **AI Finance** - cautious, no-hallucination personal-finance assistant with eight tabs:
   - **Chat** - free-form questions. A greeting bubble shows your latest budget (donut + breakdown) once you build one in the Budget tab; before that, the chat starts from a clean greeting. Quick-action chips route to the structured tabs and **flow-wrap** so they don't overflow on narrow windows.
-  - **Budget** - pick a method (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, custom), enter income + essentials + goals, get a structured `BudgetPlan` JSON (cached) with donut chart, category table, warnings, and next-step suggestions.
-  - **Investments** - returns three educational scenarios (Conservative / Moderate / Growth) with asset-class allocations and a projected value over the chosen horizon. Never names a specific stock or fund.
-  - **Analysis** - drop a CSV / PDF bank statement (parsed locally via `src/services/file_parser.py`); the assistant categorises spend, flags recurring payments, lists top outflows, and proposes savings.
-  - **Taxes** - country + filing-status checklist with deadlines, documents to gather, and a "this is not licensed tax advice" disclaimer.
-  - **Insurance** - reviews existing policies, flags gaps / duplicates, and suggests next steps.
+  - **Budget** - pick a method (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, custom), enter income + essentials + goals, get a structured `BudgetPlan` JSON (cached) with donut chart, category table, warnings, and next-step suggestions. Below the result you also get a **savings plan** card (timeline of milestones + projected balance after 6 / 12 / 24 / 36 months built from `generate_savings_plan`) and an **Edit / refine** box that calls `edit_budget` when you want a quick "less restaurants, more 401k" tweak without re-typing the whole form.
+  - **Investments** - returns three educational scenarios (Conservative / Moderate / Growth) with asset-class allocations rendered as **stacked allocation bars** plus a 12-month **projection sparkline** based on the scenario's expected annual return. Never names a specific stock or fund.
+  - **Analysis** - drop a CSV / PDF bank statement (parsed locally via `src/services/file_parser.py`); the assistant categorises spend, renders a **horizontal bar chart** of categories (with recurring payments highlighted), flags recurring payments, lists top outflows, and proposes savings.
+  - **Taxes** - country + filing-status checklist with a horizontal **deadline timeline** for the upcoming tax dates, documents to gather, and a "this is not licensed tax advice" disclaimer.
+  - **Insurance** - reviews existing policies, renders a 3x3 **severity heatmap** of coverage gaps (critical / high / medium x policy type), flags duplicates, and suggests next steps.
   - **Calculators** - six pure-Python calculators (compound interest, mortgage payment, loan affordability, retirement planner, savings goal, currency converter). The currency converter pulls live FX via the `market_data` service.
-  - **Templates** - the four static template cards from the original mock layout.
-  - **Right-hand context panel** - **live, user-editable market overview** via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**). The card seeds with `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` and exposes an **Upravit / Edit** button - the dialog lets the user add / remove tickers (any Yahoo symbol) and persists the list to `~/AI Hub/settings.json`. The "Recent analyses" and "Tip of the day" cards stay empty until the user runs a real pipeline; nothing fakes the numbers.
+  - **Templates** - lists every saved AI Finance run from `outputs/ai_finance/<run-slug>-<timestamp>/`. Each card has an **Open folder** action that pops the OS file browser straight to the PDFs / Markdown of that run; an empty-state card explains how to create your first one when there are no saved runs yet.
+  - **Demo mode** - a single toggle in the section header swaps every pipeline call for a curated mock JSON (budget / analysis / investments / tax / insurance / savings plan / tip). The section has something to show on first launch - charts, tables, the right-hand AI tip - without spending any tokens. Flipping the toggle off goes straight back to live AI calls.
+  - **AI Tip card** (right context panel) - dynamic, generated per analysis via `generate_tip` (cached in `STATE.tip` so flipping themes / languages does not re-spend tokens). The card has a **Generate new tip** button when you want a fresh take. Stays empty until your first analysis is done.
+  - **Right-hand context panel** - **live, user-editable market overview** via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**). The card seeds with `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` and exposes an **Upravit / Edit** button - the dialog lets the user add / remove tickers (any Yahoo symbol) and persists the list to `~/AI Hub/settings.json`. The previous "unable to get local issuer certificate" SSL failure on stock Windows is gone now that the curl_cffi backend points at `certifi.where()`. The "Recent analyses" card stays empty until the user runs a real pipeline; nothing fakes the numbers.
   - **Empty-by-default UX** - Budget / Invest / Analysis / Taxes / Insurance start blank and only paint structured cards once you click their primary CTA. The two-column form / result layout collapses into a single column on narrow widths, and the chat quick-action chips wrap onto multiple rows instead of stretching off-screen.
 - **AI Job Search** - find currently-open positions on the public web and score them against your profile:
   - **12-step setup form** (Setup tab): Role keywords, profile (CV / bio / LinkedIn URL), location preset or custom region, technologies + seniority pill (Junior / Medior / Senior / Lead), exclusions (keywords / companies / locations / work-type chips), sources picker (~70 portals grouped Global / Remote / Europe / CZ-SK / Tech-Startup / Freelance / Recommended + custom URLs textarea - including Czech specialists like JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, Polish Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, remote-only JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), posting age (Any / 24h / 3d / 7d / 14d / 30d) with "verify links" + "show postings without date" toggles, work-mode radios + contract chips (HPP / ICO / contract / DPP-DPC / internship / freelance) + result count, search mode (Exact / Smart / Broad / Career discovery), minimum salary + currency + output language (Auto / EN / CS), pre-run summary with the Run button + secondary actions (Save as template / Clear / Load last search), and a Saved profiles list with per-card actions (Run again / Edit / Duplicate / Delete).
   - **Active-target over-fetch + top-up** - the result count is the number of **applicable** postings you want, not "raw URLs the AI returned". Internally the discovery pass over-fetches by 2x (capped at 40 candidates), every URL is verified, and a follow-up discovery pass automatically fires (with the already-seen URLs blacklisted in the prompt) if too many came back closed. Result: when you ask for 15, you get up to 15 you can actually apply to, plus a small "closed listings" section for transparency.
+  - **Optional clarifying questions** - same shared modal as AI CV / Career and AI Bug Report. When **Settings -> Ask follow-up questions** is on, the pipeline runs a quick Pass 0 *before* discovery to ask 0-8 short questions about the brief (seniority mismatches, contradictory keywords, missing remote / salary preference, *"you mentioned Python but not how many years"*). Answers feed into the discovery, per-position scoring, and skill-gap prompts so the model stops guessing. The footer hosts a "Let the AI ask clarifying questions first" toggle and a one-line hint; flip it off when you want a one-click run.
   - **Five-pass pipeline**: (1) hosted **web-search discovery** with rich context (search mode, exclusions, age, sources, salary, optional already-seen-URL list for top-up), (2) strict-JSON **extraction** into `JOB_LISTINGS_SCHEMA` (title / company / location / posted / posted-ISO / salary text / contract type / summary / URL / source / work-mode), (3) **URL verification** through the shared `job_scraper` (httpx + Playwright fallback - listings that return HTTP 404 / 410, redirect to a "Stránka neexistuje" placeholder, or whose page still loads but says "No longer accepting applications" / "Už nepřijímá žádosti" / "Tahle nabídka už je pryč" / "Nabídka není up-to-date" stay visible with a red **"No longer hiring"** badge whose tooltip shows the matched phrase or HTTP status, so you can verify the detection by clicking through; only hard scrape crashes - DNS / SSL / firewall - are dropped), (4) **per-position match scoring** in parallel (`MATCH_SCHEMA`: match %, matched / missing skills, AI recommendation - active postings only, closed ones skip scoring to save tokens), (5) **aggregate skill-gap analysis** (`SKILL_GAP_SCHEMA`: most-requested skills with counts, your strong sides, missing skills, 1-6 actionable advice paragraphs). Pass 4 + 5 are skipped automatically when no profile material was provided.
   - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable.
   - **Skill gap tab** with the top requirements, strong sides, missing skills, and advice paragraphs from Pass 5.
   - **Saved search profiles** persisted to `~/AI Hub/jobs_profiles.json` - one-click rerun, edit, duplicate, delete. No external dependency, no extra secret.
-  - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
+  - **Active-target ordering** - the search always tries to return the number of *applicable* openings you asked for. The pipeline starts strict (three top-up passes that respect your filters), and only falls back to a single relaxed broad pass (adjacent roles / nearby cities) if the strict run still cannot fill the quota. Relaxed hits are flagged with an amber **"Less relevant"** pill (in-app and in the HTML export) so you can tell at a glance which postings came from the broader search. Closed / inactive listings are still surfaced for transparency but never count toward the active target.
+  - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, the new "Less relevant" pill for relaxed-pass hits, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
   - **Activity badge** (right context panel) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus a "Open skill gap" quick action that jumps straight to the new tab.
+- **AI Bug Report** - turn a description, screenshots, and supporting docs / logs into a polished Word bug report:
+  - **Vision input** - the combined drop zone accepts both screenshots (PNG / JPG / WEBP / GIF / BMP / HEIC) and text-like attachments (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshots are sent to the model via the providers' native vision APIs (`image_url` content blocks for OpenAI, `image` source blocks for Anthropic), text-like docs are parsed locally with `src/services/file_parser.py`.
+  - **One structured LLM call** through a strict `BUG_REPORT_SCHEMA` (title, summary, severity, priority, reproducibility, environment table, preconditions, numbered steps to reproduce, expected vs actual, per-attachment summary, additional notes). The QA system prompt re-states the no-hallucination clause for verifiable facts (versions, ticket IDs, stack traces) while explicitly **allowing** the model to infer the title / STR / expected-vs-actual from the inputs and mark inferences in *additional notes*. The user only needs to provide one input - a description **or** a screenshot - and gets a complete report back.
+  - **Optional clarifying questions** (same pattern as AI CV / Career and AI LinkedIn) - when **Settings -> Ask follow-up questions** is on, the section runs a fast Pass 0 that asks the model to list 0-8 short questions before the main bug-report call. The shared `src/components/followup_dialog.py` modal opens with chip-style options + an **Other...** free-text field per question; the answers are folded into the main prompt so the report no longer says *"(inferred)"* against facts the user could have just told the AI. A footer toggle ("Let the AI ask clarifying questions first") lets you flip the behaviour off per-section without leaving Settings.
+  - **Editable preview** - the title, severity (Critical / High / Medium / Low), and priority (P0 / P1 / P2 / P3) can be tweaked inline before saving so the report matches your team's wording.
+  - **Word export** via `python-docx` - heading, environment table, numbered STR, colour-coded expected (green) vs actual (red), embedded screenshots inline. Each save also writes a Markdown mirror and a `summary.json` so other tooling can pick the same payload up. Lands in `outputs/ai_bug_report/<title-slug>-<timestamp>/` and registers in `~/AI Hub/history.json`.
+  - **Demo mode** - one click loads a curated example so the section can be showcased without spending tokens.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
   - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
@@ -396,9 +460,9 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## Hidden UI
 
-The sidebar currently only shows the four production-ready sections
-(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search) plus
-**Settings** under the divider. Work-in-progress sections still live in
+The sidebar currently only shows the five production-ready sections
+(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search, AI Bug Report)
+plus **Settings** under the divider. Work-in-progress sections still live in
 the repo but their `section.py` sets `hidden=True` so
 `src/sections/__init__.py` skips them when building
 `PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
@@ -429,7 +493,6 @@ the same reason - there is no real user identity yet. Re-add it in
 
 - Streaming responses in the UI (the first iteration blocks with a loader in the context panel).
 - Multi-language `OUTPUT_LANGUAGE` per document (one run = one output language; driven by the global lang toggle).
-- Real persistence for Favorites / History at the app level (currently per-section).
 - AI in the remaining sections - the architecture is ready, sections are filled in following the AI Career template.
 
 ## Built with Cursor
@@ -477,8 +540,7 @@ auto-generated one:
 </a>
 ```
 
-Want to help? Branch / commit conventions are documented in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Want to help? Open a PR with clear test steps and screenshots for UI changes.
 
 ## Licence
 
@@ -489,9 +551,13 @@ Libraries and assets used:
 | Item | License | Link |
 | --- | --- | --- |
 | [PySide6](https://doc.qt.io/qtforpython-6/) | LGPL-3.0 (with the dynamic-linking exception used by PyInstaller) | https://www.qt.io/licensing |
-| [Material Symbols Rounded](https://github.com/google/material-design-icons) | Apache License 2.0 | https://github.com/google/material-design-icons/blob/master/LICENSE |
+| [QtAwesome](https://github.com/spyder-ide/qtawesome) | MIT License | https://github.com/spyder-ide/qtawesome/blob/master/LICENSE.txt |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) (bundled inside QtAwesome) | Pictogrammers Free License (Apache-2.0 compatible) | https://pictogrammers.com/docs/general/license/ |
 | [pyperclip](https://pypi.org/project/pyperclip/) | BSD-3-Clause | https://github.com/asweigart/pyperclip/blob/master/LICENSE.txt |
 | [yfinance](https://pypi.org/project/yfinance/) | Apache License 2.0 | https://github.com/ranaroussi/yfinance/blob/main/LICENSE.txt |
+| [truststore](https://pypi.org/project/truststore/) | MIT License | https://github.com/sethmlarson/truststore/blob/main/LICENSE |
+| [certifi](https://pypi.org/project/certifi/) | MPL-2.0 (the bundled `cacert.pem` is Mozilla's CA store) | https://github.com/certifi/python-certifi/blob/master/LICENSE |
 
-LGPL-3.0 and Apache-2.0 are both compatible with MIT redistribution as
-long as we keep the upstream attribution (see [LICENSE](LICENSE)).
+LGPL-3.0, Apache-2.0, and MPL-2.0 (only for the bundled CA list inside
+`certifi`) are all compatible with MIT redistribution as long as we
+keep the upstream attribution (see [LICENSE](LICENSE)).

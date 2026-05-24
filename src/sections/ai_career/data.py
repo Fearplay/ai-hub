@@ -9,4 +9,4 @@ from __future__ import annotations
 from src.qt.icons import Icons
 
 
-SECTION_ICON = Icons.WORK_OUTLINE
+SECTION_ICON = Icons.ASSIGNMENT_IND_OUTLINED

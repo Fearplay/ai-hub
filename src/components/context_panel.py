@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.i18n import t
+from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
@@ -106,7 +107,7 @@ def add_document_button(theme: Theme, lang: str) -> ClickFrame:
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     btn.setLayout(layout)
 
-    layout.addWidget(IconLabel("add", color=theme.primary, size=16))
+    layout.addWidget(IconLabel(Icons.ADD, color=theme.primary, size=16))
     label = BodyLabel(t("add_document", lang), theme=theme, size=12)
     label.setStyleSheet(f"color: {theme.primary}; background: transparent;")
     layout.addWidget(label)
@@ -134,7 +135,7 @@ def quick_action_row(theme: Theme, icon: str, label: str) -> ClickFrame:
     text = BodyLabel(label, theme=theme, size=12)
     wrap_label_slot(text)
     layout.addWidget(text, 1)
-    layout.addWidget(IconLabel("chevron_right", color=theme.text_muted, size=16))
+    layout.addWidget(IconLabel(Icons.CHEVRON_RIGHT, color=theme.text_muted, size=16))
     return row
 
 
@@ -165,7 +166,7 @@ def history_row(
     title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     title_row.addWidget(title_label, 1)
     if pinned:
-        title_row.addWidget(IconLabel("push_pin", color=theme.primary, size=12))
+        title_row.addWidget(IconLabel(Icons.PUSH_PIN, color=theme.primary, size=12))
     layout.addLayout(title_row)
     layout.addWidget(MutedLabel(time, theme=theme, size=11))
     return row

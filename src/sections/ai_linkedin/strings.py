@@ -283,7 +283,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "header_help": "Jak tohoto asistenta používat",
         # Mode tabs
         "mode_tab_chat": "Chat",
-        "mode_tab_builder": "Stavitel",
+        "mode_tab_builder": "Tvůrce",
         # Builder sub-tabs
         "builder_tab_setup": "Nastavení",
         "builder_tab_sections": "Sekce",
@@ -485,7 +485,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "Ahoj! Jsem tvůj LinkedIn voice expert. Můžeš mě poprosit, abych"
             " vylepšil tvůj headline, zhodnotil About sekci, napsal"
             " learning-update post nebo zprávu recruiterovi. Přepni na režim"
-            " **Stavitel**, kdykoliv budeš chtít vygenerovat celý profil."
+            " **Tvůrce**, kdykoliv budeš chtít vygenerovat celý profil."
         ),
         "chat_running": "Přemýšlím…",
         # History tab
