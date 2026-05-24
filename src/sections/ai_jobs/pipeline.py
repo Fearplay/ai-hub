@@ -835,6 +835,10 @@ def run_search(*, output_lang: str) -> PipelineResult:
             output_lang=output_lang,
             tech_skills=tech_skills,
             additional_experience=additional_experience,
+            profile_text=profile_text,
+            profile_file_text=profile_file_text,
+            profile_file_name=profile_file_name,
+            linkedin_url=linkedin_url,
             followup_qa=(),
         )
         _set_activity("ready")
@@ -2227,6 +2231,7 @@ def list_saved_runs() -> list[dict]:
             positions = summary.get("positions") or []
             if positions:
                 record["count"] = len(positions)
+            record["has_skill_gap"] = bool(summary.get("skill_gap"))
         except Exception as exc:
             logger_service.log_exception(
                 "ai_jobs.pipeline", "list_saved_runs_summary_failed", exc,

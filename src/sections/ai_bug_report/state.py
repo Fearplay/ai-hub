@@ -68,6 +68,7 @@ class BugReportState:
 
     last_report: Optional[dict] = None
     last_error: str = ""
+    output_lang: str = ""
 
     last_run_folder: str = ""
     last_save_path: str = ""

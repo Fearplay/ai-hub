@@ -148,6 +148,11 @@ class CareerState:
     last_error: str = ""
     last_run_folder: str = ""
     target_role: str = ""
+    # When True the pipeline short-circuits every AI call and returns
+    # curated mock data from ``data.DEMO_*``. The orange ``DEMO`` pill
+    # in the section header signals it to the user. Toggled via the
+    # ``...`` overflow menu - see ``view.py``.
+    demo_mode: bool = False
 
     # Footer "Run analysis" stage. Lives on STATE so the disabled state
     # survives the full section rebuild that fires after each pipeline
@@ -201,11 +206,18 @@ class CareerState:
         self.github_skip = False
         self.github_profile = None
         self.target_role = ""
+        self.demo_mode = False
 
     def has_results(self) -> bool:
         return self.match is not None
 
     def can_run(self) -> bool:
+        # Demo mode skips the input gate so users can press
+        # "Run analysis" with no resume / no job posting and watch the
+        # pipeline play back the curated payloads from
+        # ``data.DEMO_*`` (still no AI calls).
+        if self.demo_mode:
+            return True
         return bool(self.resume and self.resume.text and self.job_text)
 
 

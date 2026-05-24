@@ -18,6 +18,7 @@ provider, so the entire UI flow can be explored offline.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -26,6 +27,7 @@ from pathlib import Path
 from src.services import ai_provider, exporter, github_client, job_scraper, store
 from src.services import logger as logger_service
 from src.services.cost_tracker import COST
+from src.sections.ai_career import data as career_data
 from src.sections.ai_career import modern_cv_render, prompts, schema, themes
 from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
@@ -139,6 +141,61 @@ def _set_error(message: str) -> PipelineResult:
     return PipelineResult(ok=False, error=message)
 
 
+# Demo seed -------------------------------------------------------------------
+
+
+def load_demo() -> None:
+    """Populate ``STATE`` with curated mock data, no AI calls.
+
+    Used by the ``...`` header menu's "Show demo data" item. Copies the
+    constants from :mod:`src.sections.ai_career.data` so the user can
+    explore Match / Documents / Modern CV without spending tokens.
+    The pipeline functions all check ``STATE.demo_mode`` first and
+    short-circuit to the same constants, so even if the user clicks
+    "Run analysis" while demo is on no provider call is made.
+    """
+    logger_service.log_event(
+        "INFO", "ai_career.pipeline", "load_demo_start"
+    )
+    STATE.demo_mode = True
+    STATE.target_role = career_data.DEMO_TARGET_ROLE
+    STATE.candidate = copy.deepcopy(career_data.DEMO_CANDIDATE)
+    STATE.job_spec = copy.deepcopy(career_data.DEMO_JOB_SPEC)
+    STATE.match = copy.deepcopy(career_data.DEMO_MATCH)
+    STATE.modern_cv_data = copy.deepcopy(career_data.DEMO_MODERN_CV_DATA)
+    STATE.documents = copy.deepcopy(career_data.DEMO_DOCUMENTS)
+    STATE.followup_questions = []
+    STATE.followup_qa = []
+    STATE.refine_problems.clear()
+    STATE.activity = "ready"
+    STATE.last_error = ""
+    STATE.run_stage = ""
+    REFS.request_context_refresh()
+    logger_service.log_state(
+        "ai_career.pipeline", "load_demo_state",
+        has_candidate=True,
+        has_job_spec=True,
+        has_match=True,
+        docs=len(STATE.documents),
+    )
+
+
+def clear_demo() -> None:
+    """Turn demo mode off and wipe the seeded payloads.
+
+    Pairs with :func:`load_demo`. Resets every AI-derived field so the
+    user starts from a clean Setup tab the next time they open the
+    section, without leaking the curated TrustPay persona into a real
+    run.
+    """
+    logger_service.log_event(
+        "INFO", "ai_career.pipeline", "clear_demo_start"
+    )
+    STATE.demo_mode = False
+    STATE.reset_run()
+    REFS.request_context_refresh()
+
+
 # Step 0: input gathering -----------------------------------------------------
 
 
@@ -189,6 +246,16 @@ def extract_candidate(
     output_lang: str,
     target_role: str = "",
 ) -> PipelineResult:
+    if STATE.demo_mode:
+        # Demo mode is free + offline. Reseed the curated Candidate
+        # JSON so users can "rerun" Setup without leaking tokens.
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "extract_candidate_demo_done"
+        )
+        STATE.candidate = copy.deepcopy(career_data.DEMO_CANDIDATE)
+        _set_activity("ready")
+        return PipelineResult(ok=True)
+
     if not STATE.resume or not STATE.resume.text:
         return _set_error("Resume is missing.")
 
@@ -223,6 +290,14 @@ def extract_candidate(
 
 
 def extract_job_spec(*, output_lang: str) -> PipelineResult:
+    if STATE.demo_mode:
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "extract_job_spec_demo_done"
+        )
+        STATE.job_spec = copy.deepcopy(career_data.DEMO_JOB_SPEC)
+        _set_activity("ready")
+        return PipelineResult(ok=True)
+
     if not STATE.job_text:
         return _set_error("Job text is empty.")
 
@@ -254,6 +329,18 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
     when the AI emits zero questions - that is a valid outcome and means
     the resume already covers the job description.
     """
+    if STATE.demo_mode:
+        # Demo persona is already aligned with the job spec, so no
+        # follow-ups are needed. Returning an empty list short-circuits
+        # the "Ask follow-up questions" modal in the same way the LLM
+        # would on a perfect-fit run.
+        STATE.followup_questions = []
+        _set_activity("ready")
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "generate_followups_demo_done"
+        )
+        return PipelineResult(ok=True)
+
     if not STATE.candidate or not STATE.job_spec:
         return _set_error("Run candidate + job spec extraction first.")
 
@@ -308,6 +395,14 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
 
 
 def analyze_match(*, output_lang: str) -> PipelineResult:
+    if STATE.demo_mode:
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "analyze_match_demo_done"
+        )
+        STATE.match = copy.deepcopy(career_data.DEMO_MATCH)
+        _set_activity("ready")
+        return PipelineResult(ok=True)
+
     if not STATE.candidate or not STATE.job_spec:
         return _set_error("Run candidate + job spec extraction first.")
 
@@ -421,6 +516,18 @@ def generate_modern_cv_data(
     keep_activity: bool = False,
 ) -> PipelineResult:
     """Run the Modern CV JSON generator and store the result on STATE."""
+    if STATE.demo_mode:
+        STATE.modern_cv_data = copy.deepcopy(career_data.DEMO_MODERN_CV_DATA)
+        if not keep_activity:
+            _set_activity("ready")
+        if refresh_ui:
+            REFS.request_context_refresh()
+            REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "generate_modern_cv_demo_done"
+        )
+        return PipelineResult(ok=True)
+
     if not (STATE.candidate and STATE.job_spec and STATE.match):
         return _set_error("Run analysis before generating the Modern CV.")
 
@@ -597,7 +704,35 @@ def generate_document(
         "generate_document_start",
         kind=kind,
         output_lang=output_lang,
+        demo_mode=STATE.demo_mode,
     )
+    if STATE.demo_mode:
+        # Map the document kind onto the curated markdown body and
+        # short-circuit. Modern CV stays special-cased below so the
+        # JSON renderer keeps owning the layout.
+        if kind == DOC_MODERN_CV:
+            return generate_modern_cv_data(
+                output_lang=output_lang,
+                refresh_ui=refresh_ui,
+                keep_activity=keep_activity,
+            )
+        demo_body = career_data.DEMO_DOCUMENTS.get(kind, "")
+        if demo_body:
+            STATE.documents[kind] = demo_body
+        if not keep_activity:
+            _set_activity("ready")
+        if refresh_ui:
+            REFS.request_context_refresh()
+            REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO",
+            "ai_career.pipeline",
+            "generate_document_demo_done",
+            kind=kind,
+            chars=len(demo_body),
+        )
+        return PipelineResult(ok=True)
+
     if kind == DOC_EVIDENCE:
         text = build_evidence_document(output_lang=output_lang)
         if not text:
@@ -692,7 +827,29 @@ def refine_document(
         kind=kind,
         output_lang=output_lang,
         problems=len([p for p in problems if p.strip()]),
+        demo_mode=STATE.demo_mode,
     )
+    if STATE.demo_mode:
+        # In demo mode we ignore the typed problems and re-seed the
+        # curated doc so the user always sees the polished sample
+        # instead of an awkward "refined" no-op.
+        if kind == DOC_MODERN_CV:
+            STATE.modern_cv_data = copy.deepcopy(career_data.DEMO_MODERN_CV_DATA)
+        else:
+            demo_body = career_data.DEMO_DOCUMENTS.get(kind, "")
+            if demo_body:
+                STATE.documents[kind] = demo_body
+        if not keep_activity:
+            _set_activity("ready")
+        if refresh_ui:
+            REFS.request_context_refresh()
+            REFS.dispatch(_request_full_refresh)
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "refine_document_demo_done",
+            kind=kind,
+        )
+        return PipelineResult(ok=True)
+
     if kind == DOC_MODERN_CV:
         # Modern CV: regenerate the JSON payload from scratch with the
         # candidate's notes applied, then re-render. There is no
@@ -783,7 +940,39 @@ def send_chat_message(
         chars=len(user_text),
         history=len(STATE.chat_messages),
         attachments=len(STATE.chat_attachments),
+        demo_mode=STATE.demo_mode,
     )
+
+    if STATE.demo_mode:
+        # Templated demo answer. We do not hit the provider, but the
+        # reply is shaped like a coach: 1-2 sentences acknowledging the
+        # question + a generic next step grounded in the curated
+        # persona, plus a reminder that demo mode is offline.
+        reply_en = (
+            "Demo mode is on, so I am not calling the provider - "
+            "the answer below is canned for **Jana's** profile.\n\n"
+            "About your question: based on Jana's TrustPay experience "
+            "(Playwright + Pytest pyramid, CI runtime cut from 38 to "
+            "14 minutes) I would emphasise the **leadership track "
+            "record** and the **k6 spike plan** when answering. Turn "
+            "off Demo data in the section ... menu to ask the real "
+            "AI coach."
+        )
+        reply_cs = (
+            "Demo režim je zapnutý, takže nevolám AI - odpověď je "
+            "připravená pro **Janin profil**.\n\n"
+            "K tvojí otázce: vzhledem k Janině práci v TrustPay "
+            "(Playwright + Pytest pyramida, snížení CI z 38 na 14 "
+            "minut) bych zdůraznil/a **vedení malého týmu** a "
+            "připravený **k6 spike plán**. Pokud chceš odpověď od "
+            "skutečné AI, vypni Demo data v menu ... v sekci."
+        )
+        reply = reply_cs if (output_lang or "").lower().startswith("cs") else reply_en
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "send_chat_demo_done",
+            reply_chars=len(reply),
+        )
+        return reply, ""
 
     history = [
         {"role": m.role, "text": m.text}

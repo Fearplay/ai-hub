@@ -259,6 +259,11 @@ class LinkedInState:
     run_stage: str = ""  # "" | "running" | "followups" | "saving"
     last_error: str = ""
     last_run_folder: str = ""
+    # When True the pipeline short-circuits every AI call and returns
+    # curated mock data from ``data.DEMO_*``. The orange ``DEMO`` pill
+    # in the section header signals it to the user. Toggled via the
+    # ``...`` overflow menu - see ``view.py``.
+    demo_mode: bool = False
 
     runs_history: list[dict] = field(default_factory=list)
 
@@ -324,6 +329,7 @@ class LinkedInState:
             POST_LEARNING_UPDATE,
             POST_PROJECT_LAUNCH,
         }
+        self.demo_mode = False
 
     # --- Convenience predicates ---------------------------------------
 
@@ -331,6 +337,11 @@ class LinkedInState:
         return bool(self.extracted_profile)
 
     def can_run(self) -> bool:
+        # Demo mode skips the input gate so users can press "Run" with
+        # no resume / no linkedin export and watch the curated demo
+        # payload replay - still no AI calls.
+        if self.demo_mode:
+            return True
         return bool(
             self.target_roles
             and (

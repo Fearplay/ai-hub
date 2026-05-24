@@ -14,10 +14,10 @@ even when the user has no API keys configured yet.
 from __future__ import annotations
 
 import importlib
-from typing import Optional
+from functools import lru_cache
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -30,7 +30,7 @@ from src.components.header import header
 from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
-    BodyLabel,
+    ClickFrame,
     IconLabel,
     MutedLabel,
     PrimaryButton,
@@ -46,7 +46,8 @@ from src.services import logger as logger_service
 from src.theme import Theme
 
 
-def _section_subtitle(section: Section, lang: str) -> str:
+@lru_cache(maxsize=64)
+def _section_subtitle_for_key(section_key: str, lang: str) -> str:
     """Pull the short subtitle from the target section's strings module.
 
     Each section package ships a ``strings.py`` with at least a
@@ -56,11 +57,11 @@ def _section_subtitle(section: Section, lang: str) -> str:
     auto-discovered ``Section`` instance is enough.
     """
     try:
-        module = importlib.import_module(f"src.sections.{section.key}.strings")
+        module = importlib.import_module(f"src.sections.{section_key}.strings")
     except Exception as exc:
         logger_service.log_exception(
             "dashboard.view", "section_subtitle_import_failed", exc,
-            section=section.key,
+            section=section_key,
         )
         return ""
     strings = getattr(module, "STRINGS", None)
@@ -71,6 +72,10 @@ def _section_subtitle(section: Section, lang: str) -> str:
         return ""
     value = bundle.get("subtitle")
     return str(value) if value else ""
+
+
+def _section_subtitle(section: Section, lang: str) -> str:
+    return _section_subtitle_for_key(section.key, lang)
 
 
 def _stat_card(theme: Theme, *, count: int, label: str) -> QWidget:
@@ -124,27 +129,28 @@ def _module_card(
     lang: str,
     open_label: str,
     on_open,
-) -> QFrame:
-    card = QFrame()
+) -> ClickFrame:
+    # Whole card is clickable - clicking anywhere navigates straight
+    # into the section, not only the primary button (see image 2 / 3
+    # in feat/dashboard-and-ui-fixes - the user wanted the description
+    # card to be the affordance, not just the small Otevrit pill).
+    card = ClickFrame()
     card.setObjectName("DashboardModuleCard")
     card.setStyleSheet(
         f"""
-        QFrame#DashboardModuleCard {{
+        ClickFrame#DashboardModuleCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 16px;
         }}
-        QFrame#DashboardModuleCard:hover {{
+        ClickFrame#DashboardModuleCard:hover {{
             border: 1px solid {theme.primary};
+            background-color: {rgba(theme.primary, 0.06)};
         }}
         """
     )
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    # Previously ``setMinimumHeight(180)`` clipped the wrapped second
-    # line of the subtitle (e.g. the long AI Bug Report description
-    # rendered as "...zachy" with no second line visible). We let the
-    # layout size itself to the actual wrapped content so longer
-    # descriptions can flow downward instead of getting cut off.
+    card.clicked.connect(lambda: on_open(section))
 
     layout = vbox(spacing=10, margins=(18, 18, 18, 18))
     card.setLayout(layout)
@@ -170,11 +176,18 @@ def _module_card(
     )
     head_layout.addWidget(icon_box, 0, Qt.AlignmentFlag.AlignTop)
 
-    title_holder = QFrame()
-    title_holder.setStyleSheet("background: transparent;")
-    wrap_label_slot(title_holder)
+    # Drop the intermediate ``title_holder`` QFrame and put the title +
+    # subtitle labels directly into a tiny vbox attached to the row.
+    # ``QFrame`` does not override ``heightForWidth`` so the previous
+    # nesting reported the unwrapped single-line size to ``head_row``,
+    # which capped ``card`` at ~230 px and clipped the wrapped Czech
+    # descriptions. Talking to the QLabel directly via
+    # ``QFontMetrics`` plus ``setMinimumHeight`` is the reliable fix.
+    title_col = QFrame()
+    title_col.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_col)
     title_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
-    title_holder.setLayout(title_layout)
+    title_col.setLayout(title_layout)
     title_label = TitleLabel(
         section.label(lang), theme=theme, size=15, weight=QFont.Weight.Bold,
     )
@@ -183,30 +196,27 @@ def _module_card(
     subtitle = _section_subtitle(section, lang)
     if subtitle:
         subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
-        # ``wrap_label_slot`` flips ``heightForWidth`` on the size policy,
-        # which is what makes ``QHBoxLayout`` actually ask the wrapped
-        # label how tall it needs to be at the available column width.
-        # Without it the subtitle reported the single-line sizeHint and
-        # the bottom of the wrapped text rendered behind the button row
-        # (4th line of the AI LinkedIn / AI Bug Report description got
-        # clipped, see screenshots in feat/dashboard-and-ui-fixes).
         wrap_label_slot(subtitle_label)
+        # Reserve just enough height for common Czech wraps without
+        # forcing every card into the tall 260 px shape from the old grid.
+        metrics = QFontMetrics(subtitle_label.font())
+        approx_lines = max(2, min(5, (len(subtitle) // 34) + 1))
+        subtitle_label.setMinimumHeight(metrics.lineSpacing() * approx_lines)
         title_layout.addWidget(subtitle_label)
-    head_layout.addWidget(title_holder, 1, Qt.AlignmentFlag.AlignTop)
+    head_layout.addWidget(title_col, 1, Qt.AlignmentFlag.AlignTop)
     head_layout.setStretch(1, 1)
 
     layout.addWidget(head_row)
-    # ``addStretch(1)`` pushes the button to the bottom of the card when
-    # other cards in the same row are taller (they all share max-height
-    # in the QGridLayout). Without it the button stuck to the head_row
-    # and a big empty band appeared above it inside short cards.
-    layout.addStretch(1)
+    layout.addSpacing(8)
 
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
     btn_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     btn_row.setLayout(btn_layout)
     open_btn = PrimaryButton(open_label, theme=theme, icon=Icons.ARROW_FORWARD)
+    # Route both the button click and the whole-card click through the
+    # same handler so callers see a single ``open_section_clicked``
+    # event regardless of where the user pressed.
     open_btn.clicked.connect(lambda: on_open(section))
     btn_layout.addWidget(open_btn)
     btn_layout.addStretch(1)

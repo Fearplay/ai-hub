@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QFont
+from PySide6.QtGui import QAction, QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -200,12 +200,42 @@ def header(
     title_layout = vbox(spacing=4 if subtitle else 0, margins=(0, 0, 0, 0))
     title_col.setLayout(title_layout)
     title_size = 16 if compact else 18
-    title_layout.addWidget(TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold))
+    title_label = TitleLabel(title, theme=theme, size=title_size, weight=QFont.Weight.Bold)
+    title_layout.addWidget(title_label)
+    subtitle_label: Optional[QLabel] = None
     if subtitle:
         subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
-        subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        wrap_label_slot(subtitle_label)
         title_layout.addWidget(subtitle_label)
     row_layout.addWidget(title_col, 1, Qt.AlignmentFlag.AlignTop)
+
+    # ``QLabel`` with ``setWordWrap(True)`` does report a correct
+    # ``heightForWidth`` but ``QHBoxLayout`` does not always honour it
+    # when the sibling action widgets win the size negotiation - so the
+    # subtitle visually wraps past the bar's bottom edge and bleeds
+    # into the tab bar below (see the AI Bug Report Czech screenshot).
+    # Reserve enough vertical room up-front, based on a conservative
+    # worst-case line count derived from the raw text length, so the
+    # wrap never gets clipped. Capped so an absurd subtitle does not
+    # eat the whole window.
+    title_metrics = QFontMetrics(title_label.font())
+    title_line_h = title_metrics.lineSpacing()
+    # Allow up to 2 wrapped title lines (Czech "AI Bug Report" wraps
+    # to "AI Bug" / "Report" on a narrow column).
+    title_lines = 2 if len(title) > 12 else 1
+    needed_h = title_line_h * title_lines
+    if subtitle_label is not None:
+        subtitle_metrics = QFontMetrics(subtitle_label.font())
+        sub_line_h = subtitle_metrics.lineSpacing()
+        # Worst case: ~28 chars per line at the narrowest column the
+        # bar ever gets squeezed to. Cap at 5 lines so an absurd
+        # subtitle does not eat the whole window. Floor at 2 so we
+        # always reserve room for the typical 2-line wrap.
+        approx_lines = max(2, min(5, (len(subtitle) // 28) + 1))
+        needed_h += 4 + sub_line_h * approx_lines  # +4 = vbox spacing
+        subtitle_label.setMinimumHeight(sub_line_h * approx_lines)
+    title_col.setMinimumHeight(needed_h)
+    bar.setMinimumHeight(needed_h + margins[1] + margins[3] + 4)
 
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")

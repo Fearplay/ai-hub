@@ -124,6 +124,13 @@ class AIHubApp(QMainWindow):
         self._context_widget: Optional[QWidget] = None
         self._central_layout: Optional[QHBoxLayout] = None
         self._sidebar_widget: Optional[QWidget] = None
+        # Cached global stylesheet so ``_apply_global_qss`` can skip
+        # ``QApplication.setStyleSheet`` (and the full-cascade repaint
+        # it triggers) when the new section produces an identical QSS
+        # string. Without this, every section click forces Qt to
+        # re-style every widget in the window, which feels sluggish
+        # even though nothing actually changed visually.
+        self._last_global_qss: str = ""
 
         global _active_app
         _active_app = self
@@ -283,10 +290,19 @@ class AIHubApp(QMainWindow):
 
     def _apply_global_qss(self, theme: Theme) -> None:
         qss = qss_for_theme(theme)
+        # Skip the global cascade when nothing changed. ``setStyleSheet``
+        # on the ``QApplication`` re-styles every widget in the tree
+        # even when the string is identical, which is the dominant cost
+        # of a section switch for sections that share the default accent
+        # (the majority of the app).
+        if qss == self._last_global_qss:
+            return
         try:
             QApplication.instance().setStyleSheet(qss)
         except Exception as exc:
             logger_service.log_exception("app", "apply_global_qss_failed", exc)
+            return
+        self._last_global_qss = qss
 
     def _swap_main(self, new_widget: QWidget) -> None:
         if self._main_layout is None:

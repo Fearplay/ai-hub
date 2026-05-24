@@ -29,7 +29,7 @@ from src.qt.widgets import (
     vbox,
 )
 from src.services import logger as logger_service
-from src.services import settings_store, store
+from src.services import settings_store
 from src.services.cost_tracker import COST
 from src.sections.ai_linkedin.data import (
     brand_profile_fields,
@@ -356,13 +356,6 @@ def build_context(theme: Theme, lang: str) -> QWidget:
                 _PREV_UNSUBSCRIBE["fn"] = None
 
     on_destroyed(panel_holder, _on_panel_destroyed)
-
-    try:
-        store.list_runs()
-    except Exception as exc:
-        logger_service.log_exception(
-            "ai_linkedin.context", "list_runs_warmup_failed", exc,
-        )
 
     _render()
     return panel_holder

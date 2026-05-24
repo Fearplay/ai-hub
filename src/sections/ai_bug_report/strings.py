@@ -93,8 +93,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_input": "Input",
         "tab_preview": "Preview",
         "tab_history": "History",
-        "menu_demo_load": "Show demo report",
-        "menu_demo_clear": "Clear demo report",
+        "menu_demo_load": "Show demo data",
+        "menu_demo_clear": "Hide demo data",
 
         "step_input_label": "STEP 1",
         "step_input_title": "Describe the bug",
@@ -127,7 +127,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "attachment_image_badge": "IMAGE",
         "attachment_doc_badge": "DOC",
 
-        "footer_demo_btn": "Try demo data",
         "footer_generate_btn": "Generate bug report",
         "footer_generate_running": "Generating...",
         "footer_ask_followups_label": "Let the AI ask clarifying questions first",
@@ -135,6 +134,12 @@ STRINGS: dict[str, dict[str, str]] = {
             "When something is missing, the AI pauses and asks you instead "
             "of making it up. Toggle off in Settings to skip the modal."
         ),
+        "report_lang_dialog_title": "Bug report language",
+        "report_lang_dialog_desc": "Choose the language for the generated report. The AI rewrites all human-readable report text into this language.",
+        "report_lang_option_cs": "Czech (CS)",
+        "report_lang_option_en": "English (EN)",
+        "report_lang_dialog_cancel": "Cancel",
+        "report_lang_dialog_confirm": "Generate",
         "generate_disabled_hint": "Add a description or at least one attachment first.",
         "input_requirement_hint": "Minimum input: add a description or at least one attachment.",
         "no_key_template": "Missing API key for {provider}. Open Settings and save your key first.",
@@ -257,8 +262,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_input": "Vstup",
         "tab_preview": "Náhled",
         "tab_history": "Historie",
-        "menu_demo_load": "Zobrazit ukázkový report",
-        "menu_demo_clear": "Vyčistit ukázkový report",
+        "menu_demo_load": "Zobrazit demo data",
+        "menu_demo_clear": "Skrýt demo data",
 
         "step_input_label": "KROK 1",
         "step_input_title": "Popiš chybu",
@@ -290,7 +295,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "attachment_image_badge": "OBR",
         "attachment_doc_badge": "DOK",
 
-        "footer_demo_btn": "Vyzkoušet ukázková data",
         "footer_generate_btn": "Vygenerovat bug report",
         "footer_generate_running": "Generuji...",
         "footer_ask_followups_label": "Nejdřív se zeptat na upřesnění",
@@ -298,6 +302,12 @@ STRINGS: dict[str, dict[str, str]] = {
             "Když AI něco chybí, raději se zeptá, než aby si to vymýšlela. "
             "V Nastavení můžeš tuhle pauzu vypnout."
         ),
+        "report_lang_dialog_title": "Jazyk bug reportu",
+        "report_lang_dialog_desc": "Vyber jazyk výsledného reportu. AI převede všechen čitelný text reportu do tohoto jazyka.",
+        "report_lang_option_cs": "Čeština (CS)",
+        "report_lang_option_en": "Angličtina (EN)",
+        "report_lang_dialog_cancel": "Zrušit",
+        "report_lang_dialog_confirm": "Generovat",
         "generate_disabled_hint": "Přidej popis nebo aspoň jednu přílohu.",
         "input_requirement_hint": "Minimum vstup: vyplň popis nebo přidej aspoň jednu přílohu.",
         "no_key_template": "Chybí API klíč pro {provider}. Otevři Nastavení a klíč ulož.",

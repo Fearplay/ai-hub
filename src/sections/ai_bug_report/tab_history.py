@@ -28,6 +28,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -40,6 +41,7 @@ from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
     DangerButton,
+    FlowLayout,
     GhostButton,
     IconLabel,
     MutedLabel,
@@ -232,6 +234,7 @@ def _row(
 
     title_row = QFrame()
     title_row.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_row)
     title_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
     title_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     title_row.setLayout(title_layout)
@@ -244,8 +247,8 @@ def _row(
 
     chips_row = QFrame()
     chips_row.setStyleSheet("background: transparent;")
-    chips_layout = hbox(spacing=6, margins=(0, 0, 0, 0))
-    chips_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    wrap_label_slot(chips_row)
+    chips_layout = FlowLayout(chips_row, margin=0, h_spacing=6, v_spacing=6)
     chips_row.setLayout(chips_layout)
     if severity:
         chips_layout.addWidget(
@@ -275,7 +278,6 @@ def _row(
             weight=QFont.Weight.DemiBold,
         )
     )
-    chips_layout.addStretch(1)
     il.addWidget(chips_row)
 
     layout.addWidget(info, 1)
@@ -283,24 +285,29 @@ def _row(
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")
     actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    actions.setLayout(actions_layout)
+    actions_layout = QGridLayout(actions)
+    actions_layout.setContentsMargins(0, 0, 0, 0)
+    actions_layout.setHorizontalSpacing(8)
+    actions_layout.setVerticalSpacing(8)
+    action_row = 0
     if word_path:
         word_btn = GhostButton(
             txt["history_open_word_btn"], theme=theme, icon=Icons.DESCRIPTION_OUTLINED,
         )
         word_btn.clicked.connect(lambda _checked=False, p=word_path: on_open_word(p))
-        actions_layout.addWidget(word_btn)
+        actions_layout.addWidget(word_btn, action_row, 0)
+        action_row += 1
     open_btn = GhostButton(
         txt["history_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN,
     )
     open_btn.clicked.connect(lambda _checked=False: on_open_folder(folder))
-    actions_layout.addWidget(open_btn)
+    actions_layout.addWidget(open_btn, action_row, 0)
+    action_row += 1
     delete_btn = DangerButton(
         txt["history_delete_btn"], theme=theme, icon=Icons.DELETE_OUTLINE,
     )
     delete_btn.clicked.connect(lambda _checked=False: on_delete(folder))
-    actions_layout.addWidget(delete_btn)
+    actions_layout.addWidget(delete_btn, action_row, 0)
     layout.addWidget(actions)
 
     return row
@@ -334,7 +341,9 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
             txt["history_title"], theme=theme, size=18, weight=QFont.Weight.Bold,
         )
     )
-    title_layout.addWidget(MutedLabel(txt["history_subtitle"], theme=theme, size=12))
+    subtitle_label = MutedLabel(txt["history_subtitle"], theme=theme, size=12)
+    wrap_label_slot(subtitle_label)
+    title_layout.addWidget(subtitle_label)
     header_layout.addWidget(title_holder, 1)
     refresh_btn = GhostButton(
         txt["history_refresh_btn"], theme=theme, icon=Icons.REFRESH,

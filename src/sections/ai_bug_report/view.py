@@ -28,8 +28,11 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QFrame,
+    QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QStackedLayout,
@@ -41,12 +44,14 @@ from src.components.file_drop_zone import file_drop_zone
 from src.components.followup_dialog import open_followup_dialog
 from src.components.header import HeaderMenuItem, header
 from src.components.tab_bar import tab_bar
+from src.qt.dialog import BaseDialog
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch
 from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     GhostButton,
     IconLabel,
     IconOnlyButton,
@@ -207,6 +212,124 @@ def _clear_layout(layout) -> None:
 
 def _clear_widget(widget: QWidget) -> None:
     _clear_layout(widget.layout())
+
+
+def _normalise_output_lang(value: str, fallback: str) -> str:
+    candidate = (value or fallback or "").lower()
+    return "cs" if candidate.startswith("cs") else "en"
+
+
+def _open_report_language_dialog(
+    parent: QWidget,
+    theme: Theme,
+    txt: dict,
+    *,
+    current: str,
+    fallback: str,
+    on_confirm: Callable[[str], None],
+) -> None:
+    """Ask for the report language before spending an AI call."""
+    selected = _normalise_output_lang(current, fallback)
+    dialog = BaseDialog(
+        parent=parent,
+        theme=theme,
+        title=txt["report_lang_dialog_title"],
+        width=440,
+    )
+
+    desc_card = QFrame()
+    desc_card.setStyleSheet(
+        f"""
+        QFrame {{
+            background-color: {theme.surface_2};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+        }}
+        """
+    )
+    desc_layout = vbox(spacing=0, margins=(12, 10, 12, 10))
+    desc_card.setLayout(desc_layout)
+    desc_layout.addWidget(BodyLabel(txt["report_lang_dialog_desc"], theme=theme, size=12))
+    dialog.body_layout.addWidget(desc_card)
+
+    group = QButtonGroup(dialog)
+    cs_btn = QRadioButton(txt["report_lang_option_cs"])
+    en_btn = QRadioButton(txt["report_lang_option_en"])
+    radio_qss = (
+        f"QRadioButton {{ color: {theme.text}; font-size: 14px; spacing: 10px; background: transparent; }}"
+        f"QRadioButton::indicator {{ width: 16px; height: 16px; border: 1px solid {theme.border}; border-radius: 8px; background-color: {theme.surface_2}; }}"
+        f"QRadioButton::indicator:checked {{ background-color: {theme.primary}; border: 1px solid {theme.primary}; }}"
+    )
+    cs_btn.setStyleSheet(radio_qss)
+    en_btn.setStyleSheet(radio_qss)
+    cs_btn.setChecked(selected == "cs")
+    en_btn.setChecked(selected != "cs")
+    group.addButton(cs_btn)
+    group.addButton(en_btn)
+
+    def _refresh_cards() -> None:
+        for card, radio in ((cs_card, cs_btn), (en_card, en_btn)):
+            active = radio.isChecked()
+            card.setStyleSheet(
+                f"""
+                ClickFrame#ReportLangCard {{
+                    background-color: {theme.surface_2 if not active else rgba(theme.primary, 0.12)};
+                    border: 1px solid {theme.primary if active else theme.border};
+                    border-radius: 10px;
+                }}
+                ClickFrame#ReportLangCard:hover {{
+                    border: 1px solid {theme.primary};
+                }}
+                """
+            )
+
+    def _make_card(radio: QRadioButton) -> ClickFrame:
+        card = ClickFrame()
+        card.setObjectName("ReportLangCard")
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = hbox(spacing=0, margins=(14, 10, 14, 10))
+        card.setLayout(layout)
+        layout.addWidget(radio)
+        layout.addStretch(1)
+        card.clicked.connect(lambda _checked=False, r=radio: r.setChecked(True))
+        return card
+
+    cs_card = _make_card(cs_btn)
+    en_card = _make_card(en_btn)
+    cs_btn.toggled.connect(lambda _checked: _refresh_cards())
+    en_btn.toggled.connect(lambda _checked: _refresh_cards())
+    _refresh_cards()
+    dialog.body_layout.addWidget(cs_card)
+    dialog.body_layout.addWidget(en_card)
+
+    cancel_btn = QPushButton(txt["report_lang_dialog_cancel"])
+    cancel_btn.setStyleSheet(
+        f"QPushButton {{ background: transparent; color: {theme.text}; border: none; padding: 8px 12px; }}"
+    )
+    confirm_btn = QPushButton(txt["report_lang_dialog_confirm"])
+    confirm_btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background-color: {theme.primary};
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{ background-color: {theme.primary_hover}; }}
+        """
+    )
+
+    def _do_confirm() -> None:
+        chosen = "cs" if cs_btn.isChecked() else "en"
+        STATE.output_lang = chosen
+        dialog.accept()
+        on_confirm(chosen)
+
+    dialog.add_action(cancel_btn, on_click=dialog.reject)
+    dialog.add_action(confirm_btn, on_click=_do_confirm)
+    dialog.exec()
 
 
 def _step_card(
@@ -827,7 +950,7 @@ def _build_readonly_preview_tab(
 
     def _on_save() -> None:
         try:
-            result = pipeline.save_bug_report_docx(labels=s(lang))
+            result = pipeline.save_bug_report_docx(labels=s(STATE.output_lang or lang))
         except Exception as exc:
             logger_service.log_exception(
                 "ai_bug_report.view", "save_bug_report_failed", exc,
@@ -1199,7 +1322,7 @@ def _build_preview_tab(
 
     def _on_save() -> None:
         try:
-            result = pipeline.save_bug_report_docx(labels=s(lang))
+            result = pipeline.save_bug_report_docx(labels=s(STATE.output_lang or lang))
         except Exception as exc:
             logger_service.log_exception(
                 "ai_bug_report.view", "save_bug_report_failed", exc,
@@ -1366,7 +1489,7 @@ def _build_footer(
     def _refresh() -> None:
         _render_run_button()
 
-    def _phase2_generate() -> None:
+    def _phase2_generate(output_lang: str) -> None:
         """Run the main report generation in a background thread.
 
         Called either directly (no follow-up modal needed) or from
@@ -1381,7 +1504,7 @@ def _build_footer(
         dispatch(_render_run_button)
 
         try:
-            result = pipeline.generate_bug_report(output_lang=lang)
+            result = pipeline.generate_bug_report(output_lang=output_lang)
         except Exception as exc:
             logger_service.log_exception(
                 "ai_bug_report.view", "generate_worker_failed", exc,
@@ -1416,7 +1539,7 @@ def _build_footer(
             )
         )
 
-    def _open_followup_dialog_now() -> None:
+    def _open_followup_dialog_now(output_lang: str) -> None:
         def _on_submit(answers: list[dict]) -> None:
             STATE.followup_qa = answers
             STATE.activity = "generating"
@@ -1427,7 +1550,9 @@ def _build_footer(
                 "phase2_start",
                 followup_answers=len(answers or []),
             )
-            threading.Thread(target=_phase2_generate, daemon=True).start()
+            threading.Thread(
+                target=_phase2_generate, args=(output_lang,), daemon=True
+            ).start()
 
         def _on_cancel() -> None:
             logger_service.log_event(
@@ -1462,29 +1587,17 @@ def _build_footer(
             on_cancel=_on_cancel,
         )
 
-    def _on_generate() -> None:
-        if not STATE.can_generate():
-            _set_status(txt["generate_disabled_hint"], error=True)
-            return
-        if not STATE.demo_mode:
-            provider = settings_store.get_provider()
-            key_name = (
-                secrets.ANTHROPIC_API_KEY
-                if provider == settings_store.PROVIDER_ANTHROPIC
-                else secrets.OPENAI_API_KEY
-            )
-            if not secrets.has_secret(key_name):
-                _set_status(
-                    txt["no_key_template"].format(provider=provider), error=True
-                )
-                return
-
+    def _start_generation(output_lang: str) -> None:
+        output_lang = _normalise_output_lang(output_lang, lang)
+        STATE.output_lang = output_lang
         STATE.followup_questions = []
         STATE.followup_qa = []
         _set_status("")
 
         if STATE.demo_mode or not settings_store.get_ask_followups():
-            threading.Thread(target=_phase2_generate, daemon=True).start()
+            threading.Thread(
+                target=_phase2_generate, args=(output_lang,), daemon=True
+            ).start()
             return
 
         state_box["stage"] = "followups"
@@ -1495,7 +1608,7 @@ def _build_footer(
 
         def _phase1() -> None:
             try:
-                res = pipeline.generate_followup_questions(output_lang=lang)
+                res = pipeline.generate_followup_questions(output_lang=output_lang)
             except Exception as exc:
                 logger_service.log_exception(
                     "ai_bug_report.view", "phase1_failed", exc,
@@ -1534,7 +1647,7 @@ def _build_footer(
                 # / ``ai_jobs`` REFS do), so go through the shared
                 # ``runtime.dispatch`` directly. ``sections.mdc`` lists
                 # this as the canonical "generic GUI-thread call" pattern.
-                dispatch(_open_followup_dialog_now)
+                dispatch(lambda: _open_followup_dialog_now(output_lang))
                 return
 
             # No questions -> straight to the main pass.
@@ -1543,9 +1656,35 @@ def _build_footer(
                 "ai_bug_report.view",
                 "followup_dialog_skipped_zero_questions",
             )
-            _phase2_generate()
+            _phase2_generate(output_lang)
 
         threading.Thread(target=_phase1, daemon=True).start()
+
+    def _on_generate() -> None:
+        if not STATE.can_generate():
+            _set_status(txt["generate_disabled_hint"], error=True)
+            return
+        if not STATE.demo_mode:
+            provider = settings_store.get_provider()
+            key_name = (
+                secrets.ANTHROPIC_API_KEY
+                if provider == settings_store.PROVIDER_ANTHROPIC
+                else secrets.OPENAI_API_KEY
+            )
+            if not secrets.has_secret(key_name):
+                _set_status(
+                    txt["no_key_template"].format(provider=provider), error=True
+                )
+                return
+
+        _open_report_language_dialog(
+            get_main_window() or container,
+            theme,
+            txt,
+            current=STATE.output_lang,
+            fallback=lang,
+            on_confirm=_start_generation,
+        )
 
     _render_run_button()
     return container, _refresh
@@ -1576,7 +1715,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
 
     def _on_demo_menu() -> None:
         STATE.demo_mode = True
-        pipeline.load_demo()
+        pipeline.load_demo(STATE.output_lang or lang)
         STATE.active_tab = TAB_PREVIEW
         REFS.request_context_refresh()
         try:

@@ -224,7 +224,16 @@ def build_history_tab(
         layout.addWidget(scroll, 1)
 
     footer = QFrame()
-    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    # See ``ai_linkedin/tab_output.py`` for the rationale.
+    footer.setObjectName("LinkedInHistoryFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#LinkedInHistoryFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     footer_layout = hbox(spacing=10, margins=(24, 12, 24, 12))
     footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     footer.setLayout(footer_layout)

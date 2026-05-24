@@ -26,7 +26,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import vbox
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_finance import pipeline
 from src.sections.ai_finance.data import SECTION_ICON, tabs as tab_labels
 from src.sections.ai_finance.how_to import open_finance_how_to
@@ -201,19 +201,21 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         open_finance_how_to(get_main_window(), theme, lang)
 
     def _menu_toggle_demo() -> None:
+        # Single load/clear handler shared with the rest of the demo-aware
+        # sections - no more transient toast, the orange ``DEMO`` pill in
+        # the header trailing slot tells the user the state at a glance.
         new_value = not STATE.demo_mode
         STATE.demo_mode = new_value
         logger_service.log_event(
             "INFO", "ai_finance.view", "demo_mode_toggle",
             enabled=new_value,
         )
-        _show_message(
-            txt["menu_demo_on"] if new_value else txt["menu_demo_off"]
-        )
         _refresh()
 
     has_analyses = STATE.has_any_analysis()
-    demo_label = txt["menu_demo_off"] if STATE.demo_mode else txt["menu_demo_on"]
+    demo_label = (
+        txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"]
+    )
     menu_items: list[HeaderMenuItem] = [
         HeaderMenuItem(
             icon=Icons.POST_ADD,
@@ -243,6 +245,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         ),
     ]
 
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
+
     header_widget = header(
         theme,
         lang,
@@ -250,6 +258,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
+        trailing=demo_pill,
         menu_items=menu_items,
     )
     layout.addWidget(header_widget)

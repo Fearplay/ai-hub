@@ -162,7 +162,8 @@ _DEMO_REPORT: dict[str, Any] = {
 }
 
 
-def load_demo() -> None:
+def load_demo(output_lang: str = "en") -> None:
+    STATE.output_lang = _resolve_output_lang(output_lang)
     STATE.last_report = dict(_DEMO_REPORT)
     STATE.last_error = ""
     STATE.activity = "ready"
@@ -185,6 +186,11 @@ def _set_activity(value: str) -> None:
             new=value,
         )
     REFS.request_context_refresh()
+
+
+def _resolve_output_lang(value: str) -> str:
+    """Keep prompt and saved metadata language values canonical."""
+    return "cs" if str(value or "").lower().startswith("cs") else "en"
 
 
 def _normalise_enum(value: Any, allowed: tuple, default: str) -> str:
@@ -309,6 +315,7 @@ def generate_followup_questions(*, output_lang: str) -> StepResult:
     the inputs are already good enough). Demo mode and zero-input
     short-circuit so the call never wastes tokens.
     """
+    output_lang = _resolve_output_lang(output_lang)
     logger_service.log_event(
         "INFO",
         "ai_bug_report.pipeline",
@@ -429,6 +436,8 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
     questions modal) are forwarded to the prompt builder as ground
     truth.
     """
+    output_lang = _resolve_output_lang(output_lang)
+    STATE.output_lang = output_lang
     logger_service.log_event(
         "INFO",
         "ai_bug_report.pipeline",
@@ -443,7 +452,7 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
     )
 
     if STATE.demo_mode:
-        load_demo()
+        load_demo(output_lang)
         logger_service.log_event(
             "INFO", "ai_bug_report.pipeline", "generate_bug_report_demo_done"
         )
@@ -983,6 +992,7 @@ def save_bug_report_docx(*, labels: dict[str, str]) -> SaveResult:
             json.dumps(
                 {
                     "report": STATE.last_report,
+                    "output_lang": STATE.output_lang or "en",
                     "saved_at": datetime.now().isoformat(timespec="seconds"),
                     "images": [
                         {"name": img.name, "size_bytes": img.size_bytes}
@@ -1131,6 +1141,7 @@ def restore_run(folder: str) -> bool:
         )
         return False
     STATE.last_report = _normalise_report(report)
+    STATE.output_lang = _resolve_output_lang(summary.get("output_lang") or STATE.output_lang)
     STATE.last_run_folder = folder
     docs = summary.get("documents") or []
     if isinstance(docs, list):

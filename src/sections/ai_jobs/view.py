@@ -21,7 +21,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import vbox
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_jobs import pipeline
 from src.sections.ai_jobs.data import SECTION_ICON, tabs as tab_labels
 from src.sections.ai_jobs.how_to import open_jobs_how_to
@@ -264,6 +264,16 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         ),
     ]
 
+    # Orange ``DEMO`` pill in the header trailing slot signals that
+    # the current view is showing curated offline data, not a real
+    # search. Matches the AI Bug Report / AI Doc Assistant pattern -
+    # see ``.cursor/rules/ai-section.mdc`` for the shared demo affordance.
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
+
     header_widget = header(
         theme,
         lang,
@@ -271,6 +281,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
+        trailing=demo_pill,
         menu_items=menu_items,
     )
     layout.addWidget(header_widget)
