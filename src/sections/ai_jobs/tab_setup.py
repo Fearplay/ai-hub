@@ -48,6 +48,7 @@ from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     GhostButton,
     IconLabel,
     IconOnlyButton,
@@ -100,7 +101,7 @@ def _request_full_refresh() -> None:
 
 
 def _step_card(theme: Theme, *, label: str, title: str, desc: str, body: QWidget) -> QFrame:
-    card = QFrame()
+    card = ClickFrame()
     card.setObjectName("JobsStepCard")
     card.setStyleSheet(
         f"""
@@ -1141,11 +1142,9 @@ def _step_summary_run(
     txt: dict,
     on_state_change: Callable[[], None],
     *,
-    on_run: Callable[[], None],
     on_save_template: Callable[[], None],
     on_clear: Callable[[], None],
     on_load_last: Callable[[], None],
-    run_button: PrimaryButton,
 ) -> QWidget:
     body = QWidget()
     body.setStyleSheet("background: transparent;")
@@ -1182,17 +1181,6 @@ def _step_summary_run(
         summary_layout.addWidget(_summary_row(theme, label, value))
 
     body_layout.addWidget(summary_holder)
-
-    # Main run button.
-    run_row = QFrame()
-    run_row.setStyleSheet("background: transparent;")
-    run_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    run_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-    run_row.setLayout(run_layout)
-    run_button.clicked.connect(on_run)
-    run_layout.addWidget(run_button)
-    run_layout.addStretch(1)
-    body_layout.addWidget(run_row)
 
     # Secondary actions.
     more_row = QFrame()
@@ -1239,8 +1227,9 @@ def _profile_card(
     on_duplicate: Callable[[dict[str, Any]], None],
     on_delete: Callable[[dict[str, Any]], None],
 ) -> QFrame:
-    card = QFrame()
+    card = ClickFrame()
     card.setObjectName("JobsProfileCard")
+    card.clicked.connect(lambda: on_run(profile))
     card.setStyleSheet(
         f"""
         QFrame#JobsProfileCard {{
@@ -1743,11 +1732,9 @@ def build_setup_tab(
     body_layout.addWidget(_step_salary_lang(theme, txt, _on_state_change))
     body_layout.addWidget(_step_summary_run(
         theme, txt, _on_state_change,
-        on_run=_on_run,
         on_save_template=_on_save_template,
         on_clear=_on_clear_form,
         on_load_last=_on_load_last,
-        run_button=run_btn,
     ))
     body_layout.addWidget(_step_saved_profiles(
         theme, txt,
@@ -1793,8 +1780,8 @@ def build_setup_tab(
     if STATE.setup_scroll_pos > 0:
         QTimer.singleShot(0, _restore_scroll_pos)
 
-    # Footer hosts the status label + the "ask clarifying questions" toggle.
-    # The Run button itself lives in Step 11 (no duplicate footer button).
+    # Footer hosts the status label, follow-up toggle and the primary CTA so
+    # the user never has to scroll back to Step 11 to start the search.
     footer = QFrame()
     footer.setObjectName("JobsSetupFooter")
     footer.setStyleSheet(
@@ -1805,7 +1792,8 @@ def build_setup_tab(
         }}
         """
     )
-    footer_layout = vbox(spacing=6, margins=(24, 12, 24, 12))
+    footer_layout = hbox(spacing=12, margins=(24, 12, 24, 12))
+    footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     footer.setLayout(footer_layout)
 
     fu_check = QCheckBox(txt["footer_ask_followups_label"])
@@ -1820,8 +1808,10 @@ def build_setup_tab(
     fu_check.stateChanged.connect(
         lambda _state: settings_store.set_ask_followups(bool(fu_check.isChecked()))
     )
-    footer_layout.addWidget(fu_check)
-    footer_layout.addWidget(status_label)
+    footer_layout.addWidget(fu_check, 0, Qt.AlignmentFlag.AlignVCenter)
+    footer_layout.addWidget(status_label, 1, Qt.AlignmentFlag.AlignVCenter)
+    run_btn.clicked.connect(_on_run)
+    footer_layout.addWidget(run_btn, 0, Qt.AlignmentFlag.AlignVCenter)
     layout.addWidget(footer)
 
     # Clear the pipeline-level resolver when this view is destroyed so a

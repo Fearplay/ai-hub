@@ -22,6 +22,7 @@ prime anything at startup.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import certifi
 import truststore
@@ -41,9 +42,15 @@ os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 import sys
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from src.app import AIHubApp
+
+
+def _resource_path(relative: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / relative
 
 
 def main() -> int:
@@ -54,8 +61,13 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("AI Hub")
     app.setOrganizationName("AI Hub")
+    icon_path = _resource_path("assets/logo.svg")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     window = AIHubApp()
+    if icon_path.exists():
+        window.setWindowIcon(QIcon(str(icon_path)))
     window.build()
     window.show()
 

@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from src.components.file_drop_zone import file_drop_zone
 from src.components.followup_dialog import open_followup_dialog
-from src.components.header import header
+from src.components.header import HeaderMenuItem, header
 from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch
@@ -76,18 +76,14 @@ from src.sections.ai_bug_report.state import (
     PRIORITY_VALUES,
     SEVERITY_VALUES,
     REPRODUCIBILITY_VALUES,
+    TAB_HISTORY,
     TAB_INPUT,
     TAB_PREVIEW,
     DocAttachment,
     ImageAttachment,
     STATE,
 )
-from src.sections.ai_bug_report.strings import (
-    priority_label,
-    reproducibility_label,
-    s,
-    severity_label,
-)
+from src.sections.ai_bug_report.strings import priority_label, reproducibility_label, s, severity_label
 from src.sections.ai_bug_report.tab_history import build_history_tab
 from src.theme import Theme
 
@@ -642,6 +638,301 @@ def _env_block(theme: Theme, txt: dict, env: dict) -> QWidget:
     return holder
 
 
+def _scenario_card(theme: Theme, txt: dict, lang: str, scenario: dict, index: int) -> QFrame:
+    card = QFrame()
+    card.setObjectName("BugReportScenarioCard")
+    card.setStyleSheet(
+        f"""
+        QFrame#BugReportScenarioCard {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 16px;
+        }}
+        """
+    )
+    layout = vbox(spacing=12, margins=(18, 16, 18, 18))
+    card.setLayout(layout)
+
+    header_row = QFrame()
+    header_row.setStyleSheet("background: transparent;")
+    header_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
+    header_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    header_row.setLayout(header_layout)
+
+    badge = Pill(
+        text=f"{txt['preview_scenario_label']} {index}",
+        bg=rgba(theme.primary, 0.18),
+        fg=theme.primary,
+    )
+    header_layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+
+    title_col = QFrame()
+    title_col.setStyleSheet("background: transparent;")
+    title_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    title_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    title_col.setLayout(title_layout)
+    title_layout.addWidget(
+        TitleLabel(
+            scenario.get("title") or txt["preview_title_label"],
+            theme=theme,
+            size=15,
+            weight=QFont.Weight.Bold,
+        )
+    )
+    if scenario.get("summary"):
+        title_layout.addWidget(BodyLabel(scenario["summary"], theme=theme, size=12, selectable=True))
+    header_layout.addWidget(title_col, 1)
+    layout.addWidget(header_row)
+
+    chips = QFrame()
+    chips.setStyleSheet("background: transparent;")
+    chips_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    chips_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    chips.setLayout(chips_layout)
+    if scenario.get("severity"):
+        chips_layout.addWidget(
+            Pill(
+                text=severity_label(lang, scenario["severity"]).upper(),
+                bg="#DC2626" if scenario["severity"] == "High" else theme.primary,
+                fg="#FFFFFF",
+            )
+        )
+    if scenario.get("priority"):
+        chips_layout.addWidget(
+            Pill(text=priority_label(lang, scenario["priority"]), bg=theme.surface_2, fg=theme.text)
+        )
+    if scenario.get("reproducibility"):
+        chips_layout.addWidget(
+            Pill(
+                text=reproducibility_label(lang, scenario["reproducibility"]),
+                bg=theme.surface_2,
+                fg=theme.text_muted,
+            )
+        )
+    chips_layout.addStretch(1)
+    layout.addWidget(chips)
+
+    env = scenario.get("environment") or {}
+    if isinstance(env, dict) and any(str(value or "").strip() for value in env.values()):
+        layout.addWidget(
+            _preview_section(
+                theme,
+                title=txt["preview_environment_label"],
+                body=_env_block(theme, txt, env),
+            )
+        )
+    if scenario.get("preconditions"):
+        layout.addWidget(
+            _preview_section(
+                theme,
+                title=txt["preview_preconditions_label"],
+                body=_bullet_list(theme, list(scenario["preconditions"])),
+            )
+        )
+    layout.addWidget(
+        _preview_section(
+            theme,
+            title=txt["preview_str_label"],
+            body=_bullet_list(theme, list(scenario.get("steps_to_reproduce") or []), numbered=True),
+        )
+    )
+    layout.addWidget(
+        _preview_section(
+            theme,
+            title=txt["preview_expected_label"],
+            body=BodyLabel(
+                scenario.get("expected_result") or "-",
+                theme=theme,
+                size=13,
+                selectable=True,
+            ),
+        )
+    )
+    layout.addWidget(
+        _preview_section(
+            theme,
+            title=txt["preview_actual_label"],
+            body=BodyLabel(
+                scenario.get("actual_result") or "-",
+                theme=theme,
+                size=13,
+                selectable=True,
+            ),
+        )
+    )
+    if scenario.get("additional_notes"):
+        layout.addWidget(
+            _preview_section(
+                theme,
+                title=txt["preview_notes_label"],
+                body=BodyLabel(scenario["additional_notes"], theme=theme, size=13, selectable=True),
+            )
+        )
+    return card
+
+
+def _build_readonly_preview_tab(
+    theme: Theme,
+    txt: dict,
+    lang: str,
+    report: dict,
+    *,
+    on_state_change: Callable[[], None],
+    on_navigate_tab: Callable[[int], None],
+) -> QWidget:
+    inner = QWidget()
+    inner.setStyleSheet(f"background-color: {theme.bg};")
+    inner_layout = vbox(spacing=12, margins=(24, 18, 24, 18))
+    inner.setLayout(inner_layout)
+
+    status_label = MutedLabel("", theme=theme, size=12, selectable=True)
+    status_label.setVisible(False)
+
+    def _set_status(msg: str, *, error: bool = False) -> None:
+        if not msg:
+            status_label.setText("")
+            status_label.setVisible(False)
+            return
+        status_label.setText(msg)
+        status_label.setStyleSheet(
+            f"color: {'#EF4444' if error else theme.text_muted}; background: transparent;"
+        )
+        status_label.setVisible(True)
+
+    def _on_open_folder() -> None:
+        section_root = str(store.section_runs_dir("ai_bug_report"))
+        target = (
+            STATE.last_run_folder
+            or (section_root if os.path.isdir(section_root) else str(store.runs_dir()))
+        )
+        try:
+            os.makedirs(target, exist_ok=True)
+        except OSError as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "open_folder_mkdir_failed", exc, target=target,
+            )
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(target)  # noqa: S606 - intentional, opens Explorer
+            else:
+                import subprocess
+
+                opener = "open" if os.uname().sysname == "Darwin" else "xdg-open"
+                subprocess.Popen([opener, target])  # noqa: S603 - trusted path
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "open_folder_failed", exc, target=target,
+            )
+
+    def _on_save() -> None:
+        try:
+            result = pipeline.save_bug_report_docx(labels=s(lang))
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "save_bug_report_failed", exc,
+            )
+            _set_status(txt["preview_save_failed"].format(error=str(exc)), error=True)
+            return
+        if not result.ok:
+            _set_status(
+                txt["preview_save_failed"].format(error=result.error or "?"),
+                error=True,
+            )
+            return
+        _set_status(txt["preview_saved_template"].format(path=result.path))
+        try:
+            STATE.runs_history = pipeline.list_saved_runs()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "refresh_history_after_save_failed", exc,
+            )
+        on_state_change()
+
+    actions_row = QFrame()
+    actions_row.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    actions_row.setLayout(actions_layout)
+    save_btn = PrimaryButton(txt["preview_save_btn"], theme=theme, icon=Icons.SAVE_OUTLINED)
+    save_btn.clicked.connect(_on_save)
+    folder_btn = GhostButton(txt["preview_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN)
+    folder_btn.clicked.connect(_on_open_folder)
+    back = GhostButton(txt["preview_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+    back.clicked.connect(lambda: on_navigate_tab(TAB_INPUT))
+    actions_layout.addWidget(save_btn)
+    actions_layout.addWidget(folder_btn)
+    actions_layout.addWidget(back)
+    actions_layout.addStretch(1)
+    inner_layout.addWidget(actions_row)
+    inner_layout.addWidget(status_label)
+
+    if STATE.last_save_path:
+        _set_status(txt["preview_saved_template"].format(path=STATE.last_save_path))
+
+    hero = QFrame()
+    hero.setObjectName("BugReportPreviewHero")
+    hero.setStyleSheet(
+        f"""
+        QFrame#BugReportPreviewHero {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 16px;
+        }}
+        """
+    )
+    hero_layout = vbox(spacing=8, margins=(18, 16, 18, 18))
+    hero.setLayout(hero_layout)
+    hero_layout.addWidget(
+        TitleLabel(report.get("title") or "Bug report", theme=theme, size=18, weight=QFont.Weight.Bold)
+    )
+    if report.get("summary"):
+        hero_layout.addWidget(BodyLabel(report["summary"], theme=theme, size=13, selectable=True))
+    scenarios = [
+        scenario for scenario in (report.get("scenarios") or [])
+        if isinstance(scenario, dict)
+    ]
+    hero_layout.addWidget(
+        SubtleLabel(
+            txt["preview_scenarios_count_template"].format(count=len(scenarios)),
+            theme=theme,
+            size=11,
+        )
+    )
+    inner_layout.addWidget(hero)
+
+    for idx, scenario in enumerate(scenarios, start=1):
+        inner_layout.addWidget(_scenario_card(theme, txt, lang, scenario, idx))
+
+    if report.get("attachments_summary"):
+        inner_layout.addWidget(
+            _preview_section(
+                theme,
+                title=txt["preview_attachments_label"],
+                body=_bullet_list(theme, list(report["attachments_summary"])),
+            )
+        )
+
+    if report.get("additional_notes"):
+        inner_layout.addWidget(
+            _preview_section(
+                theme,
+                title=txt["preview_notes_label"],
+                body=BodyLabel(report["additional_notes"], theme=theme, size=13, selectable=True),
+            )
+        )
+
+    inner_layout.addStretch(1)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+    scroll.setWidget(inner)
+    return scroll
+
+
 def _build_preview_tab(
     theme: Theme,
     txt: dict,
@@ -675,6 +966,14 @@ def _build_preview_tab(
         return holder
 
     report = STATE.last_report
+    return _build_readonly_preview_tab(
+        theme,
+        txt,
+        lang,
+        report,
+        on_state_change=on_state_change,
+        on_navigate_tab=on_navigate_tab,
+    )
 
     inner = QWidget()
     inner.setStyleSheet(f"background-color: {theme.bg};")
@@ -999,9 +1298,6 @@ def _build_footer(
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     container.setLayout(layout)
 
-    demo_btn = GhostButton(txt["footer_demo_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
-    layout.addWidget(demo_btn)
-
     # "Let the AI ask clarifying questions first" checkbox - same
     # pattern as AI Career, so the user can flip it off when they
     # want a one-click run without the modal.
@@ -1069,12 +1365,6 @@ def _build_footer(
 
     def _refresh() -> None:
         _render_run_button()
-
-    def _on_demo() -> None:
-        STATE.demo_mode = True
-        pipeline.load_demo()
-        on_state_change()
-        on_navigate_tab(TAB_PREVIEW)
 
     def _phase2_generate() -> None:
         """Run the main report generation in a background thread.
@@ -1257,7 +1547,6 @@ def _build_footer(
 
         threading.Thread(target=_phase1, daemon=True).start()
 
-    demo_btn.clicked.connect(_on_demo)
     _render_run_button()
     return container, _refresh
 
@@ -1269,6 +1558,12 @@ def _build_footer(
 
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    try:
+        STATE.runs_history = pipeline.list_saved_runs()
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.view", "warm_history_failed", exc,
+        )
 
     container = QWidget()
     container.setStyleSheet(f"background-color: {theme.bg};")
@@ -1279,6 +1574,42 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     if STATE.demo_mode:
         demo_pill = Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
 
+    def _on_demo_menu() -> None:
+        STATE.demo_mode = True
+        pipeline.load_demo()
+        STATE.active_tab = TAB_PREVIEW
+        REFS.request_context_refresh()
+        try:
+            _refresh_tabs()
+            _refresh_body()
+            _refresh_footer()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "demo_menu_refresh_failed", exc,
+            )
+
+    def _on_clear_demo_menu() -> None:
+        STATE.demo_mode = False
+        STATE.reset_result()
+        STATE.active_tab = TAB_INPUT
+        REFS.request_context_refresh()
+        try:
+            _refresh_tabs()
+            _refresh_body()
+            _refresh_footer()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "clear_demo_menu_refresh_failed", exc,
+            )
+
+    menu_items = [
+        HeaderMenuItem(
+            icon=Icons.AUTO_AWESOME,
+            label=txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"],
+            on_click=_on_clear_demo_menu if STATE.demo_mode else _on_demo_menu,
+        ),
+    ]
+
     header_widget = header(
         theme,
         lang,
@@ -1287,6 +1618,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         subtitle=txt["subtitle"],
         on_help_click=lambda: open_bug_report_how_to(container, theme, lang),
         trailing=demo_pill,
+        menu_items=menu_items,
     )
     layout.addWidget(header_widget)
 
@@ -1313,10 +1645,30 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         fn = state_box.get("refresh_footer")
         if fn is not None:
             fn()
+        try:
+            _refresh_tabs()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.view", "state_change_refresh_tabs_failed", exc,
+            )
         REFS.request_context_refresh()
 
     def _on_navigate_tab(index: int) -> None:
         if index == STATE.active_tab:
+            return
+        if index == TAB_PREVIEW and not STATE.last_report:
+            logger_service.log_event(
+                "INFO", "ai_bug_report.view", "tab_blocked",
+                requested_tab=index,
+                has_report=bool(STATE.last_report),
+            )
+            return
+        if index == TAB_HISTORY and not STATE.runs_history:
+            logger_service.log_event(
+                "INFO", "ai_bug_report.view", "tab_blocked",
+                requested_tab=index,
+                history_count=0,
+            )
             return
         logger_service.log_event(
             "INFO",
@@ -1329,6 +1681,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         try:
             _refresh_tabs()
             _refresh_body()
+            _refresh_footer()
         except Exception as exc:
             logger_service.log_exception(
                 "ai_bug_report.view", "tab_change_failed", exc,
@@ -1342,6 +1695,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                 tabs=[txt["tab_input"], txt["tab_preview"], txt["tab_history"]],
                 active_index=STATE.active_tab,
                 on_change=_on_navigate_tab,
+                enabled=[True, bool(STATE.last_report), bool(STATE.runs_history)],
             )
             tab_layout.addWidget(tab_widget)
         except Exception as exc:
@@ -1392,6 +1746,9 @@ def build_view(theme: Theme, lang: str) -> QWidget:
 
     def _refresh_footer() -> None:
         _clear_widget(footer_holder)
+        if STATE.active_tab != TAB_INPUT:
+            state_box["refresh_footer"] = None
+            return
         try:
             widget, refresh_fn = _build_footer(
                 theme,

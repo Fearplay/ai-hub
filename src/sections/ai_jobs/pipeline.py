@@ -518,6 +518,58 @@ def _run_discovery_extraction(
     return cleaned, summary_text
 
 
+def _demo_positions(location_label: str) -> list[dict]:
+    location = location_label or "Prague / Remote"
+    return [
+        {
+            "title": "QA Automation Engineer",
+            "company": "Acme Cloud",
+            "location": location,
+            "posted": "Today",
+            "posted_date_iso": "",
+            "salary_text": "70 000 - 95 000 CZK",
+            "contract_type": "HPP",
+            "summary": (
+                "Build API and UI regression tests for a SaaS product, work "
+                "with Python, Playwright, and CI pipelines."
+            ),
+            "url": "https://example.com/jobs/qa-automation-engineer",
+            "source": "Demo",
+            "work_mode": "hybrid",
+            "is_active": True,
+            "inactive_reason": "",
+            "is_relaxed": False,
+            "match_score": 86,
+            "matched_skills": ["Python", "API testing", "Playwright"],
+            "missing_skills": ["Kubernetes basics"],
+            "recommendation": "Strong fit for a QA profile with automation experience.",
+        },
+        {
+            "title": "Software Tester",
+            "company": "Fintech Labs",
+            "location": location,
+            "posted": "2 days ago",
+            "posted_date_iso": "",
+            "salary_text": "60 000 - 80 000 CZK",
+            "contract_type": "HPP / ICO",
+            "summary": (
+                "Manual and exploratory testing with room to grow into "
+                "automation around REST APIs and web applications."
+            ),
+            "url": "https://example.com/jobs/software-tester",
+            "source": "Demo",
+            "work_mode": "remote",
+            "is_active": True,
+            "inactive_reason": "",
+            "is_relaxed": False,
+            "match_score": 78,
+            "matched_skills": ["Exploratory testing", "REST APIs"],
+            "missing_skills": ["TypeScript"],
+            "recommendation": "Good backup option if the user wants a balanced manual/automation role.",
+        },
+    ]
+
+
 def _run_verification(cleaned: list[dict]) -> tuple[list[dict], int]:
     """Run pass 3 (parallel URL verification) on a candidate list.
 
@@ -769,6 +821,28 @@ def run_search(*, output_lang: str) -> PipelineResult:
     STATE.skill_gap = {}
     STATE.followup_questions = []
     STATE.followup_qa = []
+
+    if STATE.demo_mode:
+        demo_results = _demo_positions(location_label)
+        STATE.results = demo_results[:target_active]
+        STATE.summary = (
+            "Demo search returned curated sample positions without calling a paid provider."
+        )
+        STATE.last_dropped = 0
+        STATE.last_inactive = 0
+        _aggregate_skill_gap(
+            STATE.results,
+            output_lang=output_lang,
+            tech_skills=tech_skills,
+            additional_experience=additional_experience,
+            followup_qa=(),
+        )
+        _set_activity("ready")
+        logger_service.log_event(
+            "INFO", "ai_jobs.pipeline", "run_search_demo_done",
+            results=len(STATE.results),
+        )
+        return PipelineResult(ok=True)
 
     # --- pass 0: clarifying follow-up questions (optional) -----------
     #
@@ -2160,6 +2234,55 @@ def list_saved_runs() -> list[dict]:
             )
         out.append(record)
     return out
+
+
+def restore_run(folder: str) -> bool:
+    """Hydrate a saved search back into the Results / Skill gap tabs."""
+    if not folder:
+        return False
+    try:
+        summary = store.read_run_summary(folder) or {}
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_jobs.pipeline", "restore_run_read_failed", exc, folder=folder,
+        )
+        STATE.last_error = str(exc)
+        return False
+    if summary.get("type") != "ai_jobs":
+        logger_service.log_event(
+            "WARNING", "ai_jobs.pipeline", "restore_run_wrong_type",
+            folder=folder, type=summary.get("type"),
+        )
+        return False
+    STATE.results = list(summary.get("positions") or [])
+    STATE.summary = str(summary.get("summary") or "")
+    STATE.skill_gap = dict(summary.get("skill_gap") or {})
+    STATE.last_query = str(summary.get("query") or "")
+    STATE.last_query_label = STATE.last_query
+    STATE.last_location_label = str(summary.get("location") or "")
+    STATE.last_run_folder = folder
+    STATE.last_dropped = int(summary.get("dropped") or 0)
+    STATE.last_inactive = int(summary.get("inactive") or 0)
+    STATE.work_mode = str(summary.get("work_mode") or STATE.work_mode)
+    STATE.search_mode = str(summary.get("search_mode") or STATE.search_mode)
+    STATE.seniority = str(summary.get("seniority") or STATE.seniority)
+    try:
+        STATE.max_results = int(summary.get("max_results") or STATE.max_results)
+    except (TypeError, ValueError):
+        pass
+    try:
+        STATE.salary_min = int(summary.get("salary_min") or 0)
+    except (TypeError, ValueError):
+        STATE.salary_min = 0
+    STATE.salary_currency = str(summary.get("salary_currency") or STATE.salary_currency)
+    STATE.activity = "ready"
+    STATE.last_error = ""
+    logger_service.log_event(
+        "INFO", "ai_jobs.pipeline", "restore_run_done",
+        folder=folder, results=len(STATE.results), has_skill_gap=bool(STATE.skill_gap),
+    )
+    REFS.request_context_refresh()
+    return bool(STATE.results)
 
 
 def delete_run(folder: str) -> bool:

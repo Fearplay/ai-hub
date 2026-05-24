@@ -111,8 +111,25 @@ def _build_builder_body(theme: Theme, lang: str) -> QWidget:
     return build_setup_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
 
 
+def _builder_tab_enabled(index: int) -> bool:
+    if index in {TAB_SECTIONS, TAB_OUTPUT}:
+        return STATE.has_results()
+    if index == TAB_HISTORY:
+        return bool(STATE.runs_history)
+    return True
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    try:
+        STATE.runs_history = [
+            run for run in store.list_runs()
+            if (getattr(run, "note", "") or "") == "ai_linkedin"
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_linkedin.view", "warm_history_failed", exc,
+        )
 
     container = QWidget()
     container.setStyleSheet(f"background-color: {theme.bg};")
@@ -127,6 +144,14 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         if STATE.mode != MODE_BUILDER:
             return
         if index == STATE.active_tab:
+            return
+        if not _builder_tab_enabled(index):
+            logger_service.log_event(
+                "INFO", "ai_linkedin.view", "tab_blocked",
+                requested_tab=index,
+                has_results=STATE.has_results(),
+                history_count=len(STATE.runs_history or []),
+            )
             return
         STATE.active_tab = index
         _refresh()
@@ -249,6 +274,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             tabs=builder_tabs(lang),
             active_index=STATE.active_tab,
             on_change=_on_stage_tab_change,
+            enabled=[
+                _builder_tab_enabled(TAB_SETUP),
+                _builder_tab_enabled(TAB_SECTIONS),
+                _builder_tab_enabled(TAB_OUTPUT),
+                _builder_tab_enabled(TAB_HISTORY),
+            ],
         ))
 
     if STATE.mode == MODE_CHAT:

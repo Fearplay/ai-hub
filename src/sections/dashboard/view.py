@@ -151,6 +151,7 @@ def _module_card(
 
     head_row = QFrame()
     head_row.setStyleSheet("background: transparent;")
+    wrap_label_slot(head_row)
     head_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
     head_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     head_row.setLayout(head_layout)
@@ -174,25 +175,32 @@ def _module_card(
     wrap_label_slot(title_holder)
     title_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
     title_holder.setLayout(title_layout)
-    title_layout.addWidget(
-        TitleLabel(section.label(lang), theme=theme, size=15, weight=QFont.Weight.Bold)
+    title_label = TitleLabel(
+        section.label(lang), theme=theme, size=15, weight=QFont.Weight.Bold,
     )
+    wrap_label_slot(title_label)
+    title_layout.addWidget(title_label)
     subtitle = _section_subtitle(section, lang)
     if subtitle:
         subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
-        subtitle_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
+        # ``wrap_label_slot`` flips ``heightForWidth`` on the size policy,
+        # which is what makes ``QHBoxLayout`` actually ask the wrapped
+        # label how tall it needs to be at the available column width.
+        # Without it the subtitle reported the single-line sizeHint and
+        # the bottom of the wrapped text rendered behind the button row
+        # (4th line of the AI LinkedIn / AI Bug Report description got
+        # clipped, see screenshots in feat/dashboard-and-ui-fixes).
+        wrap_label_slot(subtitle_label)
         title_layout.addWidget(subtitle_label)
     head_layout.addWidget(title_holder, 1, Qt.AlignmentFlag.AlignTop)
     head_layout.setStretch(1, 1)
 
     layout.addWidget(head_row)
-    # Fixed spacer instead of ``addStretch(1)`` so the card grows
-    # downward to fit the wrapped subtitle. ``addStretch`` would pad
-    # the middle and starve the second line of pixels when the title
-    # area is taller than ``setMinimumHeight``.
-    layout.addSpacing(12)
+    # ``addStretch(1)`` pushes the button to the bottom of the card when
+    # other cards in the same row are taller (they all share max-height
+    # in the QGridLayout). Without it the button stuck to the head_row
+    # and a big empty band appeared above it inside short cards.
+    layout.addStretch(1)
 
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")

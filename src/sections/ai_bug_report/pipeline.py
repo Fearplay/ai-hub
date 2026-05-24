@@ -65,51 +65,99 @@ class SaveResult:
 
 
 _DEMO_REPORT: dict[str, Any] = {
-    "title": "Profile Save button stays in loading state on Chrome 124",
+    "title": "Profile settings fail to save and avatar upload breaks",
     "summary": (
-        "Saving the user profile on the Settings page leaves the Save button "
-        "stuck in the spinner state. The change is not persisted and no toast "
-        "is shown to the user. Reproduces consistently in Chrome 124 on "
-        "Windows 11."
+        "Two distinct profile settings regressions are visible in the sample "
+        "inputs: saving the display name never completes, and uploading a new "
+        "avatar fails validation after the image is selected."
     ),
-    "severity": "High",
-    "priority": "P1",
-    "reproducibility": "Always",
-    "environment": {
-        "browser": "Chrome 124.0.6367.92",
-        "os": "Windows 11 23H2",
-        "device": "Desktop",
-        "app_version": "2026.05.4",
-        "url": "https://app.example.com/settings/profile",
-    },
-    "preconditions": [
-        "User is logged in with a Standard plan account.",
-        "Profile already has a display name and an avatar.",
+    "scenarios": [
+        {
+            "title": "Profile Save button stays in loading state on Chrome 124",
+            "summary": (
+                "Saving the user profile on the Settings page leaves the Save "
+                "button stuck in the spinner state. The change is not persisted "
+                "and no toast is shown to the user."
+            ),
+            "severity": "High",
+            "priority": "P1",
+            "reproducibility": "Always",
+            "environment": {
+                "browser": "Chrome 124.0.6367.92",
+                "os": "Windows 11 23H2",
+                "device": "Desktop",
+                "app_version": "2026.05.4",
+                "url": "https://app.example.com/settings/profile",
+            },
+            "preconditions": [
+                "User is logged in with a Standard plan account.",
+                "Profile already has a display name and an avatar.",
+            ],
+            "steps_to_reproduce": [
+                "Open https://app.example.com/settings/profile in Chrome.",
+                "Change the Display name field to any non-empty value.",
+                "Click the Save button.",
+                "Wait 10 seconds.",
+            ],
+            "expected_result": (
+                "The Save button returns to its idle state, a green 'Profile "
+                "saved' toast appears, and the new display name is shown in the "
+                "top-right user menu."
+            ),
+            "actual_result": (
+                "The Save button stays in its loading (spinner) state indefinitely. "
+                "No toast is shown. Reloading the page reverts the display name "
+                "to the previous value, so the change was not persisted."
+            ),
+            "additional_notes": (
+                "(inferred) The 500 in the console suggests a server-side "
+                "regression in PUT /api/profile rather than a frontend bug."
+            ),
+        },
+        {
+            "title": "Avatar upload shows validation error for valid PNG",
+            "summary": (
+                "A valid PNG avatar appears to upload, but the form shows a "
+                "validation error and the image is not applied to the profile."
+            ),
+            "severity": "Medium",
+            "priority": "P2",
+            "reproducibility": "Sometimes",
+            "environment": {
+                "browser": "Chrome 124.0.6367.92",
+                "os": "Windows 11 23H2",
+                "device": "Desktop",
+                "app_version": "2026.05.4",
+                "url": "https://app.example.com/settings/profile",
+            },
+            "preconditions": [
+                "User is logged in with a Standard plan account.",
+                "User has a PNG avatar under the documented 2 MB limit.",
+            ],
+            "steps_to_reproduce": [
+                "Open https://app.example.com/settings/profile in Chrome.",
+                "Click Change avatar.",
+                "Select a valid PNG image under 2 MB.",
+                "Wait for the upload validation to finish.",
+            ],
+            "expected_result": "The avatar preview updates and the user can save the profile.",
+            "actual_result": (
+                "The form shows a validation error even though the file meets "
+                "the documented PNG and size requirements."
+            ),
+            "additional_notes": (
+                "(inferred) This may share the same profile endpoint regression "
+                "as the display-name save failure."
+            ),
+        },
     ],
-    "steps_to_reproduce": [
-        "Open https://app.example.com/settings/profile in Chrome.",
-        "Change the Display name field to any non-empty value.",
-        "Click the Save button.",
-        "Wait 10 seconds.",
-    ],
-    "expected_result": (
-        "The Save button returns to its idle state, a green 'Profile saved' "
-        "toast appears, and the new display name is shown in the top-right "
-        "user menu."
-    ),
-    "actual_result": (
-        "The Save button stays in its loading (spinner) state indefinitely. "
-        "No toast is shown. Reloading the page reverts the display name to "
-        "the previous value, so the change was not persisted."
-    ),
     "attachments_summary": [
         "Screenshot 1: profile page with the Save button in the spinner state.",
         "Document 1: relevant browser console output showing a 500 from PUT /api/profile.",
     ],
     "additional_notes": (
-        "(inferred) The 500 in the console suggests a server-side regression "
-        "in PUT /api/profile rather than a frontend bug. Worth attaching the "
-        "request payload from DevTools when reproducing."
+        "(inferred) Both scenarios touch profile persistence. Worth attaching "
+        "the request payloads from DevTools when reproducing."
     ),
 }
 
@@ -147,19 +195,13 @@ def _normalise_enum(value: Any, allowed: tuple, default: str) -> str:
     return default
 
 
-def _normalise_report(data: Any) -> dict[str, Any]:
-    """Coerce the raw schema dict into the shape the UI / DOCX expects.
-
-    The strict-mode schema already guarantees the keys exist, but the
-    model may emit an empty string where the UI prefers an empty list
-    (and vice versa). This helper makes the data resilient to small
-    deviations and keeps the downstream code branch-free.
-    """
+def _normalise_scenario(data: Any, *, fallback_title: str = "Untitled bug") -> dict[str, Any]:
+    """Coerce one scenario into the shape the UI / DOCX expects."""
     if not isinstance(data, dict):
         return {}
 
     out: dict[str, Any] = {}
-    out["title"] = str(data.get("title") or "").strip() or "Untitled bug"
+    out["title"] = str(data.get("title") or "").strip() or fallback_title
     out["summary"] = str(data.get("summary") or "").strip()
     out["severity"] = _normalise_enum(
         data.get("severity"), SEVERITY_VALUES, "Medium"
@@ -194,13 +236,66 @@ def _normalise_report(data: Any) -> dict[str, Any]:
     ]
     out["expected_result"] = str(data.get("expected_result") or "").strip()
     out["actual_result"] = str(data.get("actual_result") or "").strip()
-    out["attachments_summary"] = [
+    out["additional_notes"] = str(data.get("additional_notes") or "").strip()
+    return out
+
+
+def _normalise_report(data: Any) -> dict[str, Any]:
+    """Normalise a multi-scenario report, accepting legacy single reports."""
+    if not isinstance(data, dict):
+        return {}
+
+    raw_scenarios = data.get("scenarios")
+    if isinstance(raw_scenarios, list) and raw_scenarios:
+        scenarios = [
+            scenario
+            for scenario in (
+                _normalise_scenario(item, fallback_title=f"Scenario {idx}")
+                for idx, item in enumerate(raw_scenarios, start=1)
+            )
+            if scenario
+        ]
+    else:
+        # Backwards compatibility for reports saved before ``scenarios[]``
+        # existed. Treat the old flat object as a single scenario.
+        legacy = _normalise_scenario(
+            data,
+            fallback_title=str(data.get("title") or "").strip() or "Untitled bug",
+        )
+        scenarios = [legacy] if legacy else []
+
+    if not scenarios:
+        scenarios = [
+            _normalise_scenario(
+                {"title": "Untitled bug", "steps_to_reproduce": []},
+                fallback_title="Untitled bug",
+            )
+        ]
+
+    title = str(data.get("title") or "").strip() or scenarios[0].get("title") or "Bug report"
+    summary = str(data.get("summary") or "").strip() or scenarios[0].get("summary", "")
+    attachments_summary = [
         str(item).strip()
         for item in (data.get("attachments_summary") or [])
         if str(item).strip()
     ]
-    out["additional_notes"] = str(data.get("additional_notes") or "").strip()
-    return out
+
+    return {
+        "title": title,
+        "summary": summary,
+        "scenarios": scenarios,
+        "attachments_summary": attachments_summary,
+        "additional_notes": str(data.get("additional_notes") or "").strip(),
+    }
+
+
+def _primary_scenario(report: dict[str, Any]) -> dict[str, Any]:
+    scenarios = report.get("scenarios") or []
+    if isinstance(scenarios, list) and scenarios:
+        first = scenarios[0]
+        if isinstance(first, dict):
+            return first
+    return _normalise_scenario(report)
 
 
 # --- AI call -----------------------------------------------------------------
@@ -386,7 +481,7 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
             user=user_prompt,
             schema=schema.BUG_REPORT_SCHEMA,
             schema_name="bug_report",
-            max_output_tokens=2500,
+            max_output_tokens=4000,
             temperature=0.2,
             images=image_payload or None,
         )
@@ -418,7 +513,12 @@ def generate_bug_report(*, output_lang: str) -> StepResult:
         "ai_bug_report.pipeline",
         "generate_bug_report_done",
         title_chars=len(STATE.last_report.get("title", "")),
-        steps=len(STATE.last_report.get("steps_to_reproduce", [])),
+        scenarios=len(STATE.last_report.get("scenarios", [])),
+        steps=sum(
+            len(item.get("steps_to_reproduce", []))
+            for item in STATE.last_report.get("scenarios", [])
+            if isinstance(item, dict)
+        ),
     )
     return StepResult(ok=True)
 
@@ -468,6 +568,37 @@ def _format_environment(env: dict[str, str], labels: dict[str, str]) -> list[tup
 def _render_markdown(
     report: dict[str, Any], labels: dict[str, str]
 ) -> str:
+    scenarios = report.get("scenarios")
+    if isinstance(scenarios, list) and scenarios:
+        parts: list[str] = []
+        parts.append(f"# {report.get('title', 'Bug report')}")
+        parts.append("")
+        if report.get("summary"):
+            parts.append(report["summary"])
+            parts.append("")
+        for idx, scenario in enumerate(scenarios, start=1):
+            if not isinstance(scenario, dict):
+                continue
+            scenario_lines = _render_markdown(scenario, labels).strip().splitlines()
+            for line in scenario_lines:
+                if line.startswith("# "):
+                    parts.append(f"## {labels['preview_scenario_label']} {idx}: {line[2:]}")
+                elif line.startswith("## "):
+                    parts.append(f"### {line[3:]}")
+                else:
+                    parts.append(line)
+            parts.append("")
+        if report.get("attachments_summary"):
+            parts.append(f"## {labels['preview_attachments_label']}")
+            for item in report["attachments_summary"]:
+                parts.append(f"- {item}")
+            parts.append("")
+        if report.get("additional_notes"):
+            parts.append(f"## {labels['preview_notes_label']}")
+            parts.append(report["additional_notes"])
+            parts.append("")
+        return "\n".join(parts).strip() + "\n"
+
     parts: list[str] = []
     parts.append(f"# {report.get('title', 'Bug report')}")
     parts.append("")
@@ -565,6 +696,115 @@ def _write_docx(
     style = document.styles["Normal"]
     style.font.name = "Calibri"
     style.font.size = Pt(11)
+
+    scenarios = report.get("scenarios")
+    if isinstance(scenarios, list) and scenarios:
+        document.add_heading(report.get("title") or "Bug report", level=1)
+        if report.get("summary"):
+            document.add_paragraph(report["summary"])
+
+        for idx, scenario in enumerate(scenarios, start=1):
+            if not isinstance(scenario, dict):
+                continue
+            document.add_heading(
+                f"{labels['preview_scenario_label']} {idx}: "
+                f"{scenario.get('title') or 'Bug'}",
+                level=2,
+            )
+            meta = document.add_paragraph()
+            meta.add_run(f"{labels['preview_severity_label']}: ").bold = True
+            sev_run = meta.add_run(scenario.get("severity") or "")
+            sev_run.bold = True
+            try:
+                color_hex = _SEVERITY_COLOR.get(scenario.get("severity", ""), "374151")
+                sev_run.font.color.rgb = RGBColor.from_string(color_hex)
+            except Exception:
+                pass
+            meta.add_run(f"   {labels['preview_priority_label']}: ").bold = True
+            meta.add_run(scenario.get("priority") or "")
+            meta.add_run(f"   {labels['preview_repro_label']}: ").bold = True
+            meta.add_run(scenario.get("reproducibility") or "")
+
+            if scenario.get("summary"):
+                document.add_heading(labels["preview_summary_label"], level=3)
+                document.add_paragraph(scenario["summary"])
+
+            env_rows = _format_environment(scenario.get("environment") or {}, labels)
+            if env_rows:
+                document.add_heading(labels["preview_environment_label"], level=3)
+                table = document.add_table(rows=len(env_rows), cols=2)
+                table.style = "Light List Accent 1"
+                for row_idx, (name, value) in enumerate(env_rows):
+                    cell_label = table.rows[row_idx].cells[0]
+                    cell_value = table.rows[row_idx].cells[1]
+                    cell_label.text = ""
+                    cell_value.text = ""
+                    run = cell_label.paragraphs[0].add_run(name)
+                    run.bold = True
+                    cell_value.paragraphs[0].add_run(value)
+
+            if scenario.get("preconditions"):
+                document.add_heading(labels["preview_preconditions_label"], level=3)
+                for item in scenario["preconditions"]:
+                    document.add_paragraph(item, style="List Bullet")
+
+            if scenario.get("steps_to_reproduce"):
+                document.add_heading(labels["preview_str_label"], level=3)
+                for step in scenario["steps_to_reproduce"]:
+                    document.add_paragraph(step, style="List Number")
+
+            if scenario.get("expected_result"):
+                h_para = document.add_heading(labels["preview_expected_label"], level=3)
+                try:
+                    for run in h_para.runs:
+                        run.font.color.rgb = RGBColor.from_string("059669")
+                except Exception:
+                    pass
+                document.add_paragraph(scenario["expected_result"])
+
+            if scenario.get("actual_result"):
+                h_para = document.add_heading(labels["preview_actual_label"], level=3)
+                try:
+                    for run in h_para.runs:
+                        run.font.color.rgb = RGBColor.from_string("B91C1C")
+                except Exception:
+                    pass
+                document.add_paragraph(scenario["actual_result"])
+
+            if scenario.get("additional_notes"):
+                document.add_heading(labels["preview_notes_label"], level=3)
+                document.add_paragraph(scenario["additional_notes"])
+
+        if images:
+            document.add_heading(labels["preview_attachments_label"], level=2)
+            for idx, img in enumerate(images, start=1):
+                caption = document.add_paragraph()
+                caption_run = caption.add_run(f"Screenshot {idx}: {img.name}")
+                caption_run.bold = True
+                try:
+                    document.add_picture(img.path, width=Inches(5.5))
+                except Exception as exc:
+                    logger_service.log_exception(
+                        "ai_bug_report.pipeline",
+                        "write_docx_add_picture_failed",
+                        exc,
+                        name=img.name,
+                    )
+                    document.add_paragraph(f"[Could not embed {img.name}: {exc}]")
+
+        if report.get("attachments_summary"):
+            if not images:
+                document.add_heading(labels["preview_attachments_label"], level=2)
+            for item in report["attachments_summary"]:
+                document.add_paragraph(item, style="List Bullet")
+
+        if report.get("additional_notes"):
+            document.add_heading(labels["preview_notes_label"], level=2)
+            document.add_paragraph(report["additional_notes"])
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        document.save(str(target))
+        return
 
     title_para = document.add_heading(report.get("title") or "Bug report", level=1)
     title_run = title_para.runs[0] if title_para.runs else None
@@ -843,11 +1083,14 @@ def list_saved_runs() -> list[dict]:
             summary = store.read_run_summary(run.folder) or {}
             report = summary.get("report") or {}
             if isinstance(report, dict):
-                if report.get("title"):
-                    record["title"] = report.get("title")
-                record["severity"] = report.get("severity") or ""
-                record["priority"] = report.get("priority") or ""
-                record["reproducibility"] = report.get("reproducibility") or ""
+                normalised = _normalise_report(report)
+                primary = _primary_scenario(normalised)
+                if normalised.get("title"):
+                    record["title"] = normalised.get("title")
+                record["severity"] = primary.get("severity") or ""
+                record["priority"] = primary.get("priority") or ""
+                record["reproducibility"] = primary.get("reproducibility") or ""
+                record["scenario_count"] = len(normalised.get("scenarios") or [])
             images = summary.get("images") or []
             docs = summary.get("documents") or []
             if isinstance(images, list):
@@ -865,6 +1108,44 @@ def list_saved_runs() -> list[dict]:
         count=len(out),
     )
     return out
+
+
+def restore_run(folder: str) -> bool:
+    """Load a saved bug-report run back into Preview."""
+    if not folder:
+        return False
+    try:
+        summary = store.read_run_summary(folder) or {}
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline", "restore_run_read_failed", exc, folder=folder,
+        )
+        STATE.last_error = str(exc)
+        return False
+    report = summary.get("report")
+    if not isinstance(report, dict):
+        STATE.last_error = "Saved run does not contain a report JSON."
+        logger_service.log_event(
+            "WARNING", "ai_bug_report.pipeline", "restore_run_missing_report",
+            folder=folder,
+        )
+        return False
+    STATE.last_report = _normalise_report(report)
+    STATE.last_run_folder = folder
+    docs = summary.get("documents") or []
+    if isinstance(docs, list):
+        doc_names = [str(item.get("name") or "") for item in docs if isinstance(item, dict)]
+    else:
+        doc_names = []
+    STATE.last_save_path = ""
+    logger_service.log_event(
+        "INFO", "ai_bug_report.pipeline", "restore_run_done",
+        folder=folder,
+        scenarios=len(STATE.last_report.get("scenarios") or []),
+        documents=len(doc_names),
+    )
+    REFS.request_context_refresh()
+    return True
 
 
 def delete_run(folder: str) -> bool:
@@ -951,5 +1232,6 @@ __all__ = [
     "generate_bug_report",
     "save_bug_report_docx",
     "list_saved_runs",
+    "restore_run",
     "delete_run",
 ]

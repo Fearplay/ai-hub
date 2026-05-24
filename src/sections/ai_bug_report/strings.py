@@ -93,6 +93,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_input": "Input",
         "tab_preview": "Preview",
         "tab_history": "History",
+        "menu_demo_load": "Show demo report",
+        "menu_demo_clear": "Clear demo report",
 
         "step_input_label": "STEP 1",
         "step_input_title": "Describe the bug",
@@ -157,6 +159,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "preview_saved_template": "Saved to {path}",
         "preview_save_failed": "Could not save the report: {error}",
         "preview_title_label": "Title",
+        "preview_scenario_label": "Scenario",
+        "preview_scenarios_count_template": "{count} scenarios detected",
         "preview_summary_label": "Summary",
         "preview_severity_label": "Severity",
         "preview_priority_label": "Priority",
@@ -192,6 +196,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "history_count_template": "{count} screenshots",
         "history_count_one": "1 screenshot",
         "history_count_zero": "no screenshots",
+        "history_doc_count_template": "{count} documents",
+        "history_doc_count_one": "1 document",
         "history_delete_failed": "Delete failed - some files were locked.",
 
         "demo_pill": "DEMO",
@@ -251,6 +257,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_input": "Vstup",
         "tab_preview": "Náhled",
         "tab_history": "Historie",
+        "menu_demo_load": "Zobrazit ukázkový report",
+        "menu_demo_clear": "Vyčistit ukázkový report",
 
         "step_input_label": "KROK 1",
         "step_input_title": "Popiš chybu",
@@ -315,6 +323,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "preview_saved_template": "Uloženo do {path}",
         "preview_save_failed": "Uložení selhalo: {error}",
         "preview_title_label": "Název",
+        "preview_scenario_label": "Scénář",
+        "preview_scenarios_count_template": "Rozpoznané scénáře: {count}",
         "preview_summary_label": "Shrnutí",
         "preview_severity_label": "Závažnost",
         "preview_priority_label": "Priorita",
@@ -350,6 +360,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "history_count_template": "{count} screenshotů",
         "history_count_one": "1 screenshot",
         "history_count_zero": "bez screenshotů",
+        "history_doc_count_template": "{count} dokumentů",
+        "history_doc_count_one": "1 dokument",
         "history_delete_failed": "Smazání selhalo - některé soubory jsou zamčené.",
 
         "demo_pill": "DEMO",

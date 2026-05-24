@@ -34,6 +34,7 @@ from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     DangerButton,
     GhostButton,
     IconLabel,
@@ -48,7 +49,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.sections.ai_jobs import pipeline
 from src.sections.ai_jobs.refs import REFS
-from src.sections.ai_jobs.state import STATE
+from src.sections.ai_jobs.state import STATE, TAB_RESULTS
 from src.sections.ai_jobs.strings import s
 from src.theme import Theme
 
@@ -108,6 +109,7 @@ def _row(
     entry: dict,
     *,
     on_open: Callable[[str], None],
+    on_restore: Callable[[str], None],
     on_delete: Callable[[str], None],
 ) -> QFrame:
     folder = entry.get("folder") or ""
@@ -116,8 +118,9 @@ def _row(
     count = int(entry.get("count") or 0)
     timestamp = _format_timestamp(entry.get("timestamp") or "")
 
-    row = QFrame()
+    row = ClickFrame()
     row.setObjectName("JobsHistoryRow")
+    row.clicked.connect(lambda _checked=False, f=folder: on_restore(f))
     row.setStyleSheet(
         f"""
         QFrame#JobsHistoryRow {{
@@ -231,6 +234,20 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
         def _open(folder: str) -> None:
             _open_in_explorer(folder)
 
+        def _restore(folder: str) -> None:
+            try:
+                ok = pipeline.restore_run(folder)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.tab_history", "restore_run_failed", exc,
+                    folder=folder,
+                )
+                ok = False
+            if ok:
+                STATE.active_tab = TAB_RESULTS
+                REFS.request_context_refresh()
+                runtime_dispatch(_request_full_refresh)
+
         def _delete(folder: str) -> None:
             ok = pipeline.delete_run(folder)
             if not ok:
@@ -241,7 +258,16 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
             runtime_dispatch(_request_full_refresh)
 
         for entry in entries:
-            body_layout.addWidget(_row(theme, txt, entry, on_open=_open, on_delete=_delete))
+            body_layout.addWidget(
+                _row(
+                    theme,
+                    txt,
+                    entry,
+                    on_open=_open,
+                    on_restore=_restore,
+                    on_delete=_delete,
+                )
+            )
         body_layout.addStretch(1)
 
     refresh_btn.clicked.connect(lambda _checked=False: _request_full_refresh())

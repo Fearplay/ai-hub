@@ -20,6 +20,7 @@ from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     ElidedLabel,
     GhostButton,
     IconLabel,
@@ -34,7 +35,8 @@ from src.qt.widgets import (
 )
 from src.services import logger as logger_service
 from src.services import store
-from src.sections.ai_linkedin.refs import safe
+from src.sections.ai_linkedin.refs import REFS, safe
+from src.sections.ai_linkedin.state import STATE, TAB_OUTPUT
 from src.sections.ai_linkedin.strings import s
 from src.theme import Theme
 
@@ -59,12 +61,58 @@ def _open_in_explorer(path: str) -> None:
         )
 
 
-def _row(theme: Theme, txt: dict, summary: store.RunSummary) -> QFrame:
+def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
+    try:
+        data = store.read_run_summary(folder) or {}
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_linkedin.tab_history", "restore_run_read_failed", exc,
+            folder=folder,
+        )
+        return
+    if not data.get("extracted_profile"):
+        logger_service.log_event(
+            "WARNING", "ai_linkedin.tab_history", "restore_run_missing_profile",
+            folder=folder,
+        )
+        return
+    STATE.extracted_profile = data.get("extracted_profile")
+    STATE.headlines = data.get("headlines")
+    STATE.about_variants = data.get("about_variants")
+    STATE.experience_rewrites = data.get("experience_rewrites")
+    STATE.education_rewrites = data.get("education_rewrites")
+    STATE.certifications_rewrites = data.get("certifications_rewrites")
+    STATE.skills_buckets = data.get("skills_buckets")
+    STATE.featured = data.get("featured")
+    STATE.projects = data.get("projects")
+    STATE.services = data.get("services")
+    STATE.courses = data.get("courses")
+    STATE.recommendation_messages = data.get("recommendation_messages")
+    STATE.posts = data.get("posts")
+    STATE.completeness = data.get("completeness")
+    STATE.unsupported_claims = data.get("unsupported_claims")
+    STATE.profile_score = data.get("profile_score")
+    STATE.target_roles = list(data.get("target_roles") or STATE.target_roles)
+    STATE.audience = str(data.get("audience") or STATE.audience)
+    STATE.tone = str(data.get("tone") or STATE.tone)
+    STATE.output_lang = str(data.get("output_lang") or STATE.output_lang)
+    STATE.last_run_folder = folder
+    STATE.active_tab = TAB_OUTPUT
+    logger_service.log_event(
+        "INFO", "ai_linkedin.tab_history", "restore_run_done",
+        folder=folder,
+    )
+    REFS.request_context_refresh()
+    on_done()
+
+
+def _row(theme: Theme, txt: dict, summary: store.RunSummary, *, on_open_app: Callable[[str], None]) -> QFrame:
     score = int(summary.overall_score or 0)
     score_color = "#22C55E" if score >= 80 else ("#F97316" if score < 60 else theme.primary)
 
-    row = QFrame()
+    row = ClickFrame()
     row.setObjectName("LinkedInHistoryRow")
+    row.clicked.connect(lambda _checked=False, folder=summary.folder: on_open_app(folder))
     row.setStyleSheet(
         f"""
         QFrame#LinkedInHistoryRow {{
@@ -159,8 +207,12 @@ def build_history_tab(
         list_holder.setStyleSheet(f"background-color: {theme.bg};")
         list_layout = vbox(spacing=10, margins=(18, 12, 18, 12))
         list_holder.setLayout(list_layout)
+        def _open_app(folder: str) -> None:
+            _restore_run(folder, on_done=on_request_rerender)
+            on_navigate_tab(TAB_OUTPUT)
+
         for r in runs:
-            list_layout.addWidget(_row(theme, txt, r))
+            list_layout.addWidget(_row(theme, txt, r, on_open_app=_open_app))
         list_layout.addStretch(1)
 
         scroll = QScrollArea()

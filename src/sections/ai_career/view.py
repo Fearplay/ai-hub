@@ -107,8 +107,30 @@ def _stage_tabs(lang: str) -> list[str]:
     return [txt["tab_setup"], txt["tab_match"], txt["tab_documents"], txt["tab_history"]]
 
 
+def _stage_tab_enabled(index: int) -> bool:
+    if index == TAB_MATCH:
+        return STATE.has_results()
+    if index == TAB_DOCUMENTS:
+        return bool(STATE.documents or STATE.modern_cv_data)
+    if index == TAB_HISTORY:
+        return bool(STATE.runs_history)
+    return True
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    try:
+        STATE.runs_history = [
+            run for run in store.list_runs()
+            if (
+                (getattr(run, "note", "") or "").strip().lower() == "ai_career"
+                or "/outputs/ai_career/" in (getattr(run, "folder", "") or "").replace("\\", "/").lower()
+            )
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.view", "warm_history_failed", exc,
+        )
 
     container = QFrame()
     container.setStyleSheet(f"background-color: {theme.bg};")
@@ -215,6 +237,15 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         def _on_stage_tab_change(index: int) -> None:
             if index == STATE.active_tab:
                 return
+            if not _stage_tab_enabled(index):
+                logger_service.log_event(
+                    "INFO", "ai_career.view", "tab_blocked",
+                    requested_tab=index,
+                    has_match=STATE.has_results(),
+                    has_documents=bool(STATE.documents or STATE.modern_cv_data),
+                    history_count=len(STATE.runs_history or []),
+                )
+                return
             STATE.active_tab = index
             _refresh()
 
@@ -223,6 +254,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             tabs=_stage_tabs(lang),
             active_index=STATE.active_tab,
             on_change=_on_stage_tab_change,
+            enabled=[
+                _stage_tab_enabled(TAB_SETUP),
+                _stage_tab_enabled(TAB_MATCH),
+                _stage_tab_enabled(TAB_DOCUMENTS),
+                _stage_tab_enabled(TAB_HISTORY),
+            ],
         )
         layout.addWidget(stage_bar)
 

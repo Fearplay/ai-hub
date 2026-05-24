@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import json
 from pathlib import Path
 from typing import Callable
 
@@ -21,6 +22,7 @@ from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     ElidedLabel,
     GhostButton,
     IconLabel,
@@ -83,6 +85,21 @@ def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
             except OSError:
                 continue
     STATE.documents = docs
+    modern_json = folder_path / "Modern_CV.json"
+    if modern_json.exists():
+        try:
+            STATE.modern_cv_data = json.loads(modern_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger_service.log_exception(
+                "ai_career.tab_history", "restore_modern_cv_failed", exc,
+                folder=folder,
+            )
+    theme = summary.get("modern_cv_theme")
+    if isinstance(theme, dict):
+        STATE.modern_cv_theme = {
+            "palette": str(theme.get("palette") or STATE.modern_cv_theme.get("palette", "teal")),
+            "layout": str(theme.get("layout") or STATE.modern_cv_theme.get("layout", "two_column_sidebar")),
+        }
     STATE.last_run_folder = folder
     STATE.active_tab = TAB_MATCH
     on_done()
@@ -108,8 +125,9 @@ def _row(
     score = int(summary.overall_score or 0)
     score_color = "#22C55E" if score >= 80 else ("#F97316" if score < 60 else theme.primary)
 
-    row = QFrame()
+    row = ClickFrame()
     row.setObjectName("CareerHistoryRow")
+    row.clicked.connect(lambda _checked=False, folder=summary.folder: on_open_app(folder))
     row.setStyleSheet(
         f"""
         QFrame#CareerHistoryRow {{

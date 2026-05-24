@@ -114,7 +114,7 @@ FOLLOWUP_QUESTIONS_SCHEMA: dict = {
 }
 
 
-BUG_REPORT_SCHEMA: dict = {
+BUG_SCENARIO_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
     "required": [
@@ -128,7 +128,6 @@ BUG_REPORT_SCHEMA: dict = {
         "steps_to_reproduce",
         "expected_result",
         "actual_result",
-        "attachments_summary",
         "additional_notes",
     ],
     "properties": {
@@ -250,6 +249,59 @@ BUG_REPORT_SCHEMA: dict = {
                 "- describe what is visible in the attached screenshots / log."
             ),
         },
+        "additional_notes": {
+            "type": "string",
+            "description": (
+                "Optional 1-3 sentences with anything else worth flagging "
+                "(likely root cause guess marked as inferred, related "
+                "tickets the user mentioned, workarounds). Empty string "
+                "when nothing to add."
+            ),
+        },
+    },
+}
+
+
+BUG_REPORT_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "title",
+        "summary",
+        "scenarios",
+        "attachments_summary",
+        "additional_notes",
+    ],
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": (
+                "Concise 6-12 word title for the whole report in "
+                "OUTPUT_LANGUAGE. If there is one scenario, this may match "
+                "that scenario title. If there are several, summarise the "
+                "affected feature or theme."
+            ),
+        },
+        "summary": {
+            "type": "string",
+            "description": (
+                "1-3 sentences in OUTPUT_LANGUAGE summarising all detected "
+                "bug scenarios and the overall user impact."
+            ),
+        },
+        "scenarios": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "description": (
+                "One entry per distinct bug scenario found in the user's "
+                "description, screenshots, logs, or documents. Use one "
+                "scenario when everything describes the same bug. Split into "
+                "multiple scenarios when the inputs clearly describe separate "
+                "failures, separate flows, or separate expected/actual outcomes."
+            ),
+            "items": BUG_SCENARIO_SCHEMA,
+        },
         "attachments_summary": {
             "type": "array",
             "items": {"type": "string"},
@@ -263,10 +315,9 @@ BUG_REPORT_SCHEMA: dict = {
         "additional_notes": {
             "type": "string",
             "description": (
-                "Optional 1-3 sentences with anything else worth flagging "
-                "(likely root cause guess marked as inferred, related "
-                "tickets the user mentioned, workarounds). Empty string "
-                "when nothing to add."
+                "Optional 1-3 sentences with report-level notes that apply "
+                "across scenarios. Mark inferred non-trivial details with "
+                "the word '(inferred)'. Empty string when nothing to add."
             ),
         },
     },

@@ -38,6 +38,7 @@ from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     DangerButton,
     GhostButton,
     IconLabel,
@@ -53,7 +54,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.sections.ai_bug_report import pipeline
 from src.sections.ai_bug_report.refs import REFS
-from src.sections.ai_bug_report.state import STATE
+from src.sections.ai_bug_report.state import STATE, TAB_PREVIEW
 from src.sections.ai_bug_report.strings import (
     priority_label,
     reproducibility_label,
@@ -141,9 +142,9 @@ def _attachment_summary(txt: dict, image_count: int, doc_count: int) -> str:
     if doc_count > 0:
         # Reuse template / one based on doc_count to stay localised.
         if doc_count == 1:
-            parts.append("1 doc")
+            parts.append(txt["history_doc_count_one"])
         else:
-            parts.append(f"{doc_count} docs")
+            parts.append(txt["history_doc_count_template"].format(count=doc_count))
     return ", ".join(parts) if parts else txt["history_count_zero"]
 
 
@@ -174,6 +175,7 @@ def _row(
     entry: dict,
     *,
     on_open_folder: Callable[[str], None],
+    on_open_app: Callable[[str], None],
     on_open_word: Callable[[str], None],
     on_delete: Callable[[str], None],
 ) -> QFrame:
@@ -192,8 +194,9 @@ def _row(
         if os.path.isfile(candidate):
             word_path = candidate
 
-    row = QFrame()
+    row = ClickFrame()
     row.setObjectName("BugReportHistoryRow")
+    row.clicked.connect(lambda _checked=False, f=folder: on_open_app(f))
     row.setStyleSheet(
         f"""
         QFrame#BugReportHistoryRow {{
@@ -359,6 +362,20 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
         def _open_word(path: str) -> None:
             _open_word_file(path)
 
+        def _open_app(folder: str) -> None:
+            try:
+                ok = pipeline.restore_run(folder)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_bug_report.tab_history", "restore_run_failed", exc,
+                    folder=folder,
+                )
+                ok = False
+            if ok:
+                STATE.active_tab = TAB_PREVIEW
+                REFS.request_context_refresh()
+                runtime_dispatch(_request_full_refresh)
+
         def _delete(folder: str) -> None:
             try:
                 ok = pipeline.delete_run(folder)
@@ -380,6 +397,7 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
                 _row(
                     theme, txt, lang, entry,
                     on_open_folder=_open_folder,
+                    on_open_app=_open_app,
                     on_open_word=_open_word,
                     on_delete=_delete,
                 )
