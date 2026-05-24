@@ -525,44 +525,6 @@ to log debug events, and how the `.exe` is rebuilt at the end of every
 task. If you plan to extend the project, read those rules first - they
 are the source of truth for how new code is added.
 
-## Contributors
-
-People working on this project:
-
-<table>
-  <tr>
-    <td align="center" width="120">
-      <a href="https://github.com/Fearplay">
-        <img src="https://github.com/Fearplay.png" width="80" alt="Fearplay" />
-        <br />
-        <sub><b>Fearplay</b></sub>
-      </a>
-      <br />
-      <sub>author &amp; maintainer</sub>
-    </td>
-    <td align="center" width="120">
-      <a href="https://github.com/lukasekcerny">
-        <img src="https://github.com/lukasekcerny.png" width="80" alt="lukasekcerny" />
-        <br />
-        <sub><b>lukasekcerny</b></sub>
-      </a>
-      <br />
-      <sub>co-author</sub>
-    </td>
-  </tr>
-</table>
-
-Once the repo goes public this gallery can be replaced with the
-auto-generated one:
-
-```markdown
-<a href="https://github.com/Fearplay/ai-hub/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Fearplay/ai-hub" alt="Contributors" />
-</a>
-```
-
-Want to help? Open a PR with clear test steps and screenshots for UI changes.
-
 ## Licence
 
 This project is licensed under the **MIT License** - see [LICENSE](LICENSE).
