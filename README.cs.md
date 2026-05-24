@@ -520,43 +520,6 @@ přidávají nové sekce, AI volání a buildy `.exe`, jsou v
 [.cursor/rules/](.cursor/rules/). Když budeš chtít přidat vlastní sekci,
 podívej se nejdřív do nich.
 
-## Contributors
-
-Lidi, kteří se na projektu podílejí:
-
-<table>
-  <tr>
-    <td align="center" width="120">
-      <a href="https://github.com/Fearplay">
-        <img src="https://github.com/Fearplay.png" width="80" alt="Fearplay" />
-        <br />
-        <sub><b>Fearplay</b></sub>
-      </a>
-      <br />
-      <sub>autor & maintainer</sub>
-    </td>
-    <td align="center" width="120">
-      <a href="https://github.com/lukasekcerny">
-        <img src="https://github.com/lukasekcerny.png" width="80" alt="lukasekcerny" />
-        <br />
-        <sub><b>lukasekcerny</b></sub>
-      </a>
-      <br />
-      <sub>spoluautor</sub>
-    </td>
-  </tr>
-</table>
-
-Až bude repo veřejné, půjde tuhle galerii vyměnit za auto-generovanou:
-
-```markdown
-<a href="https://github.com/Fearplay/ai-hub/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Fearplay/ai-hub" alt="Contributors" />
-</a>
-```
-
-Chceš pomoct? Otevři PR s jasným testovacím postupem a screenshoty u UI změn.
-
 ## Licence
 
 Tento projekt je licencován pod **MIT licencí** - viz soubor [LICENSE](LICENSE).
