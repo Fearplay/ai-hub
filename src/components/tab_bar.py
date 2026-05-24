@@ -14,12 +14,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
-    QLabel,
     QScrollArea,
     QSizePolicy,
 )
 
-from src.qt.widgets import ClickFrame, hbox, vbox
+from src.qt.widgets import ClickFrame, custom_label, hbox, vbox
 from src.theme import Theme
 
 
@@ -28,37 +27,39 @@ def _tab(
     label: str,
     *,
     active: bool,
+    enabled: bool = True,
     on_click: Optional[Callable[[], None]] = None,
 ) -> ClickFrame:
     container = ClickFrame()
     container.setStyleSheet("background: transparent; border: none;")
     container.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
-    if on_click is None:
+    if on_click is None or not enabled:
         container.set_clickable(False)
 
     layout = vbox(spacing=0, margins=(12, 8, 12, 2))
     container.setLayout(layout)
 
-    text_label = QLabel(label)
+    text_color = theme.text if active else theme.text_muted
+    if not enabled:
+        text_color = theme.text_subtle
+    text_label = custom_label(label, color=text_color, size=13)
     font = QFont()
     font.setPixelSize(13)
     font.setWeight(QFont.Weight.DemiBold if active else QFont.Weight.Normal)
     text_label.setFont(font)
-    text_label.setStyleSheet(
-        f"color: {theme.text if active else theme.text_muted}; background: transparent;"
-    )
     text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    text_label.setWordWrap(False)
     layout.addWidget(text_label)
 
     underline = QFrame()
     underline.setFixedHeight(2)
     underline.setStyleSheet(
-        f"background-color: {theme.primary if active else 'transparent'};"
+        f"background-color: {theme.primary if active and enabled else 'transparent'};"
         " border-radius: 1px;"
     )
     layout.addWidget(underline)
 
-    if on_click is not None:
+    if enabled and on_click is not None:
         container.clicked.connect(on_click)
 
     return container
@@ -70,6 +71,7 @@ def tab_bar(
     tabs: Sequence[str],
     active_index: int = 0,
     on_change: Optional[Callable[[int], None]] = None,
+    enabled: Optional[Sequence[bool]] = None,
 ) -> QFrame:
     bar = QFrame()
     bar.setObjectName("SectionTabBar")
@@ -100,12 +102,23 @@ def tab_bar(
     inner.setLayout(inner_layout)
 
     active_tab: Optional[ClickFrame] = None
+    enabled_flags = list(enabled or [True] * len(tabs))
+    if len(enabled_flags) < len(tabs):
+        enabled_flags.extend([True] * (len(tabs) - len(enabled_flags)))
+
     for i, label in enumerate(tabs):
-        if on_change is None:
+        tab_enabled = bool(enabled_flags[i])
+        if on_change is None or not tab_enabled:
             handler: Optional[Callable[[], None]] = None
         else:
             handler = lambda idx=i: on_change(idx)  # noqa: E731
-        tab_handle = _tab(theme, label, active=i == active_index, on_click=handler)
+        tab_handle = _tab(
+            theme,
+            label,
+            active=i == active_index,
+            enabled=tab_enabled,
+            on_click=handler,
+        )
         if i == active_index:
             active_tab = tab_handle
         inner_layout.addWidget(tab_handle)

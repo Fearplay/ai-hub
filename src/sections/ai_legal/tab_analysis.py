@@ -379,6 +379,35 @@ def _chat_view(theme: Theme, lang: str) -> QWidget:
     return scroll
 
 
+def _demo_off_empty_state(theme: Theme, lang: str) -> QWidget:
+    """Empty state shown when ``STATE.demo_mode`` is False.
+
+    Without it the Analysis / Drafts tabs would always render their
+    full curated mock - which makes the "Demo" affordance pointless
+    (the user could not see the difference). Gating both behind the
+    demo flag means switching demo on / off in the header menu now
+    has a visible effect.
+    """
+    txt = s(lang)
+    holder = QFrame()
+    holder.setStyleSheet(f"background-color: {theme.bg};")
+    holder_layout = vbox(spacing=12, margins=(24, 40, 24, 40))
+    holder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    holder.setLayout(holder_layout)
+
+    title = TitleLabel(
+        txt["empty_demo_hint_title"], theme=theme, size=18, weight=QFont.Weight.Bold
+    )
+    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    holder_layout.addWidget(title)
+
+    body = MutedLabel(txt["empty_demo_hint_body"], theme=theme, size=13)
+    body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    body.setMaximumWidth(520)
+    holder_layout.addWidget(body, 0, Qt.AlignmentFlag.AlignCenter)
+    return holder
+
+
 def build_analysis_tab(
     theme: Theme,
     lang: str,
@@ -389,6 +418,10 @@ def build_analysis_tab(
     container.setStyleSheet(f"background-color: {theme.bg};")
     layout = vbox(spacing=0, margins=(0, 0, 0, 0))
     container.setLayout(layout)
+
+    if not STATE.demo_mode:
+        layout.addWidget(_demo_off_empty_state(theme, lang), 1)
+        return container
 
     def _switch_mode(mode: str) -> None:
         if mode == STATE.analysis_view_mode:

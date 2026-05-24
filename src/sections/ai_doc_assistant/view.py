@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.components.header import header
+from src.components.header import HeaderMenuItem, header
 from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch
@@ -598,15 +598,27 @@ def _build_footer(
     on_navigate_tab: Callable[[int], None],
 ) -> tuple[QWidget, Callable[[], None]]:
     container = QFrame()
+    # Scope ``border-top`` to the footer container so it does not paint
+    # a thin line across every QFrame child (the QFrame-based Ghost /
+    # Primary buttons inside). Without scoping the cascade applies the
+    # border to each button too - see image 4 in
+    # feat/dashboard-and-ui-fixes for the symptom.
+    container.setObjectName("DocAssistantFooter")
     container.setStyleSheet(
-        f"background-color: {theme.bg}; border-top: 1px solid {theme.border};"
+        f"""
+        QFrame#DocAssistantFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
     )
     layout = hbox(spacing=10, margins=(24, 12, 24, 12))
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     container.setLayout(layout)
 
-    demo_btn = GhostButton(txt["footer_demo_btn"], theme=theme, icon=Icons.AUTO_AWESOME)
-    layout.addWidget(demo_btn)
+    # The "Try demo data" GhostButton used to live here; demo is now
+    # exposed via the header ``...`` menu so every section shares the
+    # same affordance (see ``.cursor/rules/ai-section.mdc``).
     layout.addStretch(1)
 
     status_label = MutedLabel("", theme=theme, size=11)
@@ -642,12 +654,6 @@ def _build_footer(
 
     def _refresh() -> None:
         _render_run_button()
-
-    def _on_demo() -> None:
-        STATE.demo_mode = True
-        pipeline.load_demo()
-        on_state_change()
-        on_navigate_tab(TAB_OUTPUT)
 
     def _on_run() -> None:
         if not STATE.can_run():
@@ -688,7 +694,6 @@ def _build_footer(
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    demo_btn.clicked.connect(_on_demo)
     _render_run_button()
     return container, _refresh
 
@@ -705,6 +710,55 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     if STATE.demo_mode:
         demo_pill = Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
 
+    def _menu_load_demo() -> None:
+        logger_service.log_event(
+            "INFO", "ai_doc_assistant.view", "menu_load_demo"
+        )
+        STATE.demo_mode = True
+        try:
+            pipeline.load_demo()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "menu_load_demo_failed", exc,
+            )
+            return
+        STATE.active_tab = TAB_OUTPUT
+        try:
+            from src.app import request_section_refresh
+
+            request_section_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "menu_load_demo_refresh_failed", exc,
+            )
+
+    def _menu_clear_demo() -> None:
+        logger_service.log_event(
+            "INFO", "ai_doc_assistant.view", "menu_clear_demo"
+        )
+        STATE.demo_mode = False
+        STATE.last_result = None
+        STATE.last_error = ""
+        STATE.active_tab = TAB_UPLOAD
+        try:
+            from src.app import request_section_refresh
+
+            request_section_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_doc_assistant.view", "menu_clear_demo_refresh_failed", exc,
+            )
+
+    menu_items = [
+        HeaderMenuItem(
+            icon=Icons.AUTO_AWESOME,
+            label=(
+                txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"]
+            ),
+            on_click=_menu_clear_demo if STATE.demo_mode else _menu_load_demo,
+        ),
+    ]
+
     header_widget = header(
         theme,
         lang,
@@ -713,6 +767,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         subtitle=txt["subtitle"],
         on_help_click=lambda: open_doc_assistant_how_to(container, theme, lang),
         trailing=demo_pill,
+        menu_items=menu_items,
     )
     layout.addWidget(header_widget)
 

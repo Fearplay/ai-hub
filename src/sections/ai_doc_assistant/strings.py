@@ -52,11 +52,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "rewrite_tone_label": "Target tone",
         "rewrite_tone_options": "neutral | formal | friendly | concise | technical",
 
-        "footer_demo_btn": "Try demo data",
         "footer_run_btn": "Run",
         "footer_run_running": "Working...",
         "run_disabled_hint": "Upload a document and pick an action to run.",
         "no_key_template": "Missing API key for {provider}. Open Settings and save your key first.",
+
+        "menu_open_folder_no_run": "No run yet - finish at least one action first.",
+        "menu_open_folder": "Open output folder",
+        "menu_how_to": "How to use this assistant",
+        "menu_demo_load": "Show demo data",
+        "menu_demo_clear": "Hide demo data",
 
         "output_empty": "Nothing to show yet. Run an action on the Analyze tab.",
         "output_summary_title": "Summary",
@@ -122,11 +127,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "rewrite_tone_label": "Cílový tón",
         "rewrite_tone_options": "neutrální | formální | přátelský | stručný | technický",
 
-        "footer_demo_btn": "Vyzkoušet ukázková data",
         "footer_run_btn": "Spustit",
         "footer_run_running": "Pracuji...",
         "run_disabled_hint": "Nahraj dokument a vyber akci.",
         "no_key_template": "Chybí API klíč pro {provider}. Otevři Nastavení a klíč ulož.",
+
+        "menu_open_folder_no_run": "Zatím nic neproběhlo - nejdřív něco spusť.",
+        "menu_open_folder": "Otevřít složku výstupů",
+        "menu_how_to": "Jak používat tohoto asistenta",
+        "menu_demo_load": "Zobrazit demo data",
+        "menu_demo_clear": "Skrýt demo data",
 
         "output_empty": "Zatím nic. Spusť akci na záložce Analyzovat.",
         "output_summary_title": "Shrnutí",

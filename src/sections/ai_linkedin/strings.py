@@ -34,6 +34,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_open_folder": "Open run folder",
         "menu_show_history": "Show history",
         "menu_how_to": "How to use",
+        "menu_demo_load": "Show demo data",
+        "menu_demo_clear": "Hide demo data",
+        "demo_pill": "DEMO",
         # Setup tab
         "setup_step1_title": "Step 1 — Targeting",
         "setup_step1_desc": "Tell the AI who this profile is aimed at.",
@@ -295,6 +298,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_open_folder": "Otevřít složku runu",
         "menu_show_history": "Zobrazit historii",
         "menu_how_to": "Jak používat",
+        "menu_demo_load": "Zobrazit demo data",
+        "menu_demo_clear": "Skrýt demo data",
+        "demo_pill": "DEMO",
         # Setup tab
         "setup_step1_title": "Krok 1 — Cílení",
         "setup_step1_desc": "Řekni AI, na koho profil cílí.",

@@ -384,6 +384,15 @@ def build_drafts_tab(
     layout = vbox(spacing=0, margins=(0, 0, 0, 0))
     container.setLayout(layout)
 
+    if not STATE.demo_mode:
+        # Reuse the analysis-tab empty state so the wording, alignment,
+        # and visual weight all match - one canonical "turn on demo
+        # data" hint per section.
+        from src.sections.ai_legal.tab_analysis import _demo_off_empty_state
+
+        layout.addWidget(_demo_off_empty_state(theme, lang), 1)
+        return container
+
     messages_holder = QWidget()
     messages_holder.setStyleSheet(f"background-color: {theme.bg};")
     msgs_layout = vbox(spacing=22, margins=(24, 20, 24, 20))

@@ -14,7 +14,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import vbox
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_career import pipeline
 from src.sections.ai_career.data import SECTION_ICON
 from src.sections.ai_career.how_to import open_career_how_to
@@ -107,8 +107,30 @@ def _stage_tabs(lang: str) -> list[str]:
     return [txt["tab_setup"], txt["tab_match"], txt["tab_documents"], txt["tab_history"]]
 
 
+def _stage_tab_enabled(index: int) -> bool:
+    if index == TAB_MATCH:
+        return STATE.has_results()
+    if index == TAB_DOCUMENTS:
+        return bool(STATE.documents or STATE.modern_cv_data)
+    if index == TAB_HISTORY:
+        return bool(STATE.runs_history)
+    return True
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    try:
+        STATE.runs_history = [
+            run for run in store.list_runs()
+            if (
+                (getattr(run, "note", "") or "").strip().lower() == "ai_career"
+                or "/outputs/ai_career/" in (getattr(run, "folder", "") or "").replace("\\", "/").lower()
+            )
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.view", "warm_history_failed", exc,
+        )
 
     container = QFrame()
     container.setStyleSheet(f"background-color: {theme.bg};")
@@ -175,15 +197,51 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     def _menu_how_to() -> None:
         open_career_how_to(get_main_window(), theme, lang)
 
+    def _menu_load_demo() -> None:
+        logger_service.log_event("INFO", "ai_career.view", "menu_load_demo")
+        try:
+            pipeline.load_demo()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.view", "menu_load_demo_failed", exc,
+            )
+            return
+        STATE.mode = MODE_FORM
+        STATE.active_tab = TAB_MATCH
+        _refresh()
+
+    def _menu_clear_demo() -> None:
+        logger_service.log_event("INFO", "ai_career.view", "menu_clear_demo")
+        try:
+            pipeline.clear_demo()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_career.view", "menu_clear_demo_failed", exc,
+            )
+            return
+        STATE.active_tab = TAB_SETUP
+        _refresh()
+
     has_docs = bool(STATE.documents or STATE.modern_cv_data)
+    demo_menu_label = (
+        txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"]
+    )
+    demo_menu_handler = _menu_clear_demo if STATE.demo_mode else _menu_load_demo
 
     menu_items: list[HeaderMenuItem] = [
         HeaderMenuItem(icon=Icons.POST_ADD, label=txt["menu_new_run"], on_click=_menu_new_run),
         HeaderMenuItem(icon=Icons.SAVE_OUTLINED, label=txt["menu_save_full"], on_click=_menu_save_full, enabled=has_docs),
         HeaderMenuItem(icon=Icons.FOLDER_OPEN, label=txt["menu_open_folder"], on_click=_menu_open_folder),
         HeaderMenuItem(icon=Icons.HISTORY, label=txt["menu_show_history"], on_click=_menu_open_history),
+        HeaderMenuItem(icon=Icons.AUTO_AWESOME, label=demo_menu_label, on_click=demo_menu_handler),
         HeaderMenuItem(icon=Icons.MENU_BOOK_OUTLINED, label=txt["menu_how_to"], on_click=_menu_how_to),
     ]
+
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
 
     header_widget = header(
         theme,
@@ -192,6 +250,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
+        trailing=demo_pill,
         menu_items=menu_items,
     )
     layout.addWidget(header_widget)
@@ -215,6 +274,15 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         def _on_stage_tab_change(index: int) -> None:
             if index == STATE.active_tab:
                 return
+            if not _stage_tab_enabled(index):
+                logger_service.log_event(
+                    "INFO", "ai_career.view", "tab_blocked",
+                    requested_tab=index,
+                    has_match=STATE.has_results(),
+                    has_documents=bool(STATE.documents or STATE.modern_cv_data),
+                    history_count=len(STATE.runs_history or []),
+                )
+                return
             STATE.active_tab = index
             _refresh()
 
@@ -223,6 +291,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             tabs=_stage_tabs(lang),
             active_index=STATE.active_tab,
             on_change=_on_stage_tab_change,
+            enabled=[
+                _stage_tab_enabled(TAB_SETUP),
+                _stage_tab_enabled(TAB_MATCH),
+                _stage_tab_enabled(TAB_DOCUMENTS),
+                _stage_tab_enabled(TAB_HISTORY),
+            ],
         )
         layout.addWidget(stage_bar)
 

@@ -372,7 +372,20 @@ def build_output_tab(
     layout.addWidget(scroll, 1)
 
     footer = QFrame()
-    footer.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    # Scope ``border-top`` to ``QFrame#LinkedInOutputFooter`` so the
+    # cascade does not paint a thin line across every QFrame child of
+    # the footer (including the QFrame-based Ghost / Primary buttons),
+    # which is what produced the "struck-through" look reported in
+    # image 4 of feat/dashboard-and-ui-fixes.
+    footer.setObjectName("LinkedInOutputFooter")
+    footer.setStyleSheet(
+        f"""
+        QFrame#LinkedInOutputFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     footer_layout = hbox(spacing=10, margins=(24, 12, 24, 12))
     footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     footer.setLayout(footer_layout)

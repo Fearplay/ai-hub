@@ -54,6 +54,45 @@ from src.theme import Theme
 # --- typography -------------------------------------------------------------
 
 
+class _WrapAwareLabel(QLabel):
+    """QLabel variant whose height follows wrapped text reliably."""
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return self.wordWrap()
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        if not self.wordWrap():
+            return super().heightForWidth(width)
+        margins = self.contentsMargins()
+        usable_width = max(1, width - margins.left() - margins.right())
+        flags = (
+            Qt.AlignmentFlag.AlignLeft.value
+            | Qt.AlignmentFlag.AlignTop.value
+            | Qt.TextFlag.TextWordWrap.value
+        )
+        rect = self.fontMetrics().boundingRect(
+            0,
+            0,
+            usable_width,
+            10000,
+            flags,
+            self.text(),
+        )
+        return rect.height() + margins.top() + margins.bottom() + 2
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        if self.wordWrap() and self.width() > 0:
+            hint.setHeight(max(hint.height(), self.heightForWidth(self.width())))
+        return hint
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = super().minimumSizeHint()
+        if self.wordWrap():
+            hint.setHeight(max(hint.height(), self.fontMetrics().lineSpacing() + 2))
+        return hint
+
+
 def _coerce_weight(weight: int | QFont.Weight) -> QFont.Weight:
     """Accept either ``QFont.Weight`` enum or a plain int (Flet-style 100..900)."""
     if isinstance(weight, QFont.Weight):
@@ -70,7 +109,7 @@ def _make_label(
     italic: bool = False,
     selectable: bool = False,
 ) -> QLabel:
-    label = QLabel(text)
+    label = _WrapAwareLabel(text)
     font = QFont()
     font.setPixelSize(size)
     font.setWeight(_coerce_weight(weight))
@@ -78,6 +117,12 @@ def _make_label(
     label.setFont(font)
     label.setStyleSheet(f"color: {color}; background: transparent;")
     label.setWordWrap(True)
+    policy = QSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Preferred,
+    )
+    policy.setHeightForWidth(True)
+    label.setSizePolicy(policy)
     label.setTextInteractionFlags(
         Qt.TextInteractionFlag.TextSelectableByMouse
         if selectable

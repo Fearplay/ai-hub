@@ -24,7 +24,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import vbox
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_linkedin import pipeline
 from src.sections.ai_linkedin.data import SECTION_ICON, builder_tabs, mode_tabs
 from src.sections.ai_linkedin.how_to import open_linkedin_how_to
@@ -111,8 +111,25 @@ def _build_builder_body(theme: Theme, lang: str) -> QWidget:
     return build_setup_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
 
 
+def _builder_tab_enabled(index: int) -> bool:
+    if index in {TAB_SECTIONS, TAB_OUTPUT}:
+        return STATE.has_results()
+    if index == TAB_HISTORY:
+        return bool(STATE.runs_history)
+    return True
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    try:
+        STATE.runs_history = [
+            run for run in store.list_runs()
+            if (getattr(run, "note", "") or "") == "ai_linkedin"
+        ]
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_linkedin.view", "warm_history_failed", exc,
+        )
 
     container = QWidget()
     container.setStyleSheet(f"background-color: {theme.bg};")
@@ -127,6 +144,14 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         if STATE.mode != MODE_BUILDER:
             return
         if index == STATE.active_tab:
+            return
+        if not _builder_tab_enabled(index):
+            logger_service.log_event(
+                "INFO", "ai_linkedin.view", "tab_blocked",
+                requested_tab=index,
+                has_results=STATE.has_results(),
+                history_count=len(STATE.runs_history or []),
+            )
             return
         STATE.active_tab = index
         _refresh()
@@ -217,15 +242,51 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     def _menu_how_to() -> None:
         open_linkedin_how_to(get_main_window(), theme, lang)
 
+    def _menu_load_demo() -> None:
+        logger_service.log_event("INFO", "ai_linkedin.view", "menu_load_demo")
+        try:
+            pipeline.load_demo()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_linkedin.view", "menu_load_demo_failed", exc,
+            )
+            return
+        STATE.mode = MODE_BUILDER
+        STATE.active_tab = TAB_OUTPUT
+        _refresh()
+
+    def _menu_clear_demo() -> None:
+        logger_service.log_event("INFO", "ai_linkedin.view", "menu_clear_demo")
+        try:
+            pipeline.clear_demo()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_linkedin.view", "menu_clear_demo_failed", exc,
+            )
+            return
+        STATE.active_tab = TAB_SETUP
+        _refresh()
+
     has_results = STATE.has_results()
+    demo_menu_label = (
+        txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"]
+    )
+    demo_menu_handler = _menu_clear_demo if STATE.demo_mode else _menu_load_demo
 
     menu_items: list[HeaderMenuItem] = [
         HeaderMenuItem(icon=Icons.RESTART_ALT, label=txt["menu_new_build"], on_click=_menu_new_build),
         HeaderMenuItem(icon=Icons.SAVE_OUTLINED, label=txt["menu_save_full"], on_click=_menu_save_full, enabled=has_results),
         HeaderMenuItem(icon=Icons.FOLDER_OPEN, label=txt["menu_open_folder"], on_click=_menu_open_folder),
         HeaderMenuItem(icon=Icons.HISTORY, label=txt["menu_show_history"], on_click=_menu_open_history),
+        HeaderMenuItem(icon=Icons.AUTO_AWESOME, label=demo_menu_label, on_click=demo_menu_handler),
         HeaderMenuItem(icon=Icons.MENU_BOOK_OUTLINED, label=txt["menu_how_to"], on_click=_menu_how_to),
     ]
+
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
 
     layout.addWidget(header(
         theme, lang,
@@ -233,6 +294,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
+        trailing=demo_pill,
         menu_items=menu_items,
     ))
 
@@ -249,6 +311,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             tabs=builder_tabs(lang),
             active_index=STATE.active_tab,
             on_change=_on_stage_tab_change,
+            enabled=[
+                _builder_tab_enabled(TAB_SETUP),
+                _builder_tab_enabled(TAB_SECTIONS),
+                _builder_tab_enabled(TAB_OUTPUT),
+                _builder_tab_enabled(TAB_HISTORY),
+            ],
         ))
 
     if STATE.mode == MODE_CHAT:

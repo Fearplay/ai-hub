@@ -22,9 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.components.header import header
+from src.components.header import HeaderMenuItem, header
 from src.components.tab_bar import tab_bar
-from src.qt.widgets import hbox, vbox
+from src.qt.icons import Icons
+from src.qt.widgets import Pill, hbox, vbox
 from src.sections.ai_legal.data import SECTION_ICON, tabs
 from src.sections.ai_legal.refs import REFS
 from src.sections.ai_legal.state import STATE
@@ -86,6 +87,45 @@ def build_view(theme: Theme, lang: str) -> QWidget:
     layout = vbox(spacing=0, margins=(0, 0, 0, 0))
     container.setLayout(layout)
 
+    def _menu_load_demo() -> None:
+        logger_service.log_event("INFO", "ai_legal.view", "menu_load_demo")
+        STATE.demo_mode = True
+        try:
+            from src.app import request_section_refresh
+
+            request_section_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_legal.view", "menu_load_demo_refresh_failed", exc,
+            )
+
+    def _menu_clear_demo() -> None:
+        logger_service.log_event("INFO", "ai_legal.view", "menu_clear_demo")
+        STATE.demo_mode = False
+        try:
+            from src.app import request_section_refresh
+
+            request_section_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_legal.view", "menu_clear_demo_refresh_failed", exc,
+            )
+
+    menu_items = [
+        HeaderMenuItem(
+            icon=Icons.AUTO_AWESOME,
+            label=(
+                txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"]
+            ),
+            on_click=_menu_clear_demo if STATE.demo_mode else _menu_load_demo,
+        ),
+    ]
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
+
     header_widget = header(
         theme,
         lang,
@@ -93,7 +133,8 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         show_help_button=False,
-        show_menu_button=False,
+        trailing=demo_pill,
+        menu_items=menu_items,
         compact=True,
     )
     layout.addWidget(header_widget)

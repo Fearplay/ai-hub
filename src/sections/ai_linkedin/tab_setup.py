@@ -450,7 +450,18 @@ def _footer_bar(
     on_navigate_tab: Callable[[int], None],
 ) -> QFrame:
     bar = QFrame()
-    bar.setStyleSheet(f"background-color: {theme.bg}; border-top: 1px solid {theme.border};")
+    # See ``ai_linkedin/tab_output.py`` for the rationale: unscoped
+    # ``border-top`` cascades to every QFrame child and paints a thin
+    # line across every button in the footer.
+    bar.setObjectName("LinkedInSetupFooter")
+    bar.setStyleSheet(
+        f"""
+        QFrame#LinkedInSetupFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
+    )
     layout = hbox(spacing=10, margins=(24, 12, 24, 12))
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     bar.setLayout(layout)

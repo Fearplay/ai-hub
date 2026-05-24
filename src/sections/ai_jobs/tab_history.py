@@ -24,6 +24,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -34,6 +35,7 @@ from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    ClickFrame,
     DangerButton,
     GhostButton,
     IconLabel,
@@ -48,7 +50,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.sections.ai_jobs import pipeline
 from src.sections.ai_jobs.refs import REFS
-from src.sections.ai_jobs.state import STATE
+from src.sections.ai_jobs.state import STATE, TAB_RESULTS, TAB_SKILL_GAP
 from src.sections.ai_jobs.strings import s
 from src.theme import Theme
 
@@ -108,6 +110,7 @@ def _row(
     entry: dict,
     *,
     on_open: Callable[[str], None],
+    on_restore: Callable[[str, int], None],
     on_delete: Callable[[str], None],
 ) -> QFrame:
     folder = entry.get("folder") or ""
@@ -115,9 +118,9 @@ def _row(
     location = (entry.get("location") or "").strip() or "-"
     count = int(entry.get("count") or 0)
     timestamp = _format_timestamp(entry.get("timestamp") or "")
-
-    row = QFrame()
+    row = ClickFrame()
     row.setObjectName("JobsHistoryRow")
+    row.clicked.connect(lambda _checked=False, f=folder: on_restore(f))
     row.setStyleSheet(
         f"""
         QFrame#JobsHistoryRow {{
@@ -143,12 +146,13 @@ def _row(
 
     info = QFrame()
     info.setStyleSheet("background: transparent;")
-    info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    wrap_label_slot(info)
     il = vbox(spacing=4, margins=(0, 0, 0, 0))
     info.setLayout(il)
 
     title_row = QFrame()
     title_row.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_row)
     title_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
     title_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     title_row.setLayout(title_layout)
@@ -173,14 +177,22 @@ def _row(
 
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")
-    actions_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    actions.setLayout(actions_layout)
+    actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+    actions_layout = QGridLayout(actions)
+    actions_layout.setContentsMargins(0, 0, 0, 0)
+    actions_layout.setHorizontalSpacing(8)
+    actions_layout.setVerticalSpacing(8)
+    results_btn = GhostButton(
+        txt["history_open_results_btn"], theme=theme, icon=Icons.OPEN_IN_NEW,
+    )
+    results_btn.clicked.connect(lambda _checked=False, f=folder: on_restore(f, TAB_RESULTS))
+    actions_layout.addWidget(results_btn, 0, 0)
     open_btn = GhostButton(txt["history_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN)
     open_btn.clicked.connect(lambda _checked=False: on_open(folder))
-    actions_layout.addWidget(open_btn)
+    actions_layout.addWidget(open_btn, 0, 1)
     delete_btn = DangerButton(txt["history_delete_btn"], theme=theme, icon=Icons.DELETE_OUTLINE)
     delete_btn.clicked.connect(lambda _checked=False: on_delete(folder))
-    actions_layout.addWidget(delete_btn)
+    actions_layout.addWidget(delete_btn, 1, 0, 1, 2)
     layout.addWidget(actions)
 
     return row
@@ -210,7 +222,10 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
     title_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     title_holder.setLayout(title_layout)
     title_layout.addWidget(TitleLabel(txt["history_title"], theme=theme, size=18, weight=QFont.Weight.Bold))
-    title_layout.addWidget(MutedLabel(txt["history_subtitle"], theme=theme, size=12))
+    subtitle_label = MutedLabel(txt["history_subtitle"], theme=theme, size=12)
+    subtitle_label.setMinimumHeight(subtitle_label.fontMetrics().lineSpacing() * 2 + 4)
+    wrap_label_slot(subtitle_label)
+    title_layout.addWidget(subtitle_label)
     header_layout.addWidget(title_holder, 1)
     refresh_btn = GhostButton(txt["history_refresh_btn"], theme=theme, icon=Icons.REFRESH)
     header_layout.addWidget(refresh_btn)
@@ -231,8 +246,29 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
         def _open(folder: str) -> None:
             _open_in_explorer(folder)
 
+        def _restore(folder: str, target_tab: int = TAB_RESULTS) -> None:
+            try:
+                ok = pipeline.restore_run(folder)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.tab_history", "restore_run_failed", exc,
+                    folder=folder,
+                )
+                ok = False
+            if ok:
+                STATE.active_tab = target_tab if target_tab != TAB_SKILL_GAP or STATE.has_skill_gap() else TAB_RESULTS
+                REFS.request_context_refresh()
+                runtime_dispatch(_request_full_refresh)
+
         def _delete(folder: str) -> None:
-            ok = pipeline.delete_run(folder)
+            try:
+                ok = pipeline.delete_run(folder)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_jobs.tab_history", "delete_run_failed", exc,
+                    folder=folder,
+                )
+                ok = False
             if not ok:
                 logger_service.log_event(
                     "WARNING", "ai_jobs.tab_history", "delete_partial",
@@ -241,7 +277,16 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
             runtime_dispatch(_request_full_refresh)
 
         for entry in entries:
-            body_layout.addWidget(_row(theme, txt, entry, on_open=_open, on_delete=_delete))
+            body_layout.addWidget(
+                _row(
+                    theme,
+                    txt,
+                    entry,
+                    on_open=_open,
+                    on_restore=_restore,
+                    on_delete=_delete,
+                )
+            )
         body_layout.addStretch(1)
 
     refresh_btn.clicked.connect(lambda _checked=False: _request_full_refresh())

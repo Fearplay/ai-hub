@@ -16,6 +16,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_drafts": "Document drafts",
         "tab_templates": "Templates",
 
+        "menu_demo_load": "Show demo data",
+        "menu_demo_clear": "Hide demo data",
+        "demo_pill": "DEMO",
+        "empty_demo_hint_title": "Nothing to show yet",
+        "empty_demo_hint_body": "Open the section ... menu and pick Show demo data to see how this section renders a complete analysis.",
+
         "chat_action_summarize": "Summarise",
         "chat_action_risks": "Find risks",
         "chat_action_explain": "Explain terms",
@@ -137,6 +143,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_analysis": "Analýza dokumentu",
         "tab_drafts": "Návrhy dokumentů",
         "tab_templates": "Šablony",
+
+        "menu_demo_load": "Zobrazit demo data",
+        "menu_demo_clear": "Skrýt demo data",
+        "demo_pill": "DEMO",
+        "empty_demo_hint_title": "Zatím tu nic není",
+        "empty_demo_hint_body": "V sekci klikni na ... vpravo nahoře a vyber Zobrazit demo data - uvidíš, jak tahle sekce vyloží hotovou analýzu.",
 
         "chat_action_summarize": "Shrnout",
         "chat_action_risks": "Najít rizika",

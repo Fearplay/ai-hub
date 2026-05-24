@@ -21,7 +21,7 @@ from src.components.tab_bar import tab_bar
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
-from src.qt.widgets import vbox
+from src.qt.widgets import Pill, vbox
 from src.sections.ai_jobs import pipeline
 from src.sections.ai_jobs.data import SECTION_ICON, tabs as tab_labels
 from src.sections.ai_jobs.how_to import open_jobs_how_to
@@ -112,6 +112,16 @@ def _build_tab_body(theme: Theme, lang: str) -> QWidget:
         raise
 
 
+def _tab_enabled(index: int) -> bool:
+    if index == TAB_RESULTS:
+        return STATE.has_results()
+    if index == TAB_SKILL_GAP:
+        return STATE.has_skill_gap()
+    if index == TAB_HISTORY:
+        return bool(STATE.runs_history)
+    return True
+
+
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
 
@@ -184,7 +194,30 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         _refresh()
 
     def _menu_show_skill_gap() -> None:
+        if not _tab_enabled(TAB_SKILL_GAP):
+            return
         STATE.active_tab = TAB_SKILL_GAP
+        _refresh()
+
+    def _menu_load_demo() -> None:
+        logger_service.log_event("INFO", "ai_jobs.view", "menu_load_demo")
+        STATE.demo_mode = True
+        if not STATE.can_run():
+            STATE.keywords = "QA software engineer"
+            STATE.tech_skills = "Python, API testing, Playwright, SQL"
+            STATE.location_preset = "prague"
+            STATE.output_language = "cs" if lang == "cs" else "en"
+        result = pipeline.run_search(output_lang=lang)
+        if not result.ok:
+            _show_message(result.error)
+            return
+        STATE.active_tab = TAB_RESULTS
+        _refresh()
+
+    def _menu_clear_demo() -> None:
+        logger_service.log_event("INFO", "ai_jobs.view", "menu_clear_demo")
+        STATE.demo_mode = False
+        STATE.reset_all()
         _refresh()
 
     def _menu_how_to() -> None:
@@ -210,6 +243,11 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             enabled=STATE.has_skill_gap(),
         ),
         HeaderMenuItem(
+            icon=Icons.AUTO_AWESOME,
+            label=txt["menu_demo_clear"] if STATE.demo_mode else txt["menu_demo_load"],
+            on_click=_menu_clear_demo if STATE.demo_mode else _menu_load_demo,
+        ),
+        HeaderMenuItem(
             icon=Icons.FOLDER_OPEN,
             label=txt["menu_open_folder"],
             on_click=_menu_open_folder,
@@ -226,6 +264,16 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         ),
     ]
 
+    # Orange ``DEMO`` pill in the header trailing slot signals that
+    # the current view is showing curated offline data, not a real
+    # search. Matches the AI Bug Report / AI Doc Assistant pattern -
+    # see ``.cursor/rules/ai-section.mdc`` for the shared demo affordance.
+    demo_pill = (
+        Pill(text=txt["demo_pill"], bg="#F59E0B", fg="#FFFFFF")
+        if STATE.demo_mode
+        else None
+    )
+
     header_widget = header(
         theme,
         lang,
@@ -233,12 +281,22 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         title=txt["title"],
         subtitle=txt["subtitle"],
         on_help_click=_on_help,
+        trailing=demo_pill,
         menu_items=menu_items,
     )
     layout.addWidget(header_widget)
 
     def _on_tab_change(index: int) -> None:
         if index == STATE.active_tab:
+            return
+        if not _tab_enabled(index):
+            logger_service.log_event(
+                "INFO", "ai_jobs.view", "tab_blocked",
+                requested_tab=index,
+                has_results=STATE.has_results(),
+                has_skill_gap=STATE.has_skill_gap(),
+                history_count=len(STATE.runs_history or []),
+            )
             return
         logger_service.log_event(
             "INFO", "ai_jobs.view", "tab_change",
@@ -258,6 +316,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             tabs=tab_labels(lang),
             active_index=STATE.active_tab,
             on_change=_on_tab_change,
+            enabled=[
+                _tab_enabled(TAB_SETUP),
+                _tab_enabled(TAB_RESULTS),
+                _tab_enabled(TAB_SKILL_GAP),
+                _tab_enabled(TAB_HISTORY),
+            ],
         )
     )
 

@@ -10,6 +10,76 @@ translations through ``src/i18n.py``.
 from __future__ import annotations
 
 
+# Display labels for the canonical schema enums. The schema (and the
+# saved JSON) always stores the English canonical value so runs stay
+# portable across languages, but the Preview dropdowns show the
+# localised label via ``ScrollSafeComboBox.addItem(label, userData=value)``.
+SEVERITY_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "Critical": "Critical",
+        "High": "High",
+        "Medium": "Medium",
+        "Low": "Low",
+    },
+    "cs": {
+        "Critical": "Kritická",
+        "High": "Vysoká",
+        "Medium": "Střední",
+        "Low": "Nízká",
+    },
+}
+
+PRIORITY_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "P0": "P0 (Blocker)",
+        "P1": "P1 (Critical)",
+        "P2": "P2 (Major)",
+        "P3": "P3 (Minor)",
+    },
+    "cs": {
+        "P0": "P0 (Blokující)",
+        "P1": "P1 (Kritická)",
+        "P2": "P2 (Vysoká)",
+        "P3": "P3 (Nízká)",
+    },
+}
+
+REPRODUCIBILITY_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "Always": "Always",
+        "Sometimes": "Sometimes",
+        "Rare": "Rare",
+        "Once": "Once",
+        "Unknown": "Unknown",
+    },
+    "cs": {
+        "Always": "Vždy",
+        "Sometimes": "Občas",
+        "Rare": "Vzácně",
+        "Once": "Jednou",
+        "Unknown": "Neznámé",
+    },
+}
+
+
+def severity_label(lang: str, value: str) -> str:
+    """Return the localised display label for a canonical severity value."""
+    bundle = SEVERITY_LABELS.get(lang) or SEVERITY_LABELS["en"]
+    return bundle.get(value, value)
+
+
+def priority_label(lang: str, value: str) -> str:
+    """Return the localised display label for a canonical priority value."""
+    bundle = PRIORITY_LABELS.get(lang) or PRIORITY_LABELS["en"]
+    return bundle.get(value, value)
+
+
+def reproducibility_label(lang: str, value: str) -> str:
+    """Return the localised display label for a canonical reproducibility value."""
+    bundle = REPRODUCIBILITY_LABELS.get(lang) or REPRODUCIBILITY_LABELS["en"]
+    return bundle.get(value, value)
+
+
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "nav_label": "AI Bug Report",
@@ -22,7 +92,9 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "tab_input": "Input",
         "tab_preview": "Preview",
-        "tab_export": "Export",
+        "tab_history": "History",
+        "menu_demo_load": "Show demo data",
+        "menu_demo_clear": "Hide demo data",
 
         "step_input_label": "STEP 1",
         "step_input_title": "Describe the bug",
@@ -43,6 +115,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "Leave blank to let the AI infer from the screenshots."
         ),
         "attachments_label": "Attachments",
+        "attachments_card_desc": "Drop screenshots or logs to attach context to the report.",
         "drop_title": "Drop screenshots, logs, or PDFs here",
         "drop_hint": "PNG / JPG / WEBP for screenshots, TXT / LOG / JSON / PDF / DOCX / MD / HTML for context",
         "unsupported": "Unsupported file type. Use PNG / JPG / WEBP / GIF / BMP / TXT / LOG / JSON / PDF / DOCX / MD / HTML.",
@@ -54,15 +127,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "attachment_image_badge": "IMAGE",
         "attachment_doc_badge": "DOC",
 
-        "footer_demo_btn": "Try demo data",
         "footer_generate_btn": "Generate bug report",
         "footer_generate_running": "Generating...",
-        "footer_followup_running": "Asking clarifying questions...",
         "footer_ask_followups_label": "Let the AI ask clarifying questions first",
         "footer_ask_followups_hint": (
             "When something is missing, the AI pauses and asks you instead "
             "of making it up. Toggle off in Settings to skip the modal."
         ),
+        "report_lang_dialog_title": "Bug report language",
+        "report_lang_dialog_desc": "Choose the language for the generated report. The AI rewrites all human-readable report text into this language.",
+        "report_lang_option_cs": "Czech (CS)",
+        "report_lang_option_en": "English (EN)",
+        "report_lang_dialog_cancel": "Cancel",
+        "report_lang_dialog_confirm": "Generate",
         "generate_disabled_hint": "Add a description or at least one attachment first.",
         "input_requirement_hint": "Minimum input: add a description or at least one attachment.",
         "no_key_template": "Missing API key for {provider}. Open Settings and save your key first.",
@@ -82,8 +159,13 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "preview_empty": "Nothing to show yet. Run Generate on the Input tab.",
         "preview_back_btn": "Back to Input",
-        "preview_regen_btn": "Regenerate",
+        "preview_save_btn": "Save as Word document",
+        "preview_open_folder_btn": "Open output folder",
+        "preview_saved_template": "Saved to {path}",
+        "preview_save_failed": "Could not save the report: {error}",
         "preview_title_label": "Title",
+        "preview_scenario_label": "Scenario",
+        "preview_scenarios_count_template": "{count} scenarios detected",
         "preview_summary_label": "Summary",
         "preview_severity_label": "Severity",
         "preview_priority_label": "Priority",
@@ -102,17 +184,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "env_app_version": "App version",
         "env_url": "URL",
 
-        "export_title": "Save the bug report",
-        "export_desc": (
-            "The Word document mirrors the preview - title, environment table, numbered "
-            "steps, expected vs actual, embedded screenshots, attachments summary. A "
-            "Markdown mirror and a summary.json land in the same folder."
+        "history_title": "Saved bug reports",
+        "history_subtitle": (
+            "Every Word document you saved from this section, newest first. "
+            "Open the folder to grab the .docx or delete a run to clean up."
         ),
-        "export_save_btn": "Save as Word document",
-        "export_open_folder_btn": "Open output folder",
-        "export_saved_template": "Saved to {path}",
-        "export_save_failed": "Could not save the report: {error}",
-        "export_run_first": "Generate the bug report first.",
+        "history_empty_title": "No saved reports yet",
+        "history_empty_desc": (
+            "Generate a bug report on the Input tab, then click Save as Word on "
+            "the Preview tab. Saved runs appear here so you can re-open them anytime."
+        ),
+        "history_open_folder_btn": "Open folder",
+        "history_open_word_btn": "Open Word",
+        "history_delete_btn": "Delete",
+        "history_refresh_btn": "Refresh",
+        "history_count_template": "{count} screenshots",
+        "history_count_one": "1 screenshot",
+        "history_count_zero": "no screenshots",
+        "history_doc_count_template": "{count} documents",
+        "history_doc_count_one": "1 document",
+        "history_delete_failed": "Delete failed - some files were locked.",
 
         "demo_pill": "DEMO",
 
@@ -170,7 +261,9 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "tab_input": "Vstup",
         "tab_preview": "Náhled",
-        "tab_export": "Export",
+        "tab_history": "Historie",
+        "menu_demo_load": "Zobrazit demo data",
+        "menu_demo_clear": "Skrýt demo data",
 
         "step_input_label": "KROK 1",
         "step_input_title": "Popiš chybu",
@@ -190,6 +283,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "nechat prázdné a nechat AI ať si to vyčte ze screenshotů."
         ),
         "attachments_label": "Přílohy",
+        "attachments_card_desc": "Sem pusť screenshoty nebo logy - AI je doplní k reportu.",
         "drop_title": "Sem pusť screenshoty, logy nebo PDF",
         "drop_hint": "PNG / JPG / WEBP pro screenshoty, TXT / LOG / JSON / PDF / DOCX / MD / HTML pro kontext",
         "unsupported": "Nepodporovaný typ souboru. Použij PNG / JPG / WEBP / GIF / BMP / TXT / LOG / JSON / PDF / DOCX / MD / HTML.",
@@ -201,15 +295,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "attachment_image_badge": "OBR",
         "attachment_doc_badge": "DOK",
 
-        "footer_demo_btn": "Vyzkoušet ukázková data",
         "footer_generate_btn": "Vygenerovat bug report",
         "footer_generate_running": "Generuji...",
-        "footer_followup_running": "Ptám se na upřesňující otázky...",
         "footer_ask_followups_label": "Nejdřív se zeptat na upřesnění",
         "footer_ask_followups_hint": (
             "Když AI něco chybí, raději se zeptá, než aby si to vymýšlela. "
             "V Nastavení můžeš tuhle pauzu vypnout."
         ),
+        "report_lang_dialog_title": "Jazyk bug reportu",
+        "report_lang_dialog_desc": "Vyber jazyk výsledného reportu. AI převede všechen čitelný text reportu do tohoto jazyka.",
+        "report_lang_option_cs": "Čeština (CS)",
+        "report_lang_option_en": "Angličtina (EN)",
+        "report_lang_dialog_cancel": "Zrušit",
+        "report_lang_dialog_confirm": "Generovat",
         "generate_disabled_hint": "Přidej popis nebo aspoň jednu přílohu.",
         "input_requirement_hint": "Minimum vstup: vyplň popis nebo přidej aspoň jednu přílohu.",
         "no_key_template": "Chybí API klíč pro {provider}. Otevři Nastavení a klíč ulož.",
@@ -230,8 +328,13 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "preview_empty": "Zatím nic. Spusť Generování na záložce Vstup.",
         "preview_back_btn": "Zpět na Vstup",
-        "preview_regen_btn": "Znovu vygenerovat",
+        "preview_save_btn": "Vygenerovat Word",
+        "preview_open_folder_btn": "Otevřít složku",
+        "preview_saved_template": "Uloženo do {path}",
+        "preview_save_failed": "Uložení selhalo: {error}",
         "preview_title_label": "Název",
+        "preview_scenario_label": "Scénář",
+        "preview_scenarios_count_template": "Rozpoznané scénáře: {count}",
         "preview_summary_label": "Shrnutí",
         "preview_severity_label": "Závažnost",
         "preview_priority_label": "Priorita",
@@ -250,17 +353,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "env_app_version": "Verze aplikace",
         "env_url": "URL",
 
-        "export_title": "Ulož bug report",
-        "export_desc": (
-            "Wordový dokument se shoduje s náhledem - název, tabulka prostředí, číslované "
-            "kroky, očekávaný vs skutečný výsledek, vložené screenshoty, souhrn příloh. "
-            "Vedle něj se uloží i markdown verze a summary.json."
+        "history_title": "Uložené bug reporty",
+        "history_subtitle": (
+            "Každý Word dokument, který jsi z této sekce uložil/a, od nejnovějšího. "
+            "Otevři složku pro stažení .docx nebo smaž běh pro úklid."
         ),
-        "export_save_btn": "Uložit jako Word",
-        "export_open_folder_btn": "Otevřít složku s výstupy",
-        "export_saved_template": "Uloženo do {path}",
-        "export_save_failed": "Uložení selhalo: {error}",
-        "export_run_first": "Nejdřív vygeneruj bug report.",
+        "history_empty_title": "Zatím žádné uložené reporty",
+        "history_empty_desc": (
+            "Vygeneruj bug report na záložce Vstup a klikni na Vygenerovat Word v "
+            "Náhledu. Uložené běhy se objeví tady, abys je mohl/a kdykoli znovu otevřít."
+        ),
+        "history_open_folder_btn": "Otevřít složku",
+        "history_open_word_btn": "Otevřít Word",
+        "history_delete_btn": "Smazat",
+        "history_refresh_btn": "Obnovit",
+        "history_count_template": "{count} screenshotů",
+        "history_count_one": "1 screenshot",
+        "history_count_zero": "bez screenshotů",
+        "history_doc_count_template": "{count} dokumentů",
+        "history_doc_count_one": "1 dokument",
+        "history_delete_failed": "Smazání selhalo - některé soubory jsou zamčené.",
 
         "demo_pill": "DEMO",
 

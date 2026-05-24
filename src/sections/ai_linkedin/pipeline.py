@@ -15,6 +15,7 @@ a profile-completeness verdict + an honest score for free.
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,7 @@ from typing import Callable, Optional
 from src.services import ai_provider, exporter, github_client, store
 from src.services import logger as logger_service
 from src.services.cost_tracker import COST
+from src.sections.ai_linkedin import data as linkedin_data
 from src.sections.ai_linkedin import prompts, schema, summary_html
 from src.sections.ai_linkedin.refs import REFS, safe
 from src.sections.ai_linkedin.state import (
@@ -116,6 +118,67 @@ def _set_error(message: str) -> PipelineResult:
     return PipelineResult(ok=False, error=message)
 
 
+# Demo seed -------------------------------------------------------------------
+
+
+def load_demo() -> None:
+    """Populate ``STATE`` with curated mock data, no AI calls.
+
+    Called by the ``...`` header menu's "Show demo data" item. Copies
+    the constants from :mod:`src.sections.ai_linkedin.data` so the
+    user can explore every Output card without spending tokens. All
+    AI-calling functions also check ``STATE.demo_mode`` and reseed the
+    payload defensively, so even if the user kicks "Run profile build"
+    while demo is on no provider call leaves the process.
+    """
+    logger_service.log_event(
+        "INFO", "ai_linkedin.pipeline", "load_demo_start"
+    )
+    STATE.demo_mode = True
+    STATE.target_roles = list(linkedin_data.DEMO_TARGET_ROLES)
+    STATE.extracted_profile = copy.deepcopy(linkedin_data.DEMO_PROFILE)
+    STATE.headlines = copy.deepcopy(linkedin_data.DEMO_HEADLINES)
+    STATE.about_variants = copy.deepcopy(linkedin_data.DEMO_ABOUT)
+    STATE.experience_rewrites = copy.deepcopy(linkedin_data.DEMO_EXPERIENCE_REWRITES)
+    STATE.skills_buckets = copy.deepcopy(linkedin_data.DEMO_SKILLS_BUCKETS)
+    STATE.featured = copy.deepcopy(linkedin_data.DEMO_FEATURED)
+    STATE.projects = copy.deepcopy(linkedin_data.DEMO_PROJECTS)
+    STATE.recommendation_messages = copy.deepcopy(
+        linkedin_data.DEMO_RECOMMENDATION_MESSAGES
+    )
+    STATE.posts = copy.deepcopy(linkedin_data.DEMO_POSTS)
+    STATE.completeness = copy.deepcopy(linkedin_data.DEMO_COMPLETENESS)
+    STATE.unsupported_claims = copy.deepcopy(linkedin_data.DEMO_UNSUPPORTED_CLAIMS)
+    STATE.profile_score = copy.deepcopy(linkedin_data.DEMO_PROFILE_SCORE)
+    STATE.followup_questions = []
+    STATE.followup_qa = []
+    STATE.activity = "ready"
+    STATE.last_error = ""
+    STATE.run_stage = ""
+    REFS.request_context_refresh()
+    logger_service.log_state(
+        "ai_linkedin.pipeline", "load_demo_state",
+        has_profile=True,
+        sections=8,
+        score=STATE.profile_score.get("overall_score") if STATE.profile_score else None,
+    )
+
+
+def clear_demo() -> None:
+    """Turn demo mode off and wipe the seeded payloads.
+
+    Pairs with :func:`load_demo`. Resets every AI-derived field so the
+    user starts from a clean Setup tab the next time they open the
+    section, without leaking the curated Jana persona into a real run.
+    """
+    logger_service.log_event(
+        "INFO", "ai_linkedin.pipeline", "clear_demo_start"
+    )
+    STATE.demo_mode = False
+    STATE.reset_run()
+    REFS.request_context_refresh()
+
+
 def _resolve_targeting() -> tuple[list[str], str, str]:
     target_roles = [r for r in (STATE.target_roles or []) if r and r.strip()]
     audience = STATE.audience or AUDIENCE_RECRUITER
@@ -171,7 +234,19 @@ def extract_profile(*, output_lang: str) -> PipelineResult:
         has_linkedin=bool(STATE.linkedin_export and STATE.linkedin_export.text),
         has_github=bool(STATE.github_profile),
         has_notes=bool(STATE.notes),
+        demo_mode=STATE.demo_mode,
     )
+
+    if STATE.demo_mode:
+        STATE.extracted_profile = copy.deepcopy(linkedin_data.DEMO_PROFILE)
+        STATE.evidence_index = _build_evidence_index_from_profile(
+            STATE.extracted_profile
+        )
+        _set_activity("ready")
+        logger_service.log_event(
+            "INFO", "ai_linkedin.pipeline", "extract_profile_demo_done"
+        )
+        return PipelineResult(ok=True)
 
     if not (
         (STATE.resume and STATE.resume.text)
@@ -255,6 +330,16 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
     output_lang = _resolve_output_lang(output_lang)
     target_roles, audience, tone = _resolve_targeting()
 
+    if STATE.demo_mode:
+        # Demo persona's profile is already complete - no follow-ups
+        # are needed, matching what a real perfect-fit run returns.
+        STATE.followup_questions = []
+        _set_activity("ready")
+        logger_service.log_event(
+            "INFO", "ai_linkedin.pipeline", "generate_followups_demo_done"
+        )
+        return PipelineResult(ok=True)
+
     if not STATE.extracted_profile:
         return _set_error("Extract the profile first.")
 
@@ -326,6 +411,18 @@ def _ensure_profile() -> Optional[PipelineResult]:
     return None
 
 
+_DEMO_STATE_PAYLOADS: dict[str, str] = {
+    "headlines": "DEMO_HEADLINES",
+    "about_variants": "DEMO_ABOUT",
+    "experience_rewrites": "DEMO_EXPERIENCE_REWRITES",
+    "skills_buckets": "DEMO_SKILLS_BUCKETS",
+    "featured": "DEMO_FEATURED",
+    "projects": "DEMO_PROJECTS",
+    "recommendation_messages": "DEMO_RECOMMENDATION_MESSAGES",
+    "posts": "DEMO_POSTS",
+}
+
+
 def _generate_with_schema(
     *,
     section_id: str,
@@ -342,7 +439,27 @@ def _generate_with_schema(
         "ai_linkedin.pipeline",
         "generate_section_start",
         section=section_id,
+        demo_mode=STATE.demo_mode,
     )
+
+    if STATE.demo_mode:
+        # Reseed the curated payload for this section instead of
+        # calling the provider. Sections that have no curated demo
+        # constant (education / certifications / services / courses)
+        # leave their existing value untouched, which is exactly what
+        # the Output card expects (it just skips the missing card).
+        const_name = _DEMO_STATE_PAYLOADS.get(state_attr)
+        if const_name is not None:
+            setattr(STATE, state_attr, copy.deepcopy(getattr(linkedin_data, const_name)))
+        _set_activity("ready")
+        logger_service.log_event(
+            "INFO",
+            "ai_linkedin.pipeline",
+            "generate_section_demo_done",
+            section=section_id,
+            state_attr=state_attr,
+        )
+        return PipelineResult(ok=True)
 
     err = _ensure_profile()
     if err is not None:
@@ -992,7 +1109,22 @@ def run_full_profile_build(
         "run_full_profile_build_state",
         output_lang=output_lang,
         sections=sorted(sections),
+        demo_mode=STATE.demo_mode,
     )
+
+    if STATE.demo_mode:
+        # Re-seed the curated state in case the user toggled fields in
+        # the Sections tab. No provider calls; the full Output cards
+        # populate from ``data.DEMO_*``.
+        load_demo()
+        if on_step:
+            for sec in ("profile", SEC_HEADLINE, SEC_ABOUT, SEC_EXPERIENCE,
+                        SEC_SKILLS, SEC_FEATURED, SEC_PROJECTS,
+                        SEC_RECOMMENDATIONS, SEC_POSTS, SEC_CHECKLIST):
+                on_step(sec)
+        _set_activity("ready")
+        REFS.dispatch(_request_full_refresh)
+        return PipelineResult(ok=True)
 
     res = extract_profile(output_lang=output_lang)
     if not res.ok:
@@ -1072,7 +1204,31 @@ def send_chat_message(*, output_lang: str, user_text: str) -> tuple[str, str]:
         chars=len(user_text),
         history=len(STATE.chat_messages),
         attachments=len(STATE.chat_attachments),
+        demo_mode=STATE.demo_mode,
     )
+
+    if STATE.demo_mode:
+        reply_en = (
+            "Demo mode is on, so I am not calling the provider. "
+            "For Jana's profile I would suggest leading with the "
+            "**TrustPay CI runtime win** (38 -> 14 min) in the "
+            "headline and using the **medium About variant** as the "
+            "starting point on the LinkedIn profile. Turn off Demo "
+            "data in the section ... menu to ask the real AI coach."
+        )
+        reply_cs = (
+            "Demo režim je zapnutý, takže nevolám AI. Pro Janin "
+            "profil bych v headlinu zdůraznil/a **úsporu CI v TrustPay "
+            "(38 -> 14 min)** a jako About použil/a **střední "
+            "variantu**. Pokud chceš odpověď od skutečné AI, vypni "
+            "Demo data v menu ... v sekci."
+        )
+        reply = reply_cs if (output_lang or "").lower().startswith("cs") else reply_en
+        logger_service.log_event(
+            "INFO", "ai_linkedin.pipeline", "send_chat_demo_done",
+            reply_chars=len(reply),
+        )
+        return reply, ""
 
     history = [
         {"role": m.role, "text": m.text} for m in STATE.chat_messages

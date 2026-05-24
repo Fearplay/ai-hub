@@ -10,12 +10,15 @@
 Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
-středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
+středu a kontextový panel vpravo. Defaultní úvodní obrazovka je
+**Dashboard** - navigační mřížka s jednou kartou pro každý viditelný
+AI modul, takže uživatel po startu může jedním klikem skočit do
+libovolného asistenta. Sekce **AI Životopis / Kariéra**,
 **AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
 a **AI Bug Report** jsou plně napojené na OpenAI / Anthropic (nová
 sekce mluví i s **vision** API obou providerů, takže screenshoty
 zpracovává společně s textovým promptem). Rozpracované sekce
-(Dashboard, AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
+(AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
 AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
 aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
 [Schované UI](#schované-ui) níže.
@@ -24,7 +27,9 @@ Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Nové pořadí se
 projeví okamžitě (žádný restart, žádné přepínání jazyka). Pořadí se
 ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
-Sekundární skupina (Nastavení) zůstává pevně pod oddělovačem.
+Sekundární skupina (**Dashboard** nad **Nastavením**) zůstává pevně
+pod oddělovačem; obě sekce se nedají přerovnávat, takže navigační
+mřížka i stránka s nastavením jsou vždy na jedno kliknutí.
 
 ## Požadavky
 
@@ -99,7 +104,9 @@ Co skript dělá:
    [QtAwesome](https://github.com/spyder-ide/qtawesome) (sada
    Material Design Icons 6); fonty s ikonami jsou uvnitř qtawesome
    wheelu a do bundlu se dostanou automaticky přes
-   `--collect-all qtawesome`.
+   `--collect-all qtawesome`. Logo aplikace je v `assets/logo.svg`,
+   za běhu se používá jako Qt ikona okna a do .exe se přibaluje přes
+   `--add-data`.
 
 Použití:
 
@@ -248,6 +255,17 @@ konkrétní chybovou hlášku místo obecného "data zatím nedorazila".
 **Nastavení -> Živá tržní data** vypne stahování úplně a pravý panel
 přepne na svůj prázdný stav.
 
+**Záloha přes Stooq (automatická).** Když yfinance pro některý symbol
+selže (TLS výpadek u Yahoo, jejich pravidelná změna endpointů, prázdná
+historie pro nový ticker), služba transparentně zkusí
+[Stooq](https://stooq.com) přes jejich snapshot CSV bez klíče
+(`stooq.com/q/l/?s=<symbol>&f=sd2t2ohlcv&h&e=csv`). Záloha používá
+jen standardní `urllib`, interně mapuje Yahoo symboly na konvenci
+Stooqu (`^GSPC -> ^spx`, `BTC-USD -> btcusd`, `AAPL -> aapl.us`,
+`EURCZK=X -> eurczk`, ...) a každé použití zalogovává jako
+`stooq_fallback_used` v **Nastavení -> Debug logy**. Vypnutí
+**Živých tržních dat** v Nastavení zastaví oba zdroje najednou.
+
 ### Debug logy
 
 Když nějaké kliknutí "neudělá nic" (přepnutí jazyka / barvy, mode tab,
@@ -386,6 +404,7 @@ Detaily v
 - Tříslupcový layout, scrollovatelný sidebar (header / scroll / footer)
 - **Přepínač jazyka** EN ↔ CS v sidebaru (default English, jak chtěl tým)
 - Auto-discovery sekcí (primary + secondary skupina; Settings je jediný záznam ve secondary)
+- **Sjednocený Demo režim** - v hlavičce každé AI sekce je v menu `...` položka `Zobrazit demo data`. Po kliknutí se sekce naplní pečlivě připravenými offline daty (AI Kariéra persona, AI LinkedIn profil, AI Finance rozpočet, AI Hledání práce ukázkový výpis, AI Bug Report ukázka, AI Asistent dokumentů ukázka, AI Právní asistent ukázka) a v hlavičce se rozsvítí oranžová pilulka `DEMO`, takže je vždycky vidět, že koukáš na ukázku. Demo režim je **zdarma** - pipeline obchází každé volání AI, takže si appku můžeš ukázat na čisté instalaci bez API klíče a bez utracení jediného tokenu. `Skrýt demo data` ukázku zase smaže a vrátí prázdnou Setup záložku.
 - Přepínač světlý / tmavý režim - **Windows OS title bar** (proužek
   s X / minimalizovat / maximalizovat a názvem appky) se přebarví
   podle aktivního theme přes DWM API, takže v dark módu už nepřežívá
@@ -425,28 +444,30 @@ Detaily v
   - **Pojištění** - projde stávající smlouvy, vykreslí 3x3 **severity heatmapu** mezer v krytí (kritické / vysoké / střední x typ pojištění), vyznačí duplicity a doporučí další kroky.
   - **Kalkulačky** - šest čistě klientských kalkulaček (složené úročení, splátka hypotéky, bonita půjčky, důchodový plán, cíl spoření, převodník měn). Měna pohání živé FX přes službu `market_data`.
   - **Šablony** - vypisuje všechny uložené AI Finance běhy z `outputs/ai_finance/<run-slug>-<timestamp>/`. Každá karta má akci **Otevřít složku**, která otevře OS file browser rovnou na PDFkách / Markdownu daného běhu; když ještě žádný běh neexistuje, ukáže se empty-state karta s návodem, jak vyrobit první.
-  - **Demo režim** - přepínač v hlavičce sekce vymění každé pipeline volání za připravený mock JSON (rozpočet / analýza / investice / daně / pojištění / plán spoření / tip). Sekce má co ukazovat hned po prvním spuštění - grafy, tabulky, AI tip vpravo - bez utracení jediného tokenu. Po vypnutí přepínače jede zase reálná AI.
+  - **Demo režim** - stejná sjednocená položka v menu `...` jako u ostatních AI sekcí ("Zobrazit demo data" / "Skrýt demo data" + oranžová pilulka `DEMO` v hlavičce). Vymění každé pipeline volání za připravený mock JSON (rozpočet / analýza / investice / daně / pojištění / plán spoření / tip). Sekce má co ukazovat hned po prvním spuštění - grafy, tabulky, AI tip vpravo - bez utracení jediného tokenu. Po "Skrýt demo data" jede zase reálná AI.
   - **AI Tip karta** (pravý kontextový panel) - dynamická, generovaná po každé analýze přes `generate_tip` (cachuje se do `STATE.tip`, takže přepnutí tématu / jazyka neutratí další tokeny). Karta má tlačítko **Generovat nový tip**, když chceš jiný úhel pohledu. Zůstává prázdná, dokud neproběhne první analýza.
   - **Pravý kontextový panel** - **živý, uživatelem editovatelný přehled trhů** přes [`yfinance`](https://pypi.org/project/yfinance/) (free, veřejné Yahoo Finance endpointy; **žádný API klíč, účet ani identifikace uživatele**). Karta startuje s `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` a má tlačítko **Upravit** - dialog umožní přidat / odebrat tickery (libovolný Yahoo symbol) a seznam se ukládá do `~/AI Hub/settings.json`. Předchozí pád na „unable to get local issuer certificate" je díky `certifi.where()` v curl_cffi konfiguraci pryč. Karta „Nedávné analýzy" zůstává prázdná, dokud nespustíš reálnou pipeline; nikdy nezobrazuje vymyšlená čísla.
   - **Empty-by-default UX** - Rozpočet / Investice / Analýza / Daně / Pojištění startují prázdné a strukturované karty se vykreslí až po kliknutí na primární CTA. Dvousloupcový layout (formulář / výsledek) se v úzkých oknech přepne do jednoho sloupce a quick-action chipy v chatu se přelamují na další řádek místo toho, aby přetekly mimo obrazovku.
 - **AI Hledání práce** - hledá aktivně otevřené pozice na webu a porovnává je s tvým profilem:
-  - **12-krokový formulář** (záložka Nastavení): klíčová slova role, profil (CV / bio / LinkedIn URL), lokalita (preset nebo vlastní), technologie + seniorita (Junior / Medior / Senior / Lead), exclusion list (slova / firmy / lokality / typy práce), výběr zdrojů (~70 portálů ve skupinách Globální / Remote / Evropa / CZ-SK / Tech-Startup / Freelance / Doporučené + textarea s vlastními URL - včetně českých specialistů jako JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, polských Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, ryze remote JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), stáří nabídky (Cokoli / 24h / 3d / 7d / 14d / 30d) s přepínači "ověřit odkazy" a "zobrazit i nabídky bez data", forma práce + úvazek (HPP / IČO / kontrakt / DPP-DPČ / stáž / freelance) + počet výsledků, režim hledání (Přesné / Chytré / Široké / Kariérní objevování), minimální plat + měna + jazyk výstupu (Auto / EN / CZ), předběžný souhrn s tlačítkem Hledat + sekundárními akcemi (Uložit jako šablonu / Vymazat / Načíst poslední), a seznam uložených profilů s akcemi (Spustit znovu / Upravit / Duplikovat / Smazat).
+  - **12-krokový formulář** (záložka Nastavení): klíčová slova role, profil (CV / bio / LinkedIn URL), lokalita (preset nebo vlastní), technologie + seniorita (Junior / Medior / Senior / Lead), exclusion list (slova / firmy / lokality / typy práce), výběr zdrojů (~70 portálů ve skupinách Globální / Remote / Evropa / CZ-SK / Tech-Startup / Freelance / Doporučené + textarea s vlastními URL - včetně českých specialistů jako JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, polských Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, ryze remote JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), stáří nabídky (Cokoli / 24h / 3d / 7d / 14d / 30d) s přepínači "ověřit odkazy" a "zobrazit i nabídky bez data", forma práce + úvazek (HPP / IČO / kontrakt / DPP-DPČ / stáž / freelance) + počet výsledků, režim hledání (Přesné / Chytré / Široké / Kariérní objevování), minimální plat + měna + jazyk výstupu (Auto / EN / CZ), sticky spodní tlačítko Hledat, sekundární akce (Uložit jako šablonu / Vymazat / Načíst poslední) a seznam uložených profilů, kde kliknutí na celou kartu spustí hledání znovu.
   - **Cíl = aktivní nabídky, over-fetch + top-up** - počet výsledků je počet pozic, na které **se opravdu dá přihlásit**, ne "co AI vrátila". Na pozadí discovery sahá 2x víc kandidátů (max 40), každý URL se ověří, a pokud po ověření zbývá málo aktivních, automaticky doběhne další discovery pass (s už viděnými URL na blacklistu v promptu). Výsledek: když si řekneš o 15, dostaneš až 15 použitelných plus malou sekci „Uzavřené nabídky" pro kontrolu detekce.
   - **Volitelné upřesňující otázky** - stejný sdílený modal jako AI Životopis / Kariéra a AI Bug Report. Když je v **Nastavení -> Ptát se na upřesnění** zapnuto, pipeline před discovery pasem (Pass 0) položí 0-8 krátkých otázek k briefu (nejistá seniorita, kontradiktorní klíčová slova, chybějící preference remote / platu, *„uvedl jsi Python, ale ne kolik let"*). Odpovědi se promítají do discovery, per-position scoringu i skill-gap promptu, takže AI přestane domýšlet. V patce sekce je přepínač „Nejdřív se zeptat na upřesnění" + jednořádkový popisek; vypni ho, když chceš jednoklikové spuštění bez modalu.
   - **Pětifázová pipeline**: (1) **discovery** s vestavěným web search a bohatým kontextem (režim, exclusion, stáří, zdroje, plat, případně seznam URL k vynechání pro top-up), (2) striktní JSON **extrakce** do `JOB_LISTINGS_SCHEMA` (název / firma / lokalita / vlozeno / ISO datum / plat / typ úvazku / shrnutí / URL / zdroj / forma práce), (3) **ověření URL** přes shared `job_scraper` (httpx + Playwright fallback - nabídky, které vrátí HTTP 404 / 410, přesměrují na placeholder „Stránka neexistuje", nebo se stránka načte ale obsahuje frázi typu „Už nepřijímá žádosti" / „No longer accepting applications" / „Tahle nabídka už je pryč" / „Nabídka není up-to-date", zůstanou viditelné s červeným odznakem **„Už nenabírá"**, jehož tooltip ukazuje konkrétní zachycenou frázi nebo HTTP status, takže můžeš detekci ověřit prokliknutím; zahazují se jen tvrdé pády scraperu - DNS / SSL / firewall), (4) **per-position match scoring** paralelně (`MATCH_SCHEMA`: shoda v %, sedící / chybějící skills, doporučení AI - skóruje se jen aktivní pozice, na uzavřené se neutrácí tokeny), (5) **agregovaná skill gap analýza** (`SKILL_GAP_SCHEMA`: nejčastější požadavky s počty, tvé silné stránky, chybějící skills, 1-6 konkrétních doporučení). Pasy 4 + 5 se automaticky přeskakují, pokud uživatel nedodal žádný profil.
   - **Lean Výsledky tab** s malou "Shoda XX %" pillou na kartě (zelená / žlutá / červená pásma) plus chip pro plat + úvazek + forma práce. Per-position chipy a doporučení AI se renderují **hlavně do ukládaného HTML**, aby zůstal seznam na obrazovce přehledný.
   - **Skill gap záložka** s top požadavky, silnými stránkami, chybějícími skills a doporučeními z Passu 5.
+  - **Zamčené záložky + demo v menu** - Výsledky / Skill gap jsou disabled, dokud reálně neexistují data. Ukázkové výsledky jsou jen v horním `...` menu, ne jako trvalé tlačítko v UI.
   - **Uložené profily hledání** v `~/AI Hub/jobs_profiles.json` - jedno-klikové spuštění, edit, duplikování, smazání. Žádná nová dependency, žádný nový secret.
   - **Cíl jsou aktivní nabídky** - hledání se vždycky snaží najít přesně tolik *aktivních* pozic, kolik si vybereš. Pipeline jede nejdřív přísně (tři top-up pasy, které drží tvoje filtry), a teprve když ani po nich neumí kvótu naplnit, spustí jednu uvolněnou pasáž (sousední role / blízká města). Výsledky z uvolněné pasáže dostanou v UI i v HTML exportu pílí **„Méně relevantní"** (oranžová), abys hned poznal, co přišlo z širšího hledání. Uzavřené / neaktivní nabídky se pořád zobrazují pro kontrolu, ale do počtu aktivních se nezapočítávají.
   - **Bohaté HTML** (`Uložit jako HTML`) s match pillou, chip bloky sedí / chybí, doporučením u každé nabídky, novou pílí „Méně relevantní" pro výsledky z uvolněné pasáže, samostatnou sekcí „Uzavřené nabídky" pro pozice, které už nenabírají, a kompletní skill gap sekcí. Každé uložení jde do nové složky `outputs/ai_jobs/<dotaz>-search-<timestamp>/` a registruje se v globálním `~/AI Hub/history.json`.
+  - **Obnova z historie** - kliknutí na uložené hledání načte jeho `summary.json` zpět do aplikace, znovu naplní Výsledky / Skill gap a dovolí pokračovat v předchozím běhu.
   - **Activity badge** (pravý kontextový panel) odráží každou fázi pipeline (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus quick action "Otevřít skill gap" který skočí přímo do nové záložky.
 - **AI Bug Report** - z popisu, screenshotů a podpůrných dokumentů / logů vyrobí pořádný bug report ve Wordu:
   - **Vision vstup** - kombinovaná drop zóna přijímá screenshoty (PNG / JPG / WEBP / GIF / BMP / HEIC) i textové soubory (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshoty jdou do modelu přes nativní vision API obou providerů (`image_url` content bloky u OpenAI, `image` source bloky u Anthropic), textové soubory parsuje lokálně `src/services/file_parser.py`.
-  - **Jedno strukturované LLM volání** přes striktní `BUG_REPORT_SCHEMA` (název, shrnutí, závažnost, priorita, reprodukovatelnost, tabulka prostředí, předpoklady, číslované kroky k reprodukci, očekávaný vs skutečný výsledek, popis každé přílohy, další poznámky). QA system prompt opakuje no-hallucination klauzuli pro ověřitelná fakta (verze, ID tiketů, stack trace) a zároveň explicitně **dovoluje** modelu odvodit název / kroky / očekávaný vs skutečný z dostupných vstupů a označit odhady v *dalších poznámkách*. Uživateli stačí jediný vstup - popis **nebo** screenshot - a dostane kompletní report.
+  - **Jeden nebo více scénářů chyby** přes striktní `BUG_REPORT_SCHEMA` (`title`, `summary`, `scenarios[]`, souhrn příloh, další poznámky). AI sama pozná, jestli vstupy popisují jednu chybu nebo víc samostatných scénářů; Word export obsahuje každý rozpoznaný scénář s vlastní závažností, prioritou, prostředím, kroky, očekávaným vs skutečným výsledkem a poznámkami.
   - **Volitelné upřesňující otázky** (stejný vzor jako AI Životopis / Kariéra a AI LinkedIn) - když je v **Nastavení -> Ptát se na upřesnění** zapnuto, sekce nejdřív rychle Pass 0 vypálí dotazem na 0-8 krátkých otázek dřív, než spustí hlavní generaci reportu. Sdílený modal `src/components/followup_dialog.py` ukáže pro každou otázku chip-options + free-text **Vlastní...** odpověď; odpovědi se vsadí do hlavního promptu, takže report už nehází *„(odhad)"* na fakta, která sis mohl(a) jednoduše doplnit. V patce je přepínač „Nejdřív se zeptat na upřesnění", který tuhle fázi vypíná per-sekce bez chození do Nastavení.
-  - **Editovatelný náhled** - název, závažnost (Critical / High / Medium / Low) a priorita (P0 / P1 / P2 / P3) se dají před uložením doladit, aby report seděl na slovník vašeho týmu.
-  - **Word export** přes `python-docx` - nadpis, tabulka prostředí, číslované kroky, barevně odlišený očekávaný (zelená) vs skutečný výsledek (červená), screenshoty vložené přímo do dokumentu. Vedle Wordu se ukládá i Markdown verze a `summary.json`, takže další nástroje umí stejný payload sebrat. Vše leží v `outputs/ai_bug_report/<title-slug>-<timestamp>/` a registruje se v `~/AI Hub/history.json`.
-  - **Demo režim** - jedno kliknutí načte připravený příklad, takže sekci jde předvést bez utracení tokenů.
+  - **Zamčený Náhled** - Náhled je disabled, dokud report neexistuje. Spodní generovací patka je jen ve Vstupu; Náhled ukazuje pouze akce **Vygenerovat Word**, **Otevřít složku**, **Zpět na Vstup** a hotový report.
+  - **Word export** přes `python-docx` - akce v Náhledu uloží DOCX, Markdown i `summary.json` do `outputs/ai_bug_report/<title-slug>-<timestamp>/` a registrují běh v `~/AI Hub/history.json`.
+  - **Obnova z historie + demo jen v menu** - kliknutí na uložený bug report ho načte zpět do Náhledu. Ukázková data jsou dostupná jen v horním `...` menu, ne jako trvalé tlačítko v patce.
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
   - **Multi-formát upload** - přetáhni `PDF`, `DOCX`, `HTML`, `TXT` (nebo `MD`) dokument do pravého panelu; tělo textu krmí prompty, z počítače odchází jen extrahovaný plain text.
@@ -468,7 +489,6 @@ sidebaru nespadly - jen se nevykreslí.
 
 | Klíč sekce | Složka | K čemu má být |
 | --- | --- | --- |
-| `dashboard` | `src/sections/dashboard/` | Úvodní dashboard / přehled KPI. |
 | `ai_legal` | `src/sections/ai_legal/` | Multi-formátový upload + 4 quick-action chat pro právní dokumenty (už napojené na AI, schované do doladění copy). |
 | `ai_business` | `src/sections/ai_business/` | Pomocník pro byznys strategii / SaaS playbook. |
 | `ai_marketing` | `src/sections/ai_marketing/` | Generátor marketingových textů / Instagram příspěvků (mock UI). |

@@ -100,7 +100,16 @@ class AIHubApp(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.active_section: str = SECTIONS[0].key if SECTIONS else ""
+        # Cold-launch landing section: prefer the Dashboard when it
+        # exists so the user always sees the module grid first, even
+        # though Dashboard now lives under the secondary nav (above
+        # Settings) instead of being the first primary entry. Falling
+        # back to the lowest-``order`` primary section keeps the app
+        # usable if a contributor ever removes the dashboard folder.
+        if "dashboard" in SECTION_BY_KEY:
+            self.active_section: str = "dashboard"
+        else:
+            self.active_section = SECTIONS[0].key if SECTIONS else ""
         # Persisted preferences survive app restarts. ``settings_store``
         # falls back to sane defaults ("dark" / "en") on first launch.
         self.theme_mode: str = settings_store.get_theme_mode()
@@ -115,6 +124,13 @@ class AIHubApp(QMainWindow):
         self._context_widget: Optional[QWidget] = None
         self._central_layout: Optional[QHBoxLayout] = None
         self._sidebar_widget: Optional[QWidget] = None
+        # Cached global stylesheet so ``_apply_global_qss`` can skip
+        # ``QApplication.setStyleSheet`` (and the full-cascade repaint
+        # it triggers) when the new section produces an identical QSS
+        # string. Without this, every section click forces Qt to
+        # re-style every widget in the window, which feels sluggish
+        # even though nothing actually changed visually.
+        self._last_global_qss: str = ""
 
         global _active_app
         _active_app = self
@@ -193,12 +209,16 @@ class AIHubApp(QMainWindow):
         new_main = section.safe_build_view(section_theme, self.lang)
         new_context = self._safe_context_for(section, section_theme)
 
-        self.active_section = key
-        self._swap_main(new_main)
-        self._swap_context(new_context)
-
-        self._sidebar_set_active(key)
-        self._apply_global_qss(section_theme)
+        self.setUpdatesEnabled(False)
+        try:
+            self.active_section = key
+            self._apply_global_qss(section_theme)
+            self._swap_main(new_main)
+            self._swap_context(new_context)
+            self._sidebar_set_active(key)
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _refresh_active_section(self) -> None:
         """Rebuild the currently active section's center + right column."""
@@ -219,8 +239,13 @@ class AIHubApp(QMainWindow):
         section_theme = self._section_theme(section)
         new_main = section.safe_build_view(section_theme, self.lang)
         new_context = self._safe_context_for(section, section_theme)
-        self._swap_main(new_main)
-        self._swap_context(new_context)
+        self.setUpdatesEnabled(False)
+        try:
+            self._swap_main(new_main)
+            self._swap_context(new_context)
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def toggle_theme(self) -> None:
         prev = self.theme_mode
@@ -274,30 +299,41 @@ class AIHubApp(QMainWindow):
 
     def _apply_global_qss(self, theme: Theme) -> None:
         qss = qss_for_theme(theme)
+        # Skip the global cascade when nothing changed. ``setStyleSheet``
+        # on the ``QApplication`` re-styles every widget in the tree
+        # even when the string is identical, which is the dominant cost
+        # of a section switch for sections that share the default accent
+        # (the majority of the app).
+        if qss == self._last_global_qss:
+            return
         try:
             QApplication.instance().setStyleSheet(qss)
         except Exception as exc:
             logger_service.log_exception("app", "apply_global_qss_failed", exc)
+            return
+        self._last_global_qss = qss
 
     def _swap_main(self, new_widget: QWidget) -> None:
         if self._main_layout is None:
             return
-        if self._main_widget is not None:
-            self._main_layout.removeWidget(self._main_widget)
-            self._main_widget.deleteLater()
+        old_widget = self._main_widget
         self._main_widget = new_widget
         self._main_layout.addWidget(new_widget)
         self._main_layout.setCurrentWidget(new_widget)
+        if old_widget is not None:
+            self._main_layout.removeWidget(old_widget)
+            old_widget.deleteLater()
 
     def _swap_context(self, new_widget: QWidget) -> None:
         if self._context_layout is None:
             return
-        if self._context_widget is not None:
-            self._context_layout.removeWidget(self._context_widget)
-            self._context_widget.deleteLater()
+        old_widget = self._context_widget
         self._context_widget = new_widget
         self._context_layout.addWidget(new_widget)
         self._context_layout.setCurrentWidget(new_widget)
+        if old_widget is not None:
+            self._context_layout.removeWidget(old_widget)
+            old_widget.deleteLater()
 
     def _swap_sidebar(self, new_widget: QWidget, set_active: SetActive) -> None:
         if self._central_layout is None:
@@ -335,7 +371,6 @@ class AIHubApp(QMainWindow):
 
         section = self._resolve_section()
         section_theme = self._section_theme(section)
-        self._apply_global_qss(section_theme)
 
         sidebar_widget, set_active = sidebar(
             section_theme,
@@ -346,7 +381,6 @@ class AIHubApp(QMainWindow):
             on_theme_toggle=self.toggle_theme,
             on_lang_toggle=self.toggle_lang,
         )
-        self._swap_sidebar(sidebar_widget, set_active)
 
         new_main = (
             section.safe_build_view(section_theme, self.lang)
@@ -354,15 +388,22 @@ class AIHubApp(QMainWindow):
             else QWidget()
         )
         new_context = self._safe_context_for(section, section_theme)
-        self._swap_main(new_main)
-        self._swap_context(new_context)
+        self.setUpdatesEnabled(False)
+        try:
+            self._apply_global_qss(section_theme)
+            self._swap_sidebar(sidebar_widget, set_active)
+            self._swap_main(new_main)
+            self._swap_context(new_context)
 
-        central = self.centralWidget()
-        if central is not None:
-            central.setStyleSheet(f"background-color: {section_theme.bg};")
-        for holder in (self._main_holder, self._context_holder):
-            if holder is not None:
-                holder.setStyleSheet(f"background-color: {section_theme.bg};")
+            central = self.centralWidget()
+            if central is not None:
+                central.setStyleSheet(f"background-color: {section_theme.bg};")
+            for holder in (self._main_holder, self._context_holder):
+                if holder is not None:
+                    holder.setStyleSheet(f"background-color: {section_theme.bg};")
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     # --- build -------------------------------------------------------------
 

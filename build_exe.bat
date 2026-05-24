@@ -212,6 +212,7 @@ REM                                            silently drops project-local
 REM                                            packages when used together
 REM                                            with ``--collect-all qtawesome``.
 pyinstaller --noconfirm --onefile --windowed --name AIHub ^
+    --add-data "assets\logo.svg;assets" ^
     --hidden-import pyperclip ^
     --collect-submodules PySide6 ^
     --collect-submodules truststore ^
