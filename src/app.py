@@ -209,12 +209,16 @@ class AIHubApp(QMainWindow):
         new_main = section.safe_build_view(section_theme, self.lang)
         new_context = self._safe_context_for(section, section_theme)
 
-        self.active_section = key
-        self._swap_main(new_main)
-        self._swap_context(new_context)
-
-        self._sidebar_set_active(key)
-        self._apply_global_qss(section_theme)
+        self.setUpdatesEnabled(False)
+        try:
+            self.active_section = key
+            self._apply_global_qss(section_theme)
+            self._swap_main(new_main)
+            self._swap_context(new_context)
+            self._sidebar_set_active(key)
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _refresh_active_section(self) -> None:
         """Rebuild the currently active section's center + right column."""
@@ -235,8 +239,13 @@ class AIHubApp(QMainWindow):
         section_theme = self._section_theme(section)
         new_main = section.safe_build_view(section_theme, self.lang)
         new_context = self._safe_context_for(section, section_theme)
-        self._swap_main(new_main)
-        self._swap_context(new_context)
+        self.setUpdatesEnabled(False)
+        try:
+            self._swap_main(new_main)
+            self._swap_context(new_context)
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def toggle_theme(self) -> None:
         prev = self.theme_mode
@@ -307,22 +316,24 @@ class AIHubApp(QMainWindow):
     def _swap_main(self, new_widget: QWidget) -> None:
         if self._main_layout is None:
             return
-        if self._main_widget is not None:
-            self._main_layout.removeWidget(self._main_widget)
-            self._main_widget.deleteLater()
+        old_widget = self._main_widget
         self._main_widget = new_widget
         self._main_layout.addWidget(new_widget)
         self._main_layout.setCurrentWidget(new_widget)
+        if old_widget is not None:
+            self._main_layout.removeWidget(old_widget)
+            old_widget.deleteLater()
 
     def _swap_context(self, new_widget: QWidget) -> None:
         if self._context_layout is None:
             return
-        if self._context_widget is not None:
-            self._context_layout.removeWidget(self._context_widget)
-            self._context_widget.deleteLater()
+        old_widget = self._context_widget
         self._context_widget = new_widget
         self._context_layout.addWidget(new_widget)
         self._context_layout.setCurrentWidget(new_widget)
+        if old_widget is not None:
+            self._context_layout.removeWidget(old_widget)
+            old_widget.deleteLater()
 
     def _swap_sidebar(self, new_widget: QWidget, set_active: SetActive) -> None:
         if self._central_layout is None:
@@ -360,7 +371,6 @@ class AIHubApp(QMainWindow):
 
         section = self._resolve_section()
         section_theme = self._section_theme(section)
-        self._apply_global_qss(section_theme)
 
         sidebar_widget, set_active = sidebar(
             section_theme,
@@ -371,7 +381,6 @@ class AIHubApp(QMainWindow):
             on_theme_toggle=self.toggle_theme,
             on_lang_toggle=self.toggle_lang,
         )
-        self._swap_sidebar(sidebar_widget, set_active)
 
         new_main = (
             section.safe_build_view(section_theme, self.lang)
@@ -379,15 +388,22 @@ class AIHubApp(QMainWindow):
             else QWidget()
         )
         new_context = self._safe_context_for(section, section_theme)
-        self._swap_main(new_main)
-        self._swap_context(new_context)
+        self.setUpdatesEnabled(False)
+        try:
+            self._apply_global_qss(section_theme)
+            self._swap_sidebar(sidebar_widget, set_active)
+            self._swap_main(new_main)
+            self._swap_context(new_context)
 
-        central = self.centralWidget()
-        if central is not None:
-            central.setStyleSheet(f"background-color: {section_theme.bg};")
-        for holder in (self._main_holder, self._context_holder):
-            if holder is not None:
-                holder.setStyleSheet(f"background-color: {section_theme.bg};")
+            central = self.centralWidget()
+            if central is not None:
+                central.setStyleSheet(f"background-color: {section_theme.bg};")
+            for holder in (self._main_holder, self._context_holder):
+                if holder is not None:
+                    holder.setStyleSheet(f"background-color: {section_theme.bg};")
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     # --- build -------------------------------------------------------------
 

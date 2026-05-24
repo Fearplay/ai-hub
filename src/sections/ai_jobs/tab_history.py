@@ -223,6 +223,7 @@ def build_history_tab(theme: Theme, lang: str) -> QWidget:
     title_holder.setLayout(title_layout)
     title_layout.addWidget(TitleLabel(txt["history_title"], theme=theme, size=18, weight=QFont.Weight.Bold))
     subtitle_label = MutedLabel(txt["history_subtitle"], theme=theme, size=12)
+    subtitle_label.setMinimumHeight(subtitle_label.fontMetrics().lineSpacing() * 2 + 4)
     wrap_label_slot(subtitle_label)
     title_layout.addWidget(subtitle_label)
     header_layout.addWidget(title_holder, 1)
