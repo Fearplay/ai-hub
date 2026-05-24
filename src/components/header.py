@@ -225,8 +225,12 @@ def header(
             help_btn.clicked.connect(on_help_click)
         actions_layout.addWidget(help_btn)
 
-    if show_menu_button:
-        actions_layout.addWidget(_menu_button(theme, menu_items or []))
+    # Only render the overflow ``...`` button when the section actually
+    # has menu items - an empty popup is a dead affordance that the
+    # user clicks expecting something to happen (see the screenshot
+    # report that triggered this change).
+    if show_menu_button and menu_items:
+        actions_layout.addWidget(_menu_button(theme, menu_items))
 
     if actions_layout.count():
         row_layout.addWidget(actions, 0, Qt.AlignmentFlag.AlignTop)

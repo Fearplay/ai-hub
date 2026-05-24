@@ -436,9 +436,6 @@ def build_setup_tab(
     followups_layout.addWidget(fu_check)
     followups_layout.addStretch(1)
     followups_col_layout.addWidget(followups_row)
-    desc = MutedLabel(txt["footer_followup_desc"], theme=theme, size=10)
-    desc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    followups_col_layout.addWidget(desc)
     controls_layout.addWidget(followups_col, 1)
 
     run_btn = PrimaryButton(txt["footer_run_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)

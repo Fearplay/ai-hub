@@ -11,21 +11,26 @@
 A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
 Three-column layout: navigation in the left sidebar, the main workspace
-in the middle, and a context panel on the right. **AI CV / Career**,
-**AI LinkedIn Profile Builder**, **AI Finance**, **AI Job Search**, and
-**AI Bug Report** are fully wired to OpenAI / Anthropic (the new
-section also speaks the providers' **vision** APIs so screenshots are
-processed alongside the text prompt). The work-in-progress sections
-(Dashboard, AI Legal, AI Business, AI Marketing, AI Study, AI Documents,
-AI Doc Assistant) are kept in the repo so the architecture stays
-documented but are currently **hidden from the sidebar** - see
-[Hidden UI](#hidden-ui) below to flip them back on.
+in the middle, and a context panel on the right. The default landing
+view is the **Dashboard** - a navigation grid with one card per visible
+AI module, so the user can jump straight into any assistant from a cold
+launch. **AI CV / Career**, **AI LinkedIn Profile Builder**, **AI
+Finance**, **AI Job Search**, and **AI Bug Report** are fully wired to
+OpenAI / Anthropic (the new section also speaks the providers'
+**vision** APIs so screenshots are processed alongside the text
+prompt). The work-in-progress sections (AI Legal, AI Business, AI
+Marketing, AI Study, AI Documents, AI Doc Assistant) are kept in the
+repo so the architecture stays documented but are currently **hidden
+from the sidebar** - see [Hidden UI](#hidden-ui) below to flip them
+back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
 on the right of any primary AI section and drop it where you want. The
 new order applies instantly (no restart, no language toggle). Order
 persists in `~/AI Hub/settings.json` so your layout survives restarts.
-The secondary group (Settings) stays pinned below the divider.
+The secondary group (**Dashboard** above **Settings**) stays pinned
+below the divider; both are non-reorderable so the navigation grid and
+the settings page are always one click away.
 
 ## Requirements
 
@@ -263,6 +268,18 @@ explicit error instead of staying stuck on the generic "no data" hint.
 Flip **Settings -> Live market data** off to keep AI Finance fully
 offline; the right-hand panel then falls back to its empty state.
 
+**Stooq fallback (automatic).** When yfinance fails for a given symbol
+(Yahoo TLS hiccup, the periodic endpoint shuffle, an empty history on
+a fresh ticker), the service transparently retries via
+[Stooq](https://stooq.com)'s key-free snapshot CSV
+(`stooq.com/q/l/?s=<symbol>&f=sd2t2ohlcv&h&e=csv`). The fallback uses
+only the standard-library `urllib`, maps Yahoo's symbols to Stooq's
+convention internally (`^GSPC -> ^spx`, `BTC-USD -> btcusd`,
+`AAPL -> aapl.us`, `EURCZK=X -> eurczk`, ...), and logs each fallback
+as `stooq_fallback_used` in **Settings -> Debug logs**. The toggle
+above still gates everything: turning **Live market data** off
+disables both providers.
+
 ### Debug logs
 
 When a click looks like it "did nothing" (theme/lang toggle, mode tab,
@@ -446,8 +463,9 @@ Details in
   - **Vision input** - the combined drop zone accepts both screenshots (PNG / JPG / WEBP / GIF / BMP / HEIC) and text-like attachments (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshots are sent to the model via the providers' native vision APIs (`image_url` content blocks for OpenAI, `image` source blocks for Anthropic), text-like docs are parsed locally with `src/services/file_parser.py`.
   - **One structured LLM call** through a strict `BUG_REPORT_SCHEMA` (title, summary, severity, priority, reproducibility, environment table, preconditions, numbered steps to reproduce, expected vs actual, per-attachment summary, additional notes). The QA system prompt re-states the no-hallucination clause for verifiable facts (versions, ticket IDs, stack traces) while explicitly **allowing** the model to infer the title / STR / expected-vs-actual from the inputs and mark inferences in *additional notes*. The user only needs to provide one input - a description **or** a screenshot - and gets a complete report back.
   - **Optional clarifying questions** (same pattern as AI CV / Career and AI LinkedIn) - when **Settings -> Ask follow-up questions** is on, the section runs a fast Pass 0 that asks the model to list 0-8 short questions before the main bug-report call. The shared `src/components/followup_dialog.py` modal opens with chip-style options + an **Other...** free-text field per question; the answers are folded into the main prompt so the report no longer says *"(inferred)"* against facts the user could have just told the AI. A footer toggle ("Let the AI ask clarifying questions first") lets you flip the behaviour off per-section without leaving Settings.
-  - **Editable preview** - the title, severity (Critical / High / Medium / Low), and priority (P0 / P1 / P2 / P3) can be tweaked inline before saving so the report matches your team's wording.
-  - **Word export** via `python-docx` - heading, environment table, numbered STR, colour-coded expected (green) vs actual (red), embedded screenshots inline. Each save also writes a Markdown mirror and a `summary.json` so other tooling can pick the same payload up. Lands in `outputs/ai_bug_report/<title-slug>-<timestamp>/` and registers in `~/AI Hub/history.json`.
+  - **Editable preview** - the title, severity (Critical / High / Medium / Low), priority (P0 / P1 / P2 / P3), and reproducibility (Always / Sometimes / Rare / Once / Unknown) can be tweaked inline before saving so the report matches your team's wording. The dropdown labels are **localised** (Czech / English) while the saved JSON keeps the canonical English value so reports stay portable across languages.
+  - **Word export** via `python-docx` - the **Save as Word document** + **Open output folder** buttons live at the bottom of the Preview tab. Heading, environment table, numbered STR, colour-coded expected (green) vs actual (red), embedded screenshots inline. Each save also writes a Markdown mirror and a `summary.json` so other tooling can pick the same payload up. Lands in `outputs/ai_bug_report/<title-slug>-<timestamp>/` and registers in `~/AI Hub/history.json`.
+  - **History tab** - every saved bug report appears as a row with severity / priority / reproducibility chips, screenshot count, and one-click **Open Word** / **Open folder** / **Delete** actions. Delete wipes the run folder on disk and drops the entry from the global history index.
   - **Demo mode** - one click loads a curated example so the section can be showcased without spending tokens.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
@@ -472,7 +490,6 @@ not rendered.
 
 | Section key | Folder | What it will become |
 | --- | --- | --- |
-| `dashboard` | `src/sections/dashboard/` | Landing dashboard / KPI summary. |
 | `ai_legal` | `src/sections/ai_legal/` | Multi-format upload + 4 quick-action legal chat (already wired to AI, hidden until copy is finalised). |
 | `ai_business` | `src/sections/ai_business/` | Business-strategy / SaaS playbook helper. |
 | `ai_marketing` | `src/sections/ai_marketing/` | Marketing copy / Instagram post generator (mock UI in place). |

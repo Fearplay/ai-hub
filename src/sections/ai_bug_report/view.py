@@ -8,8 +8,10 @@ Header (with the help dialog button) + 3 tabs:
   HTML). Each attached item appears as a chip with a remove button.
 * **Preview** - renders the structured bug-report fields as titled
   cards; the user can edit the title / severity / priority inline
-  before saving.
-* **Export** - the Save-as-Word action + an Open-output-folder button.
+  before clicking **Save as Word** / **Open output folder** at the
+  bottom of the tab.
+* **History** - lists every saved bug report so the user can re-open
+  the .docx or remove old runs from disk.
 
 State that must survive theme / language / tab toggles lives in
 :mod:`src.sections.ai_bug_report.state`. The pipeline call runs on a
@@ -74,14 +76,19 @@ from src.sections.ai_bug_report.state import (
     PRIORITY_VALUES,
     SEVERITY_VALUES,
     REPRODUCIBILITY_VALUES,
-    TAB_EXPORT,
     TAB_INPUT,
     TAB_PREVIEW,
     DocAttachment,
     ImageAttachment,
     STATE,
 )
-from src.sections.ai_bug_report.strings import s
+from src.sections.ai_bug_report.strings import (
+    priority_label,
+    reproducibility_label,
+    s,
+    severity_label,
+)
+from src.sections.ai_bug_report.tab_history import build_history_tab
 from src.theme import Theme
 
 
@@ -506,7 +513,7 @@ def _build_input_tab(
         theme,
         label="STEP 2" if txt["step_input_label"] == "STEP 1" else "KROK 2",
         title=txt["attachments_label"],
-        desc=txt["drop_hint"],
+        desc=txt["attachments_card_desc"],
         body=attachments_holder,
     )
 
@@ -529,15 +536,33 @@ def _preview_section(
     title: str,
     body: QWidget,
 ) -> QFrame:
+    """Soft preview card - title sits inline above the body, no inner
+    bordered header strip.
+
+    The previous design painted the title in primary colour inside a
+    bordered frame with a faint separator below it, which looked like
+    a tiny table header and made the Preview tab read as a stack of
+    "spreadsheet" boxes (see the screenshot that prompted this rewrite).
+    Switching to a regular bold body label gives the same visual
+    hierarchy without the extra divider line.
+    """
     frame = QFrame()
+    frame.setObjectName("BugReportPreviewCard")
     frame.setStyleSheet(
-        f"background-color: {theme.surface}; border: 1px solid {theme.border}; border-radius: 12px;"
+        f"""
+        QFrame#BugReportPreviewCard {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 14px;
+        }}
+        """
     )
-    layout = vbox(spacing=4, margins=(14, 14, 14, 14))
+    layout = vbox(spacing=10, margins=(18, 14, 18, 16))
     frame.setLayout(layout)
 
-    layout.addWidget(custom_label(title, color=theme.primary, size=11, weight=700))
-    layout.addSpacing(2)
+    layout.addWidget(
+        custom_label(title, color=theme.text, size=13, weight=QFont.Weight.DemiBold)
+    )
     layout.addWidget(body)
     return frame
 
@@ -620,10 +645,10 @@ def _env_block(theme: Theme, txt: dict, env: dict) -> QWidget:
 def _build_preview_tab(
     theme: Theme,
     txt: dict,
+    lang: str,
     *,
     on_state_change: Callable[[], None],
     on_navigate_tab: Callable[[int], None],
-    on_regenerate: Callable[[], None],
 ) -> QWidget:
     if not STATE.last_report:
         holder = QWidget()
@@ -662,7 +687,7 @@ def _build_preview_tab(
     title_holder.setLayout(title_layout)
     title_layout.addWidget(
         custom_label(
-            txt["preview_title_label"], color=theme.primary, size=11, weight=700
+            txt["preview_title_label"], color=theme.text, size=12, weight=QFont.Weight.DemiBold
         )
     )
     title_edit = themed_line_edit(theme, placeholder=txt["preview_title_label"])
@@ -680,21 +705,34 @@ def _build_preview_tab(
     meta_row.setLayout(meta_layout)
 
     def _add_combo(
-        label_text: str, values: tuple, current: str, key: str
+        label_text: str,
+        values: tuple,
+        current: str,
+        key: str,
+        label_for: Callable[[str, str], str],
     ) -> None:
+        """Build one labelled combo whose visible text is localised.
+
+        The canonical enum value (``Critical`` / ``P1`` / ``Always``) is
+        stored in ``userData`` so the saved JSON stays portable across
+        languages while the user sees ``Vysoká`` / ``Kritická`` in Czech.
+        """
         cell = QFrame()
         cell.setStyleSheet("background: transparent;")
         cell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         cell_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
         cell.setLayout(cell_layout)
         cell_layout.addWidget(
-            custom_label(label_text, color=theme.primary, size=11, weight=700)
+            custom_label(label_text, color=theme.text, size=12, weight=QFont.Weight.DemiBold)
         )
         combo = ScrollSafeComboBox()
         for value in values:
-            combo.addItem(value)
+            combo.addItem(label_for(lang, value), userData=value)
         if current in values:
-            combo.setCurrentText(current)
+            for idx in range(combo.count()):
+                if combo.itemData(idx) == current:
+                    combo.setCurrentIndex(idx)
+                    break
         combo.setStyleSheet(
             f"""
             QComboBox {{
@@ -706,9 +744,15 @@ def _build_preview_tab(
             }}
             """
         )
-        combo.currentTextChanged.connect(
-            lambda value, k=key: (report.__setitem__(k, value), on_state_change())
-        )
+
+        def _on_index_changed(index: int, k: str = key) -> None:
+            value = combo.itemData(index)
+            if value is None:
+                value = combo.itemText(index)
+            report[k] = value
+            on_state_change()
+
+        combo.currentIndexChanged.connect(_on_index_changed)
         cell_layout.addWidget(combo)
         meta_layout.addWidget(cell, 1)
 
@@ -717,18 +761,21 @@ def _build_preview_tab(
         SEVERITY_VALUES,
         report.get("severity", ""),
         "severity",
+        severity_label,
     )
     _add_combo(
         txt["preview_priority_label"],
         PRIORITY_VALUES,
         report.get("priority", ""),
         "priority",
+        priority_label,
     )
     _add_combo(
         txt["preview_repro_label"],
         REPRODUCIBILITY_VALUES,
         report.get("reproducibility", ""),
         "reproducibility",
+        reproducibility_label,
     )
     inner_layout.addWidget(meta_row)
 
@@ -821,91 +868,37 @@ def _build_preview_tab(
             )
         )
 
-    actions_row = QFrame()
-    actions_row.setStyleSheet("background: transparent;")
-    actions_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    actions_row.setLayout(actions_layout)
-    back = GhostButton(txt["preview_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
-    back.clicked.connect(lambda: on_navigate_tab(TAB_INPUT))
-    actions_layout.addWidget(back)
-    regen = GhostButton(txt["preview_regen_btn"], theme=theme, icon=Icons.REFRESH)
-    regen.clicked.connect(lambda: on_regenerate())
-    actions_layout.addWidget(regen)
-    actions_layout.addStretch(1)
-    inner_layout.addWidget(actions_row)
-    inner_layout.addStretch(1)
-
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-    scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setStyleSheet(
-        f"QScrollArea {{ background-color: {theme.bg}; border: none; }}"
-    )
-    scroll.setWidget(inner)
-    return scroll
-
-
-# ---------------------------------------------------------------------------
-# Export tab.
-# ---------------------------------------------------------------------------
-
-
-def _build_export_tab(
-    theme: Theme,
-    txt: dict,
-    lang: str,
-    *,
-    on_state_change: Callable[[], None],
-    on_navigate_tab: Callable[[int], None],
-) -> QWidget:
-    holder = QWidget()
-    holder.setStyleSheet(f"background-color: {theme.bg};")
-    layout = vbox(spacing=12, margins=(24, 18, 24, 18))
-    holder.setLayout(layout)
-
     status_label = MutedLabel("", theme=theme, size=12, selectable=True)
+    status_label.setVisible(False)
 
     def _set_status(msg: str, *, error: bool = False) -> None:
+        if not msg:
+            status_label.setText("")
+            status_label.setVisible(False)
+            return
         status_label.setText(msg)
         status_label.setStyleSheet(
             f"color: {'#EF4444' if error else theme.text_muted}; background: transparent;"
         )
+        status_label.setVisible(True)
 
-    card_body = QWidget()
-    card_body.setStyleSheet("background: transparent;")
-    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
-    card_body.setLayout(body_layout)
-    body_layout.addWidget(MutedLabel(txt["export_desc"], theme=theme, size=12))
+    if STATE.last_save_path:
+        _set_status(txt["preview_saved_template"].format(path=STATE.last_save_path))
 
+    actions_row = QFrame()
+    actions_row.setStyleSheet("background: transparent;")
+    actions_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
+    actions_row.setLayout(actions_layout)
     save_btn = PrimaryButton(
-        txt["export_save_btn"], theme=theme, icon=Icons.SAVE_OUTLINED
+        txt["preview_save_btn"], theme=theme, icon=Icons.SAVE_OUTLINED
     )
     folder_btn = GhostButton(
-        txt["export_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN
+        txt["preview_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN
     )
-
-    actions = QFrame()
-    actions.setStyleSheet("background: transparent;")
-    actions_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    actions.setLayout(actions_layout)
-    actions_layout.addWidget(save_btn)
-    actions_layout.addWidget(folder_btn)
-    actions_layout.addStretch(1)
-    body_layout.addWidget(actions)
-    body_layout.addWidget(status_label)
-
-    if not STATE.last_report:
-        _set_status(txt["export_run_first"], error=False)
-        save_btn.setEnabled(False)
-    elif STATE.last_save_path:
-        _set_status(txt["export_saved_template"].format(path=STATE.last_save_path))
+    back = GhostButton(txt["preview_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
+    back.clicked.connect(lambda: on_navigate_tab(TAB_INPUT))
 
     def _on_save() -> None:
-        if not STATE.last_report:
-            _set_status(txt["export_run_first"], error=True)
-            return
         try:
             result = pipeline.save_bug_report_docx(labels=s(lang))
         except Exception as exc:
@@ -913,18 +906,16 @@ def _build_export_tab(
                 "ai_bug_report.view", "save_bug_report_failed", exc,
             )
             _set_status(
-                txt["export_save_failed"].format(error=str(exc)), error=True
+                txt["preview_save_failed"].format(error=str(exc)), error=True,
             )
             return
         if not result.ok:
             _set_status(
-                txt["export_save_failed"].format(error=result.error or "?"),
+                txt["preview_save_failed"].format(error=result.error or "?"),
                 error=True,
             )
             return
-        _set_status(
-            txt["export_saved_template"].format(path=result.path)
-        )
+        _set_status(txt["preview_saved_template"].format(path=result.path))
         on_state_change()
 
     def _on_open_folder() -> None:
@@ -956,27 +947,24 @@ def _build_export_tab(
     save_btn.clicked.connect(_on_save)
     folder_btn.clicked.connect(_on_open_folder)
 
-    export_card = _step_card(
-        theme,
-        label=txt["tab_export"].upper(),
-        title=txt["export_title"],
-        desc="",
-        body=card_body,
+    actions_layout.addWidget(save_btn)
+    actions_layout.addWidget(folder_btn)
+    actions_layout.addWidget(back)
+    actions_layout.addStretch(1)
+    inner_layout.addWidget(actions_row)
+    inner_layout.addWidget(status_label)
+    inner_layout.addStretch(1)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setStyleSheet(
+        f"QScrollArea {{ background-color: {theme.bg}; border: none; }}"
     )
-    layout.addWidget(export_card)
-
-    back = GhostButton(txt["preview_back_btn"], theme=theme, icon=Icons.ARROW_BACK)
-    back.clicked.connect(lambda: on_navigate_tab(TAB_INPUT))
-    back_holder = QFrame()
-    back_holder.setStyleSheet("background: transparent;")
-    back_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
-    back_holder.setLayout(back_layout)
-    back_layout.addWidget(back)
-    back_layout.addStretch(1)
-    layout.addWidget(back_holder)
-    layout.addStretch(1)
-
-    return holder
+    scroll.setWidget(inner)
+    return scroll
 
 
 # ---------------------------------------------------------------------------
@@ -993,8 +981,19 @@ def _build_footer(
     on_navigate_tab: Callable[[int], None],
 ) -> tuple[QWidget, Callable[[], None]]:
     container = QFrame()
+    container.setObjectName("BugReportFooter")
+    # Scope the border-top to the footer container itself - without the
+    # ``QFrame#BugReportFooter`` selector Qt's stylesheet cascade would
+    # apply ``border-top: 1px solid ...`` to every QFrame child too,
+    # which paints a thin line across the GhostButton / PrimaryButton
+    # rendered inside.
     container.setStyleSheet(
-        f"background-color: {theme.bg}; border-top: 1px solid {theme.border};"
+        f"""
+        QFrame#BugReportFooter {{
+            background-color: {theme.bg};
+            border-top: 1px solid {theme.border};
+        }}
+        """
     )
     layout = hbox(spacing=10, margins=(24, 12, 24, 12))
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
@@ -1046,16 +1045,20 @@ def _build_footer(
         )
 
     def _render_run_button() -> None:
+        """Render the primary "Generate" footer button.
+
+        The label stays "Generate bug report" / "Generating..." for the
+        entire run. The earlier code swapped it to "Asking clarifying
+        questions..." while the follow-ups phase was in flight, but the
+        user prefers that copy to live only in the right-panel activity
+        badge (see ``context.py`` -> ``ctx_activity_followups``). The
+        footer button now reads consistently like every other section.
+        """
         _clear_layout(run_layout)
         stage = state_box["stage"]
         running = bool(stage)
         enabled = STATE.can_generate() and not running
-        if stage == "followups":
-            label = txt["footer_followup_running"]
-        elif running:
-            label = txt["footer_generate_running"]
-        else:
-            label = txt["footer_generate_btn"]
+        label = txt["footer_generate_running"] if running else txt["footer_generate_btn"]
         button = PrimaryButton(
             label, theme=theme, icon=Icons.PLAY_ARROW_ROUNDED
         )
@@ -1236,7 +1239,12 @@ def _build_footer(
             if STATE.followup_questions:
                 STATE.activity = "waiting_user"
                 REFS.request_context_refresh()
-                REFS.dispatch(_open_followup_dialog_now)
+                # Dispatch onto the GUI thread - ``BugReportRefs`` does
+                # not expose its own ``dispatch`` helper (only ``ai_career``
+                # / ``ai_jobs`` REFS do), so go through the shared
+                # ``runtime.dispatch`` directly. ``sections.mdc`` lists
+                # this as the canonical "generic GUI-thread call" pattern.
+                dispatch(_open_followup_dialog_now)
                 return
 
             # No questions -> straight to the main pass.
@@ -1326,16 +1334,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                 "ai_bug_report.view", "tab_change_failed", exc,
             )
 
-    def _on_regenerate() -> None:
-        STATE.reset_result()
-        _on_navigate_tab(TAB_INPUT)
-
     def _refresh_tabs() -> None:
         _clear_widget(tab_holder)
         try:
             tab_widget = tab_bar(
                 theme,
-                tabs=[txt["tab_input"], txt["tab_preview"], txt["tab_export"]],
+                tabs=[txt["tab_input"], txt["tab_preview"], txt["tab_history"]],
                 active_index=STATE.active_tab,
                 on_change=_on_navigate_tab,
             )
@@ -1373,21 +1377,13 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                     _build_preview_tab(
                         theme,
                         txt,
-                        on_state_change=_on_state_change,
-                        on_navigate_tab=_on_navigate_tab,
-                        on_regenerate=_on_regenerate,
-                    )
-                )
-            else:
-                body_stack.addWidget(
-                    _build_export_tab(
-                        theme,
-                        txt,
                         lang,
                         on_state_change=_on_state_change,
                         on_navigate_tab=_on_navigate_tab,
                     )
                 )
+            else:
+                body_stack.addWidget(build_history_tab(theme, lang))
         except Exception as exc:
             logger_service.log_exception(
                 "ai_bug_report.view", "refresh_tab_body_build_failed", exc,

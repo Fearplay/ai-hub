@@ -10,12 +10,15 @@
 Desktopový AI Hub postavený v Pythonu s knihovnou
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 pro Python).
 Tříslupcový layout: navigace v levém sidebaru, hlavní pracovní plocha ve
-středu a kontextový panel vpravo. Sekce **AI Životopis / Kariéra**,
+středu a kontextový panel vpravo. Defaultní úvodní obrazovka je
+**Dashboard** - navigační mřížka s jednou kartou pro každý viditelný
+AI modul, takže uživatel po startu může jedním klikem skočit do
+libovolného asistenta. Sekce **AI Životopis / Kariéra**,
 **AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
 a **AI Bug Report** jsou plně napojené na OpenAI / Anthropic (nová
 sekce mluví i s **vision** API obou providerů, takže screenshoty
 zpracovává společně s textovým promptem). Rozpracované sekce
-(Dashboard, AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
+(AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
 AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
 aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
 [Schované UI](#schované-ui) níže.
@@ -24,7 +27,9 @@ Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Nové pořadí se
 projeví okamžitě (žádný restart, žádné přepínání jazyka). Pořadí se
 ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
-Sekundární skupina (Nastavení) zůstává pevně pod oddělovačem.
+Sekundární skupina (**Dashboard** nad **Nastavením**) zůstává pevně
+pod oddělovačem; obě sekce se nedají přerovnávat, takže navigační
+mřížka i stránka s nastavením jsou vždy na jedno kliknutí.
 
 ## Požadavky
 
@@ -248,6 +253,17 @@ konkrétní chybovou hlášku místo obecného "data zatím nedorazila".
 **Nastavení -> Živá tržní data** vypne stahování úplně a pravý panel
 přepne na svůj prázdný stav.
 
+**Záloha přes Stooq (automatická).** Když yfinance pro některý symbol
+selže (TLS výpadek u Yahoo, jejich pravidelná změna endpointů, prázdná
+historie pro nový ticker), služba transparentně zkusí
+[Stooq](https://stooq.com) přes jejich snapshot CSV bez klíče
+(`stooq.com/q/l/?s=<symbol>&f=sd2t2ohlcv&h&e=csv`). Záloha používá
+jen standardní `urllib`, interně mapuje Yahoo symboly na konvenci
+Stooqu (`^GSPC -> ^spx`, `BTC-USD -> btcusd`, `AAPL -> aapl.us`,
+`EURCZK=X -> eurczk`, ...) a každé použití zalogovává jako
+`stooq_fallback_used` v **Nastavení -> Debug logy**. Vypnutí
+**Živých tržních dat** v Nastavení zastaví oba zdroje najednou.
+
 ### Debug logy
 
 Když nějaké kliknutí "neudělá nic" (přepnutí jazyka / barvy, mode tab,
@@ -444,8 +460,9 @@ Detaily v
   - **Vision vstup** - kombinovaná drop zóna přijímá screenshoty (PNG / JPG / WEBP / GIF / BMP / HEIC) i textové soubory (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshoty jdou do modelu přes nativní vision API obou providerů (`image_url` content bloky u OpenAI, `image` source bloky u Anthropic), textové soubory parsuje lokálně `src/services/file_parser.py`.
   - **Jedno strukturované LLM volání** přes striktní `BUG_REPORT_SCHEMA` (název, shrnutí, závažnost, priorita, reprodukovatelnost, tabulka prostředí, předpoklady, číslované kroky k reprodukci, očekávaný vs skutečný výsledek, popis každé přílohy, další poznámky). QA system prompt opakuje no-hallucination klauzuli pro ověřitelná fakta (verze, ID tiketů, stack trace) a zároveň explicitně **dovoluje** modelu odvodit název / kroky / očekávaný vs skutečný z dostupných vstupů a označit odhady v *dalších poznámkách*. Uživateli stačí jediný vstup - popis **nebo** screenshot - a dostane kompletní report.
   - **Volitelné upřesňující otázky** (stejný vzor jako AI Životopis / Kariéra a AI LinkedIn) - když je v **Nastavení -> Ptát se na upřesnění** zapnuto, sekce nejdřív rychle Pass 0 vypálí dotazem na 0-8 krátkých otázek dřív, než spustí hlavní generaci reportu. Sdílený modal `src/components/followup_dialog.py` ukáže pro každou otázku chip-options + free-text **Vlastní...** odpověď; odpovědi se vsadí do hlavního promptu, takže report už nehází *„(odhad)"* na fakta, která sis mohl(a) jednoduše doplnit. V patce je přepínač „Nejdřív se zeptat na upřesnění", který tuhle fázi vypíná per-sekce bez chození do Nastavení.
-  - **Editovatelný náhled** - název, závažnost (Critical / High / Medium / Low) a priorita (P0 / P1 / P2 / P3) se dají před uložením doladit, aby report seděl na slovník vašeho týmu.
-  - **Word export** přes `python-docx` - nadpis, tabulka prostředí, číslované kroky, barevně odlišený očekávaný (zelená) vs skutečný výsledek (červená), screenshoty vložené přímo do dokumentu. Vedle Wordu se ukládá i Markdown verze a `summary.json`, takže další nástroje umí stejný payload sebrat. Vše leží v `outputs/ai_bug_report/<title-slug>-<timestamp>/` a registruje se v `~/AI Hub/history.json`.
+  - **Editovatelný náhled** - název, závažnost (Critical / High / Medium / Low), priorita (P0 / P1 / P2 / P3) i reprodukovatelnost (Always / Sometimes / Rare / Once / Unknown) se dají před uložením doladit, aby report seděl na slovník vašeho týmu. Popisky dropdownů jsou **lokalizované** (česky / anglicky), ale do JSONu se ukládá kanonická anglická hodnota, takže reporty zůstávají přenositelné napříč jazyky.
+  - **Word export** přes `python-docx` - tlačítka **Vygenerovat Word** a **Otevřít složku** najdeš dole na záložce Náhled. Nadpis, tabulka prostředí, číslované kroky, barevně odlišený očekávaný (zelená) vs skutečný výsledek (červená), screenshoty vložené přímo do dokumentu. Vedle Wordu se ukládá i Markdown verze a `summary.json`, takže další nástroje umí stejný payload sebrat. Vše leží v `outputs/ai_bug_report/<title-slug>-<timestamp>/` a registruje se v `~/AI Hub/history.json`.
+  - **Záložka Historie** - každý uložený bug report je tu jako řádek se závažností / prioritou / reprodukovatelností, počtem screenshotů a jednoklikovým **Otevřít Word** / **Otevřít složku** / **Smazat**. Smazání odstraní složku z disku i řádek z globální historie.
   - **Demo režim** - jedno kliknutí načte připravený příklad, takže sekci jde předvést bez utracení tokenů.
 - **AI Marketing** - postavený podle dodaného návrhu (chat s "Instagram příspěvkem", phone mockup, brief panel)
 - **AI Právní asistent** - plně AI-napojený chat s právním dokumentem:
@@ -468,7 +485,6 @@ sidebaru nespadly - jen se nevykreslí.
 
 | Klíč sekce | Složka | K čemu má být |
 | --- | --- | --- |
-| `dashboard` | `src/sections/dashboard/` | Úvodní dashboard / přehled KPI. |
 | `ai_legal` | `src/sections/ai_legal/` | Multi-formátový upload + 4 quick-action chat pro právní dokumenty (už napojené na AI, schované do doladění copy). |
 | `ai_business` | `src/sections/ai_business/` | Pomocník pro byznys strategii / SaaS playbook. |
 | `ai_marketing` | `src/sections/ai_marketing/` | Generátor marketingových textů / Instagram příspěvků (mock UI). |

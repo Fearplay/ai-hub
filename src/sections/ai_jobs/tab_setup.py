@@ -1820,9 +1820,7 @@ def build_setup_tab(
     fu_check.stateChanged.connect(
         lambda _state: settings_store.set_ask_followups(bool(fu_check.isChecked()))
     )
-    fu_hint = SubtleLabel(txt["footer_ask_followups_hint"], theme=theme, size=11)
     footer_layout.addWidget(fu_check)
-    footer_layout.addWidget(fu_hint)
     footer_layout.addWidget(status_label)
     layout.addWidget(footer)
 

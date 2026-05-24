@@ -100,7 +100,16 @@ class AIHubApp(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.active_section: str = SECTIONS[0].key if SECTIONS else ""
+        # Cold-launch landing section: prefer the Dashboard when it
+        # exists so the user always sees the module grid first, even
+        # though Dashboard now lives under the secondary nav (above
+        # Settings) instead of being the first primary entry. Falling
+        # back to the lowest-``order`` primary section keeps the app
+        # usable if a contributor ever removes the dashboard folder.
+        if "dashboard" in SECTION_BY_KEY:
+            self.active_section: str = "dashboard"
+        else:
+            self.active_section = SECTIONS[0].key if SECTIONS else ""
         # Persisted preferences survive app restarts. ``settings_store``
         # falls back to sane defaults ("dark" / "en") on first launch.
         self.theme_mode: str = settings_store.get_theme_mode()

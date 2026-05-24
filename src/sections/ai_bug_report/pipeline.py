@@ -800,6 +800,149 @@ def save_bug_report_docx(*, labels: dict[str, str]) -> SaveResult:
     return SaveResult(ok=True, folder=str(folder_path), path=str(docx_path))
 
 
+# ---------------------------------------------------------------------------
+# History helpers
+# ---------------------------------------------------------------------------
+
+
+def list_saved_runs() -> list[dict]:
+    """Return AI Bug Report runs from disk, newest first.
+
+    Reads ``~/AI Hub/history.json`` via :func:`store.list_runs` and
+    keeps only entries whose ``note == "ai_bug_report"`` (so we never
+    accidentally show AI Career / AI Jobs runs in our History tab).
+    Each entry is enriched with the in-folder ``summary.json`` payload
+    when available, so the row can show the bug title, severity, and
+    screenshot count instead of just the folder name.
+    """
+    out: list[dict] = []
+    try:
+        runs = store.list_runs()
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline", "list_saved_runs_failed", exc,
+        )
+        return out
+
+    for run in runs:
+        if (run.note or "").strip().lower() != "ai_bug_report":
+            continue
+        record: dict[str, Any] = {
+            "timestamp": run.timestamp,
+            "title": run.role,
+            "folder": run.folder,
+            "severity": "",
+            "priority": "",
+            "reproducibility": "",
+            "image_count": 0,
+            "doc_count": 0,
+            "docs": list(run.docs or []),
+            "cost_usd": float(run.cost_usd or 0.0),
+        }
+        try:
+            summary = store.read_run_summary(run.folder) or {}
+            report = summary.get("report") or {}
+            if isinstance(report, dict):
+                if report.get("title"):
+                    record["title"] = report.get("title")
+                record["severity"] = report.get("severity") or ""
+                record["priority"] = report.get("priority") or ""
+                record["reproducibility"] = report.get("reproducibility") or ""
+            images = summary.get("images") or []
+            docs = summary.get("documents") or []
+            if isinstance(images, list):
+                record["image_count"] = len(images)
+            if isinstance(docs, list):
+                record["doc_count"] = len(docs)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_bug_report.pipeline", "list_saved_runs_summary_failed", exc,
+                folder=run.folder,
+            )
+        out.append(record)
+    logger_service.log_event(
+        "INFO", "ai_bug_report.pipeline", "list_saved_runs_done",
+        count=len(out),
+    )
+    return out
+
+
+def delete_run(folder: str) -> bool:
+    """Delete a saved run folder + remove it from ``history.json``.
+
+    Returns ``True`` when every disk delete succeeded. Errors are
+    logged but never raised - the caller usually surfaces an inline
+    toast on failure (see :mod:`src.sections.ai_bug_report.tab_history`).
+    """
+    if not folder:
+        return False
+    target = Path(folder)
+    success = True
+    try:
+        if target.exists():
+            for child in target.glob("*"):
+                try:
+                    child.unlink()
+                except Exception as exc:
+                    logger_service.log_exception(
+                        "ai_bug_report.pipeline", "delete_run_unlink_failed", exc,
+                        path=str(child),
+                    )
+                    success = False
+            try:
+                target.rmdir()
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_bug_report.pipeline", "delete_run_rmdir_failed", exc,
+                    path=str(target),
+                )
+                success = False
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline", "delete_run_failed", exc, folder=folder,
+        )
+        success = False
+
+    # Drop the matching row from the global ``history.json`` even if
+    # the disk delete failed - the user expects the row to disappear
+    # from the UI either way (and they will see the error toast).
+    try:
+        history_path = store.history_path()
+        if history_path.exists():
+            try:
+                raw = json.loads(history_path.read_text(encoding="utf-8")) or []
+            except json.JSONDecodeError:
+                raw = []
+            target_norm = folder.rstrip("\\/").strip()
+            keep = [
+                row for row in raw
+                if (row.get("folder") or "").rstrip("\\/").strip() != target_norm
+            ]
+            if len(keep) != len(raw):
+                history_path.parent.mkdir(parents=True, exist_ok=True)
+                history_path.write_text(
+                    json.dumps(keep, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_bug_report.pipeline", "delete_run_history_rewrite_failed", exc,
+            folder=folder,
+        )
+
+    STATE.runs_history = [
+        entry for entry in STATE.runs_history
+        if entry.get("folder") != folder
+    ]
+    if STATE.last_run_folder == folder:
+        STATE.last_run_folder = ""
+    logger_service.log_event(
+        "INFO", "ai_bug_report.pipeline", "delete_run_done",
+        folder=folder, success=success,
+    )
+    return success
+
+
 __all__ = [
     "StepResult",
     "SaveResult",
@@ -807,4 +950,6 @@ __all__ = [
     "generate_followup_questions",
     "generate_bug_report",
     "save_bug_report_docx",
+    "list_saved_runs",
+    "delete_run",
 ]

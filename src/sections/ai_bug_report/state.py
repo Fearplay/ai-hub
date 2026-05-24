@@ -14,7 +14,7 @@ from typing import Optional
 
 TAB_INPUT = 0
 TAB_PREVIEW = 1
-TAB_EXPORT = 2
+TAB_HISTORY = 2
 
 
 SEVERITY_VALUES = ("Critical", "High", "Medium", "Low")
@@ -86,6 +86,12 @@ class BugReportState:
     followup_questions: list[dict] = field(default_factory=list)
     followup_qa: list[dict] = field(default_factory=list)
     run_stage: str = ""
+
+    # Cached list of saved runs (``RunSummary`` -> dict mapping). The
+    # History tab calls ``pipeline.list_saved_runs()`` to refresh, then
+    # caches the result here so the right-panel cost / activity badges
+    # do not have to re-read ``history.json`` on every rebuild.
+    runs_history: list[dict] = field(default_factory=list)
 
     def can_generate(self) -> bool:
         if self.demo_mode:

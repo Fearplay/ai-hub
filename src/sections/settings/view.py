@@ -842,6 +842,8 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         icon=SECTION_ICON,
         title=txt["title"],
         subtitle=txt["subtitle"],
+        show_help_button=False,
+        show_menu_button=False,
     ))
 
     body_holder = QWidget()
