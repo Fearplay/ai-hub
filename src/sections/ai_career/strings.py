@@ -7,6 +7,16 @@ STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "nav_label": "AI CV / Career",
         "title": "AI CV / Career",
+        # Shared career profile banner (My Profile section).
+        "shared_title_use": "Reuse your saved profile",
+        "shared_title_applied": "Using your shared profile",
+        "shared_use_btn": "Use it here",
+        "shared_edit_btn": "Edit profile",
+        "shared_summary_generic": "Your saved CV and details",
+        "shared_includes": "Includes: {items}",
+        "shared_item_cv": "CV",
+        "shared_item_linkedin": "LinkedIn",
+        "shared_item_github": "GitHub",
         "subtitle": "Tailor your CV to a job posting, write a cover letter, and prepare for the interview.",
 
         "mode_chat": "Chat",
@@ -18,12 +28,44 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_setup": "Setup",
         "tab_match": "Match",
         "tab_documents": "Documents",
+        "tab_interview": "Mock Interview",
         "tab_history": "History",
 
         "tab_setup_desc": "Position + profile",
         "tab_match_desc": "Score + evidence",
         "tab_documents_desc": "CV + cover letter + export",
+        "tab_interview_desc": "Practice + STAR feedback",
         "tab_history_desc": "Previous analyses",
+
+        # Mock Interview tab.
+        "interview_title": "Mock interview",
+        "interview_subtitle": "Practice tailored questions and get STAR feedback.",
+        "interview_empty_title": "Ready for a mock interview?",
+        "interview_empty_desc": (
+            "I'll play the hiring manager for your target role, ask one "
+            "question at a time, and coach your answers with the STAR method "
+            "(Situation, Task, Action, Result)."
+        ),
+        "interview_no_context_hint": (
+            "Tip: add your CV in Setup (or apply your shared profile) for "
+            "sharper, tailored questions."
+        ),
+        "interview_start_btn": "Start interview",
+        "interview_restart_btn": "Restart",
+        "interview_placeholder": "Type your answer...",
+        "interview_send_tooltip": "Send answer",
+        "interview_running": "Interviewer is thinking...",
+        "interview_question_label": "Question {n}",
+        "interview_feedback_label": "STAR feedback",
+        "interview_strengths_label": "What worked",
+        "interview_gaps_label": "To improve",
+        "interview_improved_label": "Model answer",
+        "interview_done_title": "Interview complete",
+        "interview_done_desc": (
+            "Nice work. Restart to run through it again, or refine your Setup "
+            "for a different angle."
+        ),
+        "interview_error_prefix": "Interview error",
         "stage_status_waiting": "Waiting",
         "stage_status_active": "Active",
         "stage_status_done": "Done",
@@ -251,6 +293,16 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "cs": {
         "nav_label": "AI Životopis / Kariéra",
+        # Shared career profile banner (My Profile section).
+        "shared_title_use": "Použít uložený profil",
+        "shared_title_applied": "Používáš svůj sdílený profil",
+        "shared_use_btn": "Použít zde",
+        "shared_edit_btn": "Upravit profil",
+        "shared_summary_generic": "Tvůj uložený životopis a údaje",
+        "shared_includes": "Obsahuje: {items}",
+        "shared_item_cv": "Životopis",
+        "shared_item_linkedin": "LinkedIn",
+        "shared_item_github": "GitHub",
         "title": "AI Životopis / Kariéra",
         "subtitle": "Přizpůsob životopis na konkrétní inzerát, napiš motivační dopis a připrav se na pohovor.",
 
@@ -263,12 +315,44 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_setup": "Nastavení",
         "tab_match": "Shoda",
         "tab_documents": "Dokumenty",
+        "tab_interview": "Nácvik pohovoru",
         "tab_history": "Historie",
 
         "tab_setup_desc": "Pozice + profil",
         "tab_match_desc": "Skóre + důkazy",
         "tab_documents_desc": "Životopis + dopis + export",
+        "tab_interview_desc": "Nácvik + STAR zpětná vazba",
         "tab_history_desc": "Předchozí analýzy",
+
+        # Mock Interview tab.
+        "interview_title": "Nácvik pohovoru",
+        "interview_subtitle": "Procvič si otázky na míru a získej STAR zpětnou vazbu.",
+        "interview_empty_title": "Připraven/a na nácvik pohovoru?",
+        "interview_empty_desc": (
+            "Budu hrát náborového manažera pro tvoji cílovou pozici, budu se "
+            "ptát po jedné otázce a tvoje odpovědi okomentuji metodou STAR "
+            "(Situace, Úkol, Akce, Výsledek)."
+        ),
+        "interview_no_context_hint": (
+            "Tip: přidej si CV v Nastavení (nebo použij sdílený profil) pro "
+            "přesnější otázky na míru."
+        ),
+        "interview_start_btn": "Spustit pohovor",
+        "interview_restart_btn": "Začít znovu",
+        "interview_placeholder": "Napiš svou odpověď...",
+        "interview_send_tooltip": "Odeslat odpověď",
+        "interview_running": "Tazatel přemýšlí...",
+        "interview_question_label": "Otázka {n}",
+        "interview_feedback_label": "STAR zpětná vazba",
+        "interview_strengths_label": "Co fungovalo",
+        "interview_gaps_label": "Co zlepšit",
+        "interview_improved_label": "Vzorová odpověď",
+        "interview_done_title": "Pohovor dokončen",
+        "interview_done_desc": (
+            "Dobrá práce. Začni znovu pro další kolo, nebo uprav Nastavení "
+            "pro jiný úhel pohledu."
+        ),
+        "interview_error_prefix": "Chyba pohovoru",
         "stage_status_waiting": "Čeká",
         "stage_status_active": "Aktivní",
         "stage_status_done": "Hotovo",

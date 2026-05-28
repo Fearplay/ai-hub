@@ -60,10 +60,19 @@ from src.theme import Theme
 
 
 SetActive = Callable[[str], None]
+# Restyle the already-built sidebar to a new (per-section accent) theme
+# without tearing the row tree down. Section navigation calls this so the
+# logo tile, the active nav row, badges and the footer toggles pick up the
+# new accent on the same frame as the centre column - otherwise the sidebar
+# keeps the previous section's accent until the next full rebuild.
+UpdateTheme = Callable[[Theme], None]
 
 
-def _logo(theme: Theme, lang: str) -> QFrame:
+def _logo(theme: Theme, lang: str) -> tuple[QFrame, QFrame]:
     """Sidebar brand mark - icon tile + product name.
+
+    Returns ``(frame, icon_box)`` so the caller can recolour the accent
+    tile in place when the active section's accent changes.
 
     Previously rendered a trailing ``+`` glyph as a visual hook for the
     "new chat" action; that affordance is now gone because we removed
@@ -96,7 +105,7 @@ def _logo(theme: Theme, lang: str) -> QFrame:
     layout.addWidget(name)
     layout.addStretch(1)
 
-    return frame
+    return frame, icon_box
 
 
 def _persist_reorder(source_key: str, target_key: str, before: bool) -> bool:
@@ -138,7 +147,7 @@ def sidebar(
     theme_mode: str,
     on_theme_toggle: Callable[[], None],
     on_lang_toggle: Callable[[], None],
-) -> tuple[QFrame, SetActive]:
+) -> tuple[QFrame, SetActive, UpdateTheme]:
     primary_handles: dict[str, ReorderHandle] = {}
     secondary_handles: dict[str, NavItemHandle] = {}
 
@@ -209,7 +218,8 @@ def sidebar(
     header.setStyleSheet("background: transparent;")
     header_layout = vbox(spacing=14, margins=(20, 18, 20, 8))
     header.setLayout(header_layout)
-    header_layout.addWidget(_logo(theme, lang))
+    logo_frame, logo_icon_box = _logo(theme, lang)
+    header_layout.addWidget(logo_frame)
     root.addWidget(header)
 
     # middle (scrollable) ---------------------------------------------------
@@ -261,26 +271,70 @@ def sidebar(
     footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
     footer.setLayout(footer_layout)
 
-    footer_layout.addWidget(language_toggle(theme, lang, on_toggle=on_lang_toggle))
-    footer_layout.addWidget(
-        theme_toggle(theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle)
-    )
+    footer_widgets: dict[str, QFrame] = {
+        "lang": language_toggle(theme, lang, on_toggle=on_lang_toggle),
+        "theme": theme_toggle(
+            theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle
+        ),
+    }
+    footer_layout.addWidget(footer_widgets["lang"])
+    footer_layout.addWidget(footer_widgets["theme"])
     root.addWidget(footer)
 
-    current = {"key": active_section}
+    # Mutable so the navigation callbacks below always restyle with the
+    # accent of the *currently* active section, not the accent that was
+    # frozen into this closure when the sidebar was first built.
+    state = {"key": active_section, "theme": theme}
 
     def set_active(key: str) -> None:
-        if key == current["key"]:
+        if key == state["key"]:
             return
-        prev = current["key"]
+        active_theme = state["theme"]
+        prev = state["key"]
         if prev in primary_handles:
-            primary_handles[prev].set_active(theme, active=False)
+            primary_handles[prev].set_active(active_theme, active=False)
         elif prev in secondary_handles:
-            secondary_handles[prev].set_active(theme, active=False)
+            secondary_handles[prev].set_active(active_theme, active=False)
         if key in primary_handles:
-            primary_handles[key].set_active(theme, active=True)
+            primary_handles[key].set_active(active_theme, active=True)
         elif key in secondary_handles:
-            secondary_handles[key].set_active(theme, active=True)
-        current["key"] = key
+            secondary_handles[key].set_active(active_theme, active=True)
+        state["key"] = key
 
-    return container, set_active
+    def update_theme(new_theme: Theme) -> None:
+        """Recolour the live sidebar to ``new_theme`` (per-section accent).
+
+        Restyles the logo tile, every nav row (active + inactive), the
+        drag-drop hint colour and the footer toggles without rebuilding
+        the row tree. Called from ``app.set_section`` so the sidebar and
+        the centre column flip accent on the same frame.
+        """
+        try:
+            state["theme"] = new_theme
+            logo_icon_box.setStyleSheet(
+                f"background-color: {new_theme.primary}; border-radius: 10px;"
+            )
+            active_key = state["key"]
+            for k, handle in primary_handles.items():
+                handle.set_active(new_theme, active=k == active_key)
+            for k, handle in secondary_handles.items():
+                handle.set_active(new_theme, active=k == active_key)
+
+            old_lang = footer_widgets.get("lang")
+            old_theme = footer_widgets.get("theme")
+            new_lang = language_toggle(new_theme, lang, on_toggle=on_lang_toggle)
+            new_theme_w = theme_toggle(
+                new_theme, lang, theme_mode=theme_mode, on_toggle=on_theme_toggle
+            )
+            footer_layout.addWidget(new_lang)
+            footer_layout.addWidget(new_theme_w)
+            footer_widgets["lang"] = new_lang
+            footer_widgets["theme"] = new_theme_w
+            for old in (old_lang, old_theme):
+                if old is not None:
+                    footer_layout.removeWidget(old)
+                    old.deleteLater()
+        except Exception as exc:
+            logger_service.log_exception("sidebar", "update_theme_failed", exc)
+
+    return container, set_active, update_theme

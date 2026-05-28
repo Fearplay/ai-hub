@@ -45,7 +45,7 @@ from src.services import ai_provider, job_scraper, settings_store, store
 from src.services import logger as logger_service
 from src.services.cost_tracker import COST
 from src.sections.ai_jobs import data as jobs_data
-from src.sections.ai_jobs import prompts, schema
+from src.sections.ai_jobs import prompts, schema, seen_urls
 from src.sections.ai_jobs.refs import REFS
 from src.sections.ai_jobs.state import (
     MAX_RESULTS_DEFAULT,
@@ -766,6 +766,39 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
     return PipelineResult(ok=True)
 
 
+def _tag_new_results(results: list[dict], *, keywords: str) -> int:
+    """Tag each result ``is_new`` vs prior runs and persist the seen-set.
+
+    Returns the count of postings new to this search. Failures are
+    logged (never raised) and degrade to "everything tagged not-new" so
+    a sidecar problem can never break a search.
+    """
+    if not results:
+        return 0
+    try:
+        key = seen_urls.profile_key(keywords or STATE.last_query)
+        previous = seen_urls.load_seen(key)
+        new_count = 0
+        for item in results:
+            norm = seen_urls.normalize_url(item.get("url", ""))
+            is_new = bool(norm) and norm not in previous
+            item["is_new"] = is_new
+            if is_new:
+                new_count += 1
+        seen_urls.record_seen(key, [it.get("url", "") for it in results])
+        logger_service.log_event(
+            "INFO", "ai_jobs.pipeline", "tag_new_done",
+            key=key, new=new_count, total=len(results),
+            previously_seen=len(previous),
+        )
+        return new_count
+    except Exception as exc:
+        logger_service.log_exception("ai_jobs.pipeline", "tag_new_failed", exc)
+        for item in results:
+            item.setdefault("is_new", False)
+        return 0
+
+
 @logger_service.timed_call("ai_jobs.pipeline", "run_search")
 def run_search(*, output_lang: str) -> PipelineResult:
     """Run the full discovery -> extraction -> verification -> scoring -> gap pipeline.
@@ -830,6 +863,12 @@ def run_search(*, output_lang: str) -> PipelineResult:
         )
         STATE.last_dropped = 0
         STATE.last_inactive = 0
+        # Showcase the "new since last run" badge without touching the
+        # real seen-URLs sidecar (demo must not pollute persistent state).
+        for item in STATE.results:
+            item["is_new"] = True
+        STATE.last_new_count = len(STATE.results)
+        STATE.show_new_only = False
         _aggregate_skill_gap(
             STATE.results,
             output_lang=output_lang,
@@ -1185,6 +1224,15 @@ def run_search(*, output_lang: str) -> PipelineResult:
     inactive_count = len(kept_inactive)
     relaxed_count = sum(1 for it in kept_active if it.get("is_relaxed"))
 
+    # --- cross-run "new since last run" tagging ----------------------
+    # Tag each kept posting against the seen-set from previous runs of
+    # this search, THEN fold this run's URLs into the seen-set so the
+    # next run can diff against it. Within-run dedup already happened in
+    # ``_run_discovery_extraction``; this is the cross-run layer.
+    new_count = _tag_new_results(final_results, keywords=keywords)
+    STATE.last_new_count = new_count
+    STATE.show_new_only = False
+
     STATE.results = final_results
     STATE.summary = summary_text
     STATE.last_dropped = dropped
@@ -1213,6 +1261,7 @@ def run_search(*, output_lang: str) -> PipelineResult:
         kept_active=len(kept_active),
         kept_relaxed=relaxed_count,
         kept_inactive=inactive_count,
+        kept_new=new_count,
         dropped=dropped,
         candidates_total=len(survivors) + dropped,
         target_active=target_active,

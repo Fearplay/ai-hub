@@ -20,5 +20,6 @@ SECTION = Section(
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,
+    accent="#F97316",  # orange - "bug / caution" without reading as danger-red
     order=90,
 )

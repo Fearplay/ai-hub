@@ -19,7 +19,9 @@ provider, so the entire UI flow can be explored offline.
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable, Optional
 
 from pathlib import Path
@@ -1035,6 +1037,200 @@ def append_chat_message(
             attachment_name=attachment_name,
         )
     )
+
+
+# Mock Interview --------------------------------------------------------------
+
+
+def _interview_candidate_context() -> str:
+    """Best-available candidate grounding for the interview prompt.
+
+    Prefers the structured Candidate JSON (cheapest + richest); falls
+    back to the raw resume / LinkedIn text when the user has not run the
+    Form analysis yet. Returns ``""`` when there is nothing to ground on
+    (the prompt then asks broader questions).
+    """
+    if STATE.candidate:
+        try:
+            return json.dumps(STATE.candidate, ensure_ascii=False)
+        except (TypeError, ValueError) as exc:
+            logger_service.log_exception(
+                "ai_career.pipeline", "interview_candidate_json_failed", exc,
+            )
+    bits: list[str] = []
+    if STATE.resume and STATE.resume.text:
+        bits.append(STATE.resume.text)
+    if STATE.linkedin and STATE.linkedin.text:
+        bits.append("LinkedIn export:\n" + STATE.linkedin.text)
+    return "\n\n".join(bits)
+
+
+def _interview_job_context() -> str:
+    if STATE.job_spec:
+        try:
+            return json.dumps(STATE.job_spec, ensure_ascii=False)
+        except (TypeError, ValueError):
+            pass
+    return (STATE.job_text or "").strip()
+
+
+def _interview_target_role() -> str:
+    if STATE.target_role:
+        return STATE.target_role
+    if isinstance(STATE.job_spec, dict):
+        title = (STATE.job_spec.get("title") or "").strip()
+        if title:
+            return title
+    return ""
+
+
+def _interview_transcript() -> list[dict]:
+    """Map the stored interview messages into prompt-ready turns."""
+    role_map = {"question": "interviewer", "answer": "candidate", "feedback": "coach"}
+    out: list[dict] = []
+    for msg in STATE.interview_messages:
+        kind = msg.get("kind")
+        role = role_map.get(kind)
+        if role is None:
+            continue
+        if kind == "feedback":
+            text = (msg.get("text") or "").strip()
+            improved = (msg.get("improved") or "").strip()
+            if improved:
+                text = f"{text}\nModel answer: {improved}" if text else f"Model answer: {improved}"
+        else:
+            text = (msg.get("text") or "").strip()
+        if not text:
+            continue
+        out.append({"role": role, "text": text})
+    return out
+
+
+def _demo_interview_turn(*, output_lang: str, is_opening: bool, question_count: int) -> dict:
+    cs = (output_lang or "").lower().startswith("cs")
+    if is_opening:
+        return {
+            "feedback": "", "strengths": [], "gaps": [], "improved_answer": "",
+            "question_focus": "Behavioural - quality" if not cs else "Behaviorální - kvalita",
+            "next_question": (
+                "Tell me about a time you improved the reliability of a test suite. "
+                "What was the situation and what did you do?"
+                if not cs else
+                "Popiš situaci, kdy jsi zlepšil/a spolehlivost testovací sady. "
+                "Jaká byla situace a co jsi udělal/a?"
+            ),
+            "done": False,
+        }
+    done = question_count >= 5
+    if cs:
+        return {
+            "feedback": "Demo režim: odpověď nevolá AI. Dobrý začátek, ale chybí měřitelný výsledek (R ze STAR).",
+            "strengths": ["Jasně popsaná situace", "Konkrétní akce"],
+            "gaps": ["Doplň měřitelný výsledek", "Zmiň dopad na tým"],
+            "improved_answer": "V TrustPay jsem [insert metric] ... výsledkem bylo zkrácení CI z 38 na 14 minut.",
+            "question_focus": "Technické - automatizace",
+            "next_question": "" if done else "Jak bys navrhl/a strategii pro flaky testy?",
+            "done": done,
+        }
+    return {
+        "feedback": "Demo mode: no AI was called. Solid start, but the answer is missing a measurable Result (the R in STAR).",
+        "strengths": ["Clear situation", "Concrete actions"],
+        "gaps": ["Add a measurable result", "Mention the impact on the team"],
+        "improved_answer": "At TrustPay I [insert metric] ... which cut CI runtime from 38 to 14 minutes.",
+        "question_focus": "Technical - automation",
+        "next_question": "" if done else "How would you design a strategy for flaky tests?",
+        "done": done,
+    }
+
+
+def interview_turn(
+    *,
+    output_lang: str,
+    candidate_answer: str,
+    is_opening: bool,
+) -> tuple[dict, str]:
+    """Run one Mock Interview turn.
+
+    Returns ``(turn, error)``. ``turn`` is the structured InterviewTurn
+    dict (feedback / strengths / gaps / improved_answer / next_question /
+    question_focus / done). On failure ``turn`` is ``{}`` and ``error`` is
+    a human-readable message the caller renders in-place.
+    """
+    question_count = sum(1 for m in STATE.interview_messages if m.get("kind") == "question")
+    logger_service.log_event(
+        "INFO", "ai_career.pipeline", "interview_turn_start",
+        output_lang=output_lang, is_opening=is_opening,
+        questions_so_far=question_count, demo_mode=STATE.demo_mode,
+    )
+
+    if STATE.demo_mode:
+        turn = _demo_interview_turn(
+            output_lang=output_lang, is_opening=is_opening, question_count=question_count,
+        )
+        logger_service.log_event(
+            "INFO", "ai_career.pipeline", "interview_turn_demo_done",
+            done=turn.get("done"),
+        )
+        return turn, ""
+
+    user = prompts.build_interview_user(
+        output_lang=output_lang,
+        target_role=_interview_target_role(),
+        candidate_context=_interview_candidate_context(),
+        job_context=_interview_job_context(),
+        transcript=_interview_transcript(),
+        candidate_answer=candidate_answer,
+        is_opening=is_opening,
+    )
+    try:
+        result = ai_provider.run(
+            system=prompts.INTERVIEW_SYSTEM,
+            user=user,
+            schema=schema.INTERVIEW_TURN_SCHEMA,
+            schema_name="interview_turn",
+            max_output_tokens=900,
+            temperature=0.5,
+        )
+    except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "interview_turn_provider_error", exc,
+        )
+        return {}, str(exc)
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "interview_turn_unexpected_error", exc,
+        )
+        return {}, str(exc) or "unexpected error"
+
+    payload = result.data if isinstance(result.data, dict) else {}
+    if not payload:
+        logger_service.log_event(
+            "ERROR", "ai_career.pipeline", "interview_turn_empty_response",
+        )
+        return {}, "Provider returned an empty response."
+
+    turn = {
+        "feedback": _clean_ai_text((payload.get("feedback") or "").strip()),
+        "strengths": [str(x).strip() for x in (payload.get("strengths") or []) if str(x).strip()][:4],
+        "gaps": [str(x).strip() for x in (payload.get("gaps") or []) if str(x).strip()][:4],
+        "improved_answer": _clean_ai_text((payload.get("improved_answer") or "").strip()),
+        "next_question": _clean_ai_text((payload.get("next_question") or "").strip()),
+        "question_focus": (payload.get("question_focus") or "").strip(),
+        "done": bool(payload.get("done")),
+    }
+    logger_service.log_event(
+        "INFO", "ai_career.pipeline", "interview_turn_done",
+        done=turn["done"], has_question=bool(turn["next_question"]),
+        feedback_chars=len(turn["feedback"]),
+    )
+    return turn, ""
+
+
+def append_interview_message(kind: str, **fields) -> None:
+    """Append a turn to the in-memory interview transcript."""
+    entry = {"kind": kind, "time": datetime.now().strftime("%H:%M")}
+    entry.update(fields)
+    STATE.interview_messages.append(entry)
 
 
 # Save complete analysis ------------------------------------------------------

@@ -130,93 +130,78 @@ def _module_card(
     open_label: str,
     on_open,
 ) -> ClickFrame:
-    # Whole card is clickable - clicking anywhere navigates straight
-    # into the section, not only the primary button (see image 2 / 3
-    # in feat/dashboard-and-ui-fixes - the user wanted the description
-    # card to be the affordance, not just the small Otevrit pill).
+    # Each tile carries its section's own accent (Career = violet, Jobs =
+    # indigo, LinkedIn = blue, Finance = green, Bug Report = orange). The
+    # whole card is clickable - clicking anywhere navigates into the
+    # section, not just the button.
+    accent = section.accent or theme.primary
+    accent_theme = theme.with_accent(accent)
+
     card = ClickFrame()
     card.setObjectName("DashboardModuleCard")
     card.setStyleSheet(
         f"""
         ClickFrame#DashboardModuleCard {{
-            background-color: {theme.surface};
+            background-color: qlineargradient(
+                x1:0, y1:0, x2:0.85, y2:1,
+                stop:0 {rgba(accent, 0.20)},
+                stop:0.55 {theme.surface},
+                stop:1 {theme.surface}
+            );
             border: 1px solid {theme.border};
             border-radius: 16px;
         }}
         ClickFrame#DashboardModuleCard:hover {{
-            border: 1px solid {theme.primary};
-            background-color: {rgba(theme.primary, 0.06)};
+            border: 1px solid {accent};
         }}
         """
     )
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     card.clicked.connect(lambda: on_open(section))
 
-    layout = vbox(spacing=10, margins=(18, 18, 18, 18))
+    layout = vbox(spacing=12, margins=(20, 20, 20, 20))
     card.setLayout(layout)
 
-    head_row = QFrame()
-    head_row.setStyleSheet("background: transparent;")
-    wrap_label_slot(head_row)
-    head_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
-    head_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-    head_row.setLayout(head_layout)
-
+    # Larger accent icon tile sitting on its own line at the top.
     icon_box = QFrame()
-    icon_box.setFixedSize(44, 44)
+    icon_box.setFixedSize(52, 52)
     icon_box.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 12px;"
+        f"background-color: {rgba(accent, 0.16)}; border-radius: 14px;"
     )
     icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_box.setLayout(icon_layout)
     icon_layout.addWidget(
-        IconLabel(section.icon, color=theme.primary, size=22),
+        IconLabel(section.icon, color=accent, size=26),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
-    head_layout.addWidget(icon_box, 0, Qt.AlignmentFlag.AlignTop)
+    layout.addWidget(icon_box)
 
-    # Drop the intermediate ``title_holder`` QFrame and put the title +
-    # subtitle labels directly into a tiny vbox attached to the row.
-    # ``QFrame`` does not override ``heightForWidth`` so the previous
-    # nesting reported the unwrapped single-line size to ``head_row``,
-    # which capped ``card`` at ~230 px and clipped the wrapped Czech
-    # descriptions. Talking to the QLabel directly via
-    # ``QFontMetrics`` plus ``setMinimumHeight`` is the reliable fix.
-    title_col = QFrame()
-    title_col.setStyleSheet("background: transparent;")
-    wrap_label_slot(title_col)
-    title_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
-    title_col.setLayout(title_layout)
     title_label = TitleLabel(
-        section.label(lang), theme=theme, size=15, weight=QFont.Weight.Bold,
+        section.label(lang), theme=theme, size=16, weight=QFont.Weight.Bold,
     )
     wrap_label_slot(title_label)
-    title_layout.addWidget(title_label)
+    layout.addWidget(title_label)
+
     subtitle = _section_subtitle(section, lang)
     if subtitle:
         subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
         wrap_label_slot(subtitle_label)
-        # Reserve just enough height for common Czech wraps without
-        # forcing every card into the tall 260 px shape from the old grid.
+        # Reserve enough height for common Czech wraps so cards in the
+        # same grid row stay visually aligned.
         metrics = QFontMetrics(subtitle_label.font())
-        approx_lines = max(2, min(5, (len(subtitle) // 34) + 1))
+        approx_lines = max(2, min(5, (len(subtitle) // 30) + 1))
         subtitle_label.setMinimumHeight(metrics.lineSpacing() * approx_lines)
-        title_layout.addWidget(subtitle_label)
-    head_layout.addWidget(title_col, 1, Qt.AlignmentFlag.AlignTop)
-    head_layout.setStretch(1, 1)
+        layout.addWidget(subtitle_label)
 
-    layout.addWidget(head_row)
-    layout.addSpacing(8)
+    layout.addStretch(1)
 
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
     btn_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     btn_row.setLayout(btn_layout)
-    open_btn = PrimaryButton(open_label, theme=theme, icon=Icons.ARROW_FORWARD)
-    # Route both the button click and the whole-card click through the
-    # same handler so callers see a single ``open_section_clicked``
-    # event regardless of where the user pressed.
+    # ``accent_theme`` so the "Open" button matches the tile accent.
+    open_btn = PrimaryButton(open_label, theme=accent_theme, icon=Icons.ARROW_FORWARD)
     open_btn.clicked.connect(lambda: on_open(section))
     btn_layout.addWidget(open_btn)
     btn_layout.addStretch(1)
@@ -360,7 +345,9 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         grid.setVerticalSpacing(14)
 
         try:
-            columns = 3
+            # Two columns now that the dashboard has a right-hand context
+            # panel - three would squeeze the cards on a 1220 px window.
+            columns = 2
             for index, section in enumerate(sections):
                 card = _module_card(
                     theme,

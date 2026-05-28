@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.components.shared_profile_banner import open_my_profile, shared_profile_banner
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.theme import rgba
@@ -34,6 +35,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
+from src.sections.ai_linkedin import shared_profile
 from src.sections.ai_linkedin.data import audience_options, tone_options
 from src.sections.ai_linkedin.refs import REFS, safe
 from src.sections.ai_linkedin.state import (
@@ -527,6 +529,28 @@ def build_setup_tab(
     inner.setStyleSheet(f"background-color: {theme.bg};")
     inner_layout = vbox(spacing=14, margins=(24, 18, 24, 18))
     inner.setLayout(inner_layout)
+    # Shared career profile - reuse the once-uploaded CV / LinkedIn export
+    # / GitHub / notes. The upload zones in the inputs step stay editable
+    # for a per-run override.
+    if shared_profile.has_shared():
+        def _use_shared() -> None:
+            shared_profile.apply()
+            _rebuild_preserving_scroll()
+
+        _applied = shared_profile.is_applied()
+        inner_layout.addWidget(
+            shared_profile_banner(
+                theme,
+                title=txt["shared_title_applied"] if _applied else txt["shared_title_use"],
+                summary=shared_profile.build_summary(txt),
+                edit_label=txt["shared_edit_btn"],
+                on_edit=open_my_profile,
+                use_label=txt["shared_use_btn"],
+                on_use=_use_shared,
+                applied=_applied,
+            )
+        )
+
     inner_layout.addWidget(_step_targeting(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))
     inner_layout.addWidget(_step_inputs(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))
     inner_layout.addWidget(_step_output(theme, lang, txt, _on_state_change, _rebuild_preserving_scroll))

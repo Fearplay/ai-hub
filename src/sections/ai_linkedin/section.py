@@ -15,5 +15,6 @@ SECTION = Section(
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,
+    accent="#0A66C2",  # LinkedIn brand blue
     order=25,
 )

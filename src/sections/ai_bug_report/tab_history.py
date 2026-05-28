@@ -28,7 +28,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -40,15 +39,13 @@ from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
-    DangerButton,
     FlowLayout,
     GhostButton,
     IconLabel,
+    IconOnlyButton,
     MutedLabel,
     Pill,
-    SubtleLabel,
     TitleLabel,
-    custom_label,
     hbox,
     vbox,
     wrap_label_slot,
@@ -206,12 +203,16 @@ def _row(
             border: 1px solid {theme.border};
             border-radius: 12px;
         }}
+        QFrame#BugReportHistoryRow:hover {{
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
         """
     )
-    layout = hbox(spacing=12, margins=(16, 12, 16, 12))
+    layout = hbox(spacing=14, margins=(16, 14, 14, 14))
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
+    # Left: accent "bug" badge.
     badge = QFrame()
     badge.setFixedSize(40, 40)
     badge.setStyleSheet(
@@ -226,88 +227,100 @@ def _row(
     )
     layout.addWidget(badge)
 
+    # Middle: title on its own line, severity chips, then a single muted
+    # meta line (timestamp + attachment summary). Keeping each concern on
+    # its own row stops the long Czech titles from fighting the timestamp
+    # for width and lets the card breathe.
     info = QFrame()
     info.setStyleSheet("background: transparent;")
     wrap_label_slot(info)
-    il = vbox(spacing=4, margins=(0, 0, 0, 0))
+    il = vbox(spacing=6, margins=(0, 0, 0, 0))
     info.setLayout(il)
 
-    title_row = QFrame()
-    title_row.setStyleSheet("background: transparent;")
-    wrap_label_slot(title_row)
-    title_layout = hbox(spacing=10, margins=(0, 0, 0, 0))
-    title_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-    title_row.setLayout(title_layout)
-    title_layout.addWidget(
-        BodyLabel(title, theme=theme, size=13, weight=QFont.Weight.DemiBold), 1,
+    il.addWidget(
+        BodyLabel(title, theme=theme, size=14, weight=QFont.Weight.DemiBold)
     )
-    if timestamp:
-        title_layout.addWidget(SubtleLabel(timestamp, theme=theme, size=11))
-    il.addWidget(title_row)
 
-    chips_row = QFrame()
-    chips_row.setStyleSheet("background: transparent;")
-    wrap_label_slot(chips_row)
-    chips_layout = FlowLayout(chips_row, margin=0, h_spacing=6, v_spacing=6)
-    chips_row.setLayout(chips_layout)
-    if severity:
-        chips_layout.addWidget(
-            Pill(
-                text=severity_label(lang, severity).upper(),
-                bg=_SEVERITY_COLORS.get(severity, theme.primary),
-                fg="#FFFFFF",
+    if severity or priority or reproducibility:
+        chips_row = QFrame()
+        chips_row.setStyleSheet("background: transparent;")
+        wrap_label_slot(chips_row)
+        chips_layout = FlowLayout(chips_row, margin=0, h_spacing=6, v_spacing=6)
+        chips_row.setLayout(chips_layout)
+        if severity:
+            chips_layout.addWidget(
+                Pill(
+                    text=severity_label(lang, severity).upper(),
+                    bg=_SEVERITY_COLORS.get(severity, theme.primary),
+                    fg="#FFFFFF",
+                )
             )
-        )
-    if priority:
-        chips_layout.addWidget(
-            Pill(text=priority_label(lang, priority), bg=theme.surface_2, fg=theme.text)
-        )
-    if reproducibility:
-        chips_layout.addWidget(
-            Pill(
-                text=reproducibility_label(lang, reproducibility),
-                bg=theme.surface_2,
-                fg=theme.text_muted,
+        if priority:
+            chips_layout.addWidget(
+                Pill(
+                    text=priority_label(lang, priority),
+                    bg=theme.surface_2,
+                    fg=theme.text,
+                )
             )
-        )
-    chips_layout.addWidget(
-        custom_label(
-            _attachment_summary(txt, image_count, doc_count),
-            color=theme.text_muted,
-            size=11,
-            weight=QFont.Weight.DemiBold,
-        )
-    )
-    il.addWidget(chips_row)
+        if reproducibility:
+            chips_layout.addWidget(
+                Pill(
+                    text=reproducibility_label(lang, reproducibility),
+                    bg=theme.surface_2,
+                    fg=theme.text_muted,
+                )
+            )
+        il.addWidget(chips_row)
+
+    meta_bits = [
+        bit
+        for bit in (timestamp, _attachment_summary(txt, image_count, doc_count))
+        if bit
+    ]
+    if meta_bits:
+        meta_label = MutedLabel("  ·  ".join(meta_bits), theme=theme, size=11)
+        wrap_label_slot(meta_label)
+        il.addWidget(meta_label)
 
     layout.addWidget(info, 1)
 
+    # Right: compact icon-only actions (tooltips carry the labels) instead
+    # of three stacked full-text buttons that crowded the card before.
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")
     actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-    actions_layout = QGridLayout(actions)
-    actions_layout.setContentsMargins(0, 0, 0, 0)
-    actions_layout.setHorizontalSpacing(8)
-    actions_layout.setVerticalSpacing(8)
-    action_row = 0
+    actions_layout = hbox(spacing=4, margins=(0, 0, 0, 0))
+    actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    actions.setLayout(actions_layout)
     if word_path:
-        word_btn = GhostButton(
-            txt["history_open_word_btn"], theme=theme, icon=Icons.DESCRIPTION_OUTLINED,
+        word_btn = IconOnlyButton(
+            Icons.DESCRIPTION_OUTLINED,
+            color=theme.text_muted,
+            size=18,
+            bg_hover=theme.surface_2,
+            tooltip=txt["history_open_word_btn"],
         )
         word_btn.clicked.connect(lambda _checked=False, p=word_path: on_open_word(p))
-        actions_layout.addWidget(word_btn, action_row, 0)
-        action_row += 1
-    open_btn = GhostButton(
-        txt["history_open_folder_btn"], theme=theme, icon=Icons.FOLDER_OPEN,
+        actions_layout.addWidget(word_btn)
+    open_btn = IconOnlyButton(
+        Icons.FOLDER_OPEN,
+        color=theme.text_muted,
+        size=18,
+        bg_hover=theme.surface_2,
+        tooltip=txt["history_open_folder_btn"],
     )
     open_btn.clicked.connect(lambda _checked=False: on_open_folder(folder))
-    actions_layout.addWidget(open_btn, action_row, 0)
-    action_row += 1
-    delete_btn = DangerButton(
-        txt["history_delete_btn"], theme=theme, icon=Icons.DELETE_OUTLINE,
+    actions_layout.addWidget(open_btn)
+    delete_btn = IconOnlyButton(
+        Icons.DELETE_OUTLINE,
+        color="#EF4444",
+        size=18,
+        bg_hover=rgba("#EF4444", 0.12),
+        tooltip=txt["history_delete_btn"],
     )
     delete_btn.clicked.connect(lambda _checked=False: on_delete(folder))
-    actions_layout.addWidget(delete_btn, action_row, 0)
+    actions_layout.addWidget(delete_btn)
     layout.addWidget(actions)
 
     return row

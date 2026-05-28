@@ -28,12 +28,14 @@ from src.sections.ai_jobs.how_to import open_jobs_how_to
 from src.sections.ai_jobs.refs import REFS
 from src.sections.ai_jobs.state import (
     STATE,
+    TAB_APPLICATIONS,
     TAB_HISTORY,
     TAB_RESULTS,
     TAB_SETUP,
     TAB_SKILL_GAP,
 )
 from src.sections.ai_jobs.strings import s
+from src.sections.ai_jobs.tab_applications import build_applications_tab
 from src.sections.ai_jobs.tab_history import build_history_tab
 from src.sections.ai_jobs.tab_results import build_results_tab
 from src.sections.ai_jobs.tab_setup import build_setup_tab
@@ -96,6 +98,8 @@ def _build_tab_body(theme: Theme, lang: str) -> QWidget:
     try:
         if tab == TAB_RESULTS:
             return build_results_tab(theme, lang)
+        if tab == TAB_APPLICATIONS:
+            return build_applications_tab(theme, lang)
         if tab == TAB_SKILL_GAP:
             return build_skill_gap_tab(theme, lang)
         if tab == TAB_HISTORY:
@@ -319,6 +323,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             enabled=[
                 _tab_enabled(TAB_SETUP),
                 _tab_enabled(TAB_RESULTS),
+                _tab_enabled(TAB_APPLICATIONS),
                 _tab_enabled(TAB_SKILL_GAP),
                 _tab_enabled(TAB_HISTORY),
             ],

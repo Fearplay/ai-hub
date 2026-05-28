@@ -33,8 +33,9 @@ from typing import Optional
 # is missing -> past runs".
 TAB_SETUP = 0
 TAB_RESULTS = 1
-TAB_SKILL_GAP = 2
-TAB_HISTORY = 3
+TAB_APPLICATIONS = 2
+TAB_SKILL_GAP = 3
+TAB_HISTORY = 4
 
 
 # Work-mode filter (radios under the location field).
@@ -247,6 +248,13 @@ class JobsState:
     last_dropped: int = 0  # how many AI hits failed URL verification
     last_inactive: int = 0  # how many survivors are still listed but closed
 
+    # Cross-run "new since last run" tagging (see ``seen_urls.py``).
+    # ``last_new_count`` is how many of the current results were never
+    # surfaced in an earlier run for this search; ``show_new_only`` is
+    # the Results-tab filter toggle that hides previously-seen postings.
+    last_new_count: int = 0
+    show_new_only: bool = False
+
     # Aggregated skill-gap analysis. Populated by Pass 5 of the
     # pipeline. Shape:
     #   {"top_required": [{"skill": str, "count": int}, ...],
@@ -310,6 +318,8 @@ class JobsState:
         self.last_search_at = ""
         self.last_dropped = 0
         self.last_inactive = 0
+        self.last_new_count = 0
+        self.show_new_only = False
         self.skill_gap = {}
         self.activity = "ready"
         self.last_error = ""

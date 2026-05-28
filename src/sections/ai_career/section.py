@@ -15,5 +15,6 @@ SECTION = Section(
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
     build_context=build_context,
+    accent="#7C5CFC",  # violet - the career/CV brand colour
     order=20,
 )

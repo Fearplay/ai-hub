@@ -18,11 +18,17 @@ launch. **AI CV / Career**, **AI LinkedIn Profile Builder**, **AI
 Finance**, **AI Job Search**, and **AI Bug Report** are fully wired to
 OpenAI / Anthropic (the new section also speaks the providers'
 **vision** APIs so screenshots are processed alongside the text
-prompt). The work-in-progress sections (AI Legal, AI Business, AI
-Marketing, AI Study, AI Documents, AI Doc Assistant) are kept in the
-repo so the architecture stays documented but are currently **hidden
-from the sidebar** - see [Hidden UI](#hidden-ui) below to flip them
-back on.
+prompt). A new **My Profile** hub lets you upload your CV / LinkedIn
+export / GitHub once and reuse it across AI Career, AI Job Search, and
+AI LinkedIn; those three also hand work to each other with **one-click
+handoffs** (Tailor CV / Tune LinkedIn from a job result), AI Job Search
+now keeps an **Applications tracker** and flags postings that are **new
+since your last run**, and AI Career adds an interactive **Mock
+Interview** simulator with STAR feedback. The work-in-progress sections
+(AI Legal, AI Business, AI Marketing, AI Study, AI Documents, AI Doc
+Assistant) are kept in the repo so the architecture stays documented
+but are currently **hidden from the sidebar** - see
+[Hidden UI](#hidden-ui) below to flip them back on.
 
 The left sidebar is **drag-and-drop reorderable** - grab the small grip
 on the right of any primary AI section and drop it where you want. The
@@ -148,6 +154,14 @@ binary**: `dist\AIHub.exe`. To cut a release:
      opt-in flags,
    * `~/AI Hub/history.json` - run index for every section's saved
      outputs,
+   * `~/AI Hub/career_profile.json` - the shared **My Profile** data
+     (CV / LinkedIn / GitHub parsed once, reused across the career
+     sections),
+   * `~/AI Hub/applications.json` - the AI Job Search **Applications
+     tracker** (status / deadline / notes / next step per role),
+   * `~/AI Hub/jobs_seen_urls.json` - per-search "seen" URL sidecar
+     powering the **new since last run** badge + cross-run dedup,
+   * `~/AI Hub/jobs_profiles.json` - saved AI Job Search profiles,
    * `~/AI Hub/logs/app.log` - rotating debug log (1 MB, 4 files),
    * `outputs/<section>/<run-slug>-<timestamp>/` - the actual run
      artefacts (DOCX, PDF, HTML, MD), created next to the .exe.
@@ -350,6 +364,7 @@ ai-hub/
     │   ├── document_chip.py
     │   ├── header.py             # generic (icon, title, subtitle, ? button)
     │   ├── how_to_dialog.py      # generic "How to use" modal
+    │   ├── shared_profile_banner.py # "Using your shared profile" banner (Career / Jobs / LinkedIn)
     │   ├── tab_bar.py            # generic tab strip
     │   ├── chat_message.py
     │   ├── chat_input.py
@@ -366,6 +381,9 @@ ai-hub/
     │   ├── job_scraper.py         # URL -> job posting text
     │   ├── file_parser.py         # PDF / DOCX / TXT / HTML -> plain text
     │   ├── github_client.py       # public profile + repo summary
+    │   ├── career_profile_store.py # shared My Profile JSON (~/AI Hub/career_profile.json)
+    │   ├── applications_store.py  # job application tracker JSON (~/AI Hub/applications.json)
+    │   ├── handoff.py             # one-shot cross-section payload mailbox (no cross-imports)
     │   ├── exporter.py            # Markdown -> MD / HTML / DOCX / PDF (clickable PDF links)
     │   ├── html_pdf.py            # Playwright print-to-PDF (Modern CV + themed Cover Letter)
     │   ├── store.py               # JSON-backed history & run output paths
@@ -374,8 +392,9 @@ ai-hub/
     │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY groups)
     │   ├── _base.py              # Section dataclass (with nav_group)
     │   ├── SECTION_TEMPLATE/     # template for a new section (READ ME)
-    │   ├── dashboard/
-    │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter)
+    │   ├── dashboard/            # navigation grid + recent-runs / cost / quick-actions panel
+    │   ├── my_profile/           # shared career profile hub (upload once, reuse everywhere)
+    │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter, mock interview)
     │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
     │   ├── ai_legal/              # AI-wired chat (multi-format upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
@@ -420,15 +439,23 @@ Details in
   every toggle, so the previously-3-second freeze on the AI Career section
   is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, follow-up-question + market-data toggles, debug logs.
+- **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) plus a right context panel modelled on a "continue where you left off" feed: **recent saved runs** (from `store.list_runs()`, each click reopens the section), the live **session cost** (calls / input + output tokens / total $), and **quick actions**.
+- **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once**:
+  - one structured LLM extraction (cached) into a unified `CAREER_PROFILE_SCHEMA` - identity, contact, summary, skills, experiences, education, certifications, languages, projects, links.
+  - the parsed profile is persisted to `~/AI Hub/career_profile.json` and rendered as a read-only card; a **Build / re-extract** button refreshes it.
+  - **Demo mode** (shared `...` pattern + orange `DEMO` pill) fills a curated profile offline; demo data is only written to disk if you explicitly build while demo is on.
+  - the right panel shows the profile status + quick jumps to AI Career / AI Job Search / AI LinkedIn. EN + CS throughout.
+- **Shared profile + one-click handoffs** - AI Career, AI Job Search, and AI LinkedIn each show a *"Using your shared profile"* banner (with **Edit profile** / **Use it here**) that prefills their setup from `career_profile.json` without re-uploading. From an AI Job Search result card, **Tailor CV** sends the posting to AI Career and **Tune LinkedIn** seeds AI LinkedIn's target role - both jump straight to the right section via the in-memory `handoff` service (no cross-section imports).
 - **AI CV / Career** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
-  - **Form mode** (Version A) - 4 stage tabs (Setup -> Match -> Documents -> History):
+  - **Form mode** (Version A) - 5 stage tabs (Setup -> Match -> Documents -> Mock Interview -> History):
     - scrape the job posting from a URL or paste the text,
     - upload the resume (PDF / DOCX / TXT / HTML), optionally a LinkedIn export,
     - GitHub URL with automatic fetch of public repos,
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
     - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/ai_career/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
+  - **Mock Interview** tab - an interactive simulator that reuses the chat bubbles: the AI plays the hiring manager for your target role, asks one tailored question at a time, then coaches each answer with the **STAR** method (feedback + what worked + what to improve + a grounded **model answer**) before asking a follow-up. Runs through `ai_provider.run` with a structured `INTERVIEW_TURN_SCHEMA`; demo mode plays canned turns for free.
   - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
 - **AI LinkedIn Profile Builder** - same two-mode shell (Chat / Builder), aimed at a complete LinkedIn rewrite:
   - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
@@ -456,7 +483,9 @@ Details in
   - **Active-target over-fetch + top-up** - the result count is the number of **applicable** postings you want, not "raw URLs the AI returned". Internally the discovery pass over-fetches by 2x (capped at 40 candidates), every URL is verified, and a follow-up discovery pass automatically fires (with the already-seen URLs blacklisted in the prompt) if too many came back closed. Result: when you ask for 15, you get up to 15 you can actually apply to, plus a small "closed listings" section for transparency.
   - **Optional clarifying questions** - same shared modal as AI CV / Career and AI Bug Report. When **Settings -> Ask follow-up questions** is on, the pipeline runs a quick Pass 0 *before* discovery to ask 0-8 short questions about the brief (seniority mismatches, contradictory keywords, missing remote / salary preference, *"you mentioned Python but not how many years"*). Answers feed into the discovery, per-position scoring, and skill-gap prompts so the model stops guessing. The footer hosts a "Let the AI ask clarifying questions first" toggle and a one-line hint; flip it off when you want a one-click run.
   - **Five-pass pipeline**: (1) hosted **web-search discovery** with rich context (search mode, exclusions, age, sources, salary, optional already-seen-URL list for top-up), (2) strict-JSON **extraction** into `JOB_LISTINGS_SCHEMA` (title / company / location / posted / posted-ISO / salary text / contract type / summary / URL / source / work-mode), (3) **URL verification** through the shared `job_scraper` (httpx + Playwright fallback - listings that return HTTP 404 / 410, redirect to a "Stránka neexistuje" placeholder, or whose page still loads but says "No longer accepting applications" / "Už nepřijímá žádosti" / "Tahle nabídka už je pryč" / "Nabídka není up-to-date" stay visible with a red **"No longer hiring"** badge whose tooltip shows the matched phrase or HTTP status, so you can verify the detection by clicking through; only hard scrape crashes - DNS / SSL / firewall - are dropped), (4) **per-position match scoring** in parallel (`MATCH_SCHEMA`: match %, matched / missing skills, AI recommendation - active postings only, closed ones skip scoring to save tokens), (5) **aggregate skill-gap analysis** (`SKILL_GAP_SCHEMA`: most-requested skills with counts, your strong sides, missing skills, 1-6 actionable advice paragraphs). Pass 4 + 5 are skipped automatically when no profile material was provided.
-  - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable.
+  - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable. Each card also has **Tailor CV** / **Tune LinkedIn** handoff buttons and a **Save to applications** button.
+  - **New since last run + cross-run dedup** - each search is diffed against a per-search "seen URLs" sidecar (`~/AI Hub/jobs_seen_urls.json`, keyed by a keyword slug). Postings you have not seen before get a green **New** pill, the Results header shows an *"X new since last run"* badge, and an **All / New** toggle filters the list down to fresh openings. Within-run dedup already collapses duplicate URLs; this adds the cross-run layer.
+  - **Applications tracker tab** - a lightweight tracker backed by `~/AI Hub/applications.json`. Save any posting from Results, then manage it here: a **status** dropdown (Found -> CV ready -> Applied -> Interview -> Offer -> Rejected / Accepted / Archived), a free-text **deadline**, **next step**, **notes**, links to the posting / any attached documents, and delete. Saves are deduped by URL so the same posting is never tracked twice.
   - **Skill gap tab** with the top requirements, strong sides, missing skills, and advice paragraphs from Pass 5.
   - **Gated tabs + menu-only demo** - Results / Skill gap stay disabled until a run produced data. Curated demo results live in the header `...` menu instead of a visible demo button.
   - **Saved search profiles** persisted to `~/AI Hub/jobs_profiles.json` - one-click rerun, edit, duplicate, delete. No external dependency, no extra secret.
@@ -482,9 +511,10 @@ Details in
 
 ## Hidden UI
 
-The sidebar currently only shows the five production-ready sections
-(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search, AI Bug Report)
-plus **Settings** under the divider. Work-in-progress sections still live in
+The sidebar currently shows the production-ready sections
+(My Profile, AI LinkedIn, AI CV / Career, AI Finance, AI Job Search,
+AI Bug Report) plus the **Dashboard** and **Settings** under the
+divider. Work-in-progress sections still live in
 the repo but their `section.py` sets `hidden=True` so
 `src/sections/__init__.py` skips them when building
 `PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
