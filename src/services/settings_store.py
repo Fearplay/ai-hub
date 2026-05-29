@@ -150,6 +150,22 @@ def set_lang(value: str) -> bool:
     return set_value("lang", value)
 
 
+def get_profile_name() -> str:
+    """Display name shown in the sidebar account card.
+
+    Empty by default - the card paints a "set your name" placeholder
+    until the user types one in Settings. We never seed a fake name
+    (the old hard-coded "Jan Novák" mock is gone).
+    """
+    value = get("profile_name", "")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def set_profile_name(value: str) -> bool:
+    """Persist the sidebar display name (trimmed; empty string clears it)."""
+    return set_value("profile_name", (value or "").strip())
+
+
 def get_sidebar_order() -> list[str]:
     """Return the user's preferred order for the primary sidebar list.
 

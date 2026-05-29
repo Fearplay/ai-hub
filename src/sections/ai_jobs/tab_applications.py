@@ -295,20 +295,35 @@ def _application_card(theme: Theme, txt: dict, app: dict) -> QFrame:
 def _empty_state(theme: Theme, txt: dict) -> QWidget:
     holder = QFrame()
     holder.setStyleSheet("background: transparent;")
-    layout = vbox(spacing=8, margins=(40, 60, 40, 60))
-    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    # NB: centre the block with stretches rather than a layout-level
+    # ``AlignCenter`` + per-item ``AlignHCenter``. An item alignment flag
+    # makes QBoxLayout fall back to the label's single-line ``sizeHint``
+    # instead of its ``heightForWidth``, which clipped the wrapped second
+    # line of ``apps_empty_desc`` (see the "Uložit do žádostí" overflow).
+    layout = vbox(spacing=8, margins=(40, 48, 40, 48))
     holder.setLayout(layout)
-    layout.addWidget(
-        IconLabel(Icons.WORK_OUTLINE, color=theme.text_muted, size=42),
-        alignment=Qt.AlignmentFlag.AlignHCenter,
-    )
+    layout.addStretch(1)
+
+    icon_row = hbox(spacing=0, margins=(0, 0, 0, 0))
+    icon_row.addStretch(1)
+    icon_row.addWidget(IconLabel(Icons.WORK_OUTLINE, color=theme.text_muted, size=42))
+    icon_row.addStretch(1)
+    layout.addLayout(icon_row)
+
     title_label = TitleLabel(txt["apps_empty_title"], theme=theme, size=16)
     title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(title_label)
+
     desc = MutedLabel(txt["apps_empty_desc"], theme=theme, size=12)
     desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
     desc.setMaximumWidth(460)
-    layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
+    desc_row = hbox(spacing=0, margins=(0, 0, 0, 0))
+    desc_row.addStretch(1)
+    desc_row.addWidget(desc)
+    desc_row.addStretch(1)
+    layout.addLayout(desc_row)
+
+    layout.addStretch(1)
     return holder
 
 

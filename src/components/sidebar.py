@@ -40,6 +40,7 @@ from src.components.nav_item import (
     nav_item_handle,
     reorderable_nav_item,
 )
+from src.components.profile_card import profile_card
 from src.components.theme_toggle import theme_toggle
 from src.i18n import t
 from src.qt.icons import Icons
@@ -242,10 +243,14 @@ def sidebar(
     _build_primary(primary_layout)
     middle_layout.addWidget(primary_holder)
 
+    # Secondary nav (Dashboard / Settings) sits *directly under* the AI
+    # module list, separated by a thin divider - per the user request the
+    # Dashboard + Settings rows live right below "AI Životopis / Kariéra"
+    # instead of being pushed to the very bottom of the sidebar.
     if SECONDARY_SECTIONS:
         sep_holder = QFrame()
         sep_holder.setStyleSheet("background: transparent;")
-        sep_layout = vbox(spacing=0, margins=(4, 6, 4, 4))
+        sep_layout = vbox(spacing=0, margins=(4, 4, 4, 4))
         sep_holder.setLayout(sep_layout)
         sep_layout.addWidget(HSeparator(theme))
         middle_layout.addWidget(sep_holder)
@@ -257,15 +262,36 @@ def sidebar(
         _build_secondary(secondary_layout)
         middle_layout.addWidget(secondary_holder)
 
+    # Account card - sits *below* the Dashboard / Settings group ("the
+    # profile goes under Settings"). Clicking it opens the (nav-hidden)
+    # profile view; the name comes from Settings (empty placeholder until
+    # the user sets one).
+    profile_holder = QFrame()
+    profile_holder.setStyleSheet("background: transparent;")
+    profile_layout = vbox(spacing=0, margins=(0, 8, 0, 4))
+    profile_holder.setLayout(profile_layout)
+    profile_layout.addWidget(
+        profile_card(
+            theme,
+            lang,
+            on_open=lambda: on_section_change("my_profile"),
+            on_settings=lambda: on_section_change("settings"),
+        )
+    )
+    middle_layout.addWidget(profile_holder)
+
+    # Flexible gap below everything keeps the module list + tools + account
+    # card packed at the top; the footer toggles stay pinned to the bottom.
     middle_layout.addStretch(1)
+
     scroll.setWidget(middle)
     root.addWidget(scroll, 1)
 
     # footer ----------------------------------------------------------------
-    # The previously-rendered ``user_card(theme)`` ("Jan Novák" mock) is
-    # intentionally omitted - the app currently has no real user identity
-    # and the placeholder added visual noise. Re-add it here once the
-    # auth story lands. See README "Hidden UI" note.
+    # The account chip now lives at the bottom of the scrollable middle
+    # (see ``profile_card`` above, just over the Dashboard / Settings
+    # group); the footer keeps only the language + theme toggles pinned
+    # to the very bottom.
     footer = QFrame()
     footer.setStyleSheet("background: transparent;")
     footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))

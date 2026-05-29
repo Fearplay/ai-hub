@@ -40,6 +40,7 @@ from src.sections.ai_jobs.tab_history import build_history_tab
 from src.sections.ai_jobs.tab_results import build_results_tab
 from src.sections.ai_jobs.tab_setup import build_setup_tab
 from src.sections.ai_jobs.tab_skill_gap import build_skill_gap_tab
+from src.services import applications_store
 from src.services import logger as logger_service
 from src.services import store
 from src.theme import Theme
@@ -116,9 +117,27 @@ def _build_tab_body(theme: Theme, lang: str) -> QWidget:
         raise
 
 
+def _has_applications() -> bool:
+    """Whether the tracker has at least one saved application.
+
+    Drives the enabled state of the Applications tab - an empty tracker
+    means there is nothing to show, so the tab stays disabled until the
+    user saves a posting from the Results tab.
+    """
+    try:
+        return applications_store.count() > 0
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_jobs.view", "applications_count_failed", exc,
+        )
+        return False
+
+
 def _tab_enabled(index: int) -> bool:
     if index == TAB_RESULTS:
         return STATE.has_results()
+    if index == TAB_APPLICATIONS:
+        return _has_applications()
     if index == TAB_SKILL_GAP:
         return STATE.has_skill_gap()
     if index == TAB_HISTORY:

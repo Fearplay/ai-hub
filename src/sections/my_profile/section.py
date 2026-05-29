@@ -23,4 +23,10 @@ SECTION = Section(
     build_context=build_context,
     accent=ACCENT,  # teal - the shared-profile brand colour
     order=10,
+    # Not a standalone nav row anymore - it is reached through the
+    # account card pinned at the bottom of the sidebar (see
+    # ``src/components/profile_card.py``). ``hidden`` keeps the section
+    # in ``SECTION_BY_KEY`` so ``set_section("my_profile")`` still works
+    # and it drops out of both the sidebar nav and the dashboard grid.
+    hidden=True,
 )

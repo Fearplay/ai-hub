@@ -1,0 +1,78 @@
+---
+description: How to version AI Hub - bump src/version.py with Semantic Versioning whenever you ship user-visible change
+alwaysApply: true
+---
+
+# AI Hub - application versioning (Semantic Versioning)
+
+The app version is shown to the user in **Settings -> About** and comes
+from a single source of truth:
+
+```python
+# src/version.py
+__version__ = "MAJOR.MINOR.PATCH"
+```
+
+Never hard-code a version anywhere else. Anything that needs it (the
+About card, the window title, future build metadata, installers) imports
+`__version__` / `APP_NAME` / `version_string()` from `src.version`.
+
+## Hard rules - never break these
+
+1. **`src/version.py` is the only place the version lives.** Do not copy
+   the number into the README, `build_exe.bat`, a section string, or a
+   constant somewhere else. Read it from `src.version` at runtime.
+2. **Follow Semantic Versioning `MAJOR.MINOR.PATCH`** (https://semver.org).
+   The number is three dot-separated non-negative integers, no `v`
+   prefix in the file (the `v` is added for display by
+   `version_string()`).
+3. **Bump the version in the same task that ships the change**, before
+   rebuilding the `.exe`. A user-visible change that goes out with a
+   stale version number is a bug.
+4. **Bump exactly one component, and reset the lower ones to 0:**
+   - **MAJOR** (`1.4.2 -> 2.0.0`): a breaking / incompatible change -
+     you removed or renamed a section, changed the on-disk format under
+     `~/AI Hub/`, dropped a settings key, or otherwise broke something a
+     returning user relied on.
+   - **MINOR** (`1.4.2 -> 1.5.0`): a new backward-compatible feature -
+     a new section under `src/sections/<key>/`, a new Settings option, a
+     new pipeline step, a new export format. Nothing existing breaks.
+   - **PATCH** (`1.4.2 -> 1.4.3`): a backward-compatible bug fix or
+     polish - a layout/UX fix, a typo, a crash fix, a tweak to copy. No
+     new feature, nothing breaks.
+5. **Pre-1.0 (`0.y.z`) is the "still stabilising" phase.** While
+   `MAJOR` is `0`, the API/UX is allowed to move faster: treat a
+   breaking change as a **MINOR** bump (`0.4.2 -> 0.5.0`) and a
+   feature/fix as a **PATCH** bump (`0.4.2 -> 0.4.3`). Move to `1.0.0`
+   only when the user declares the app stable.
+6. **One bump per shippable task.** If a single task adds a feature
+   *and* fixes a bug, take the highest-ranked bump that applies (feature
+   beats fix, break beats feature). Do not bump twice.
+
+## Decision shortcut
+
+```
+Did you break something a returning user depended on?  -> MAJOR  (or MINOR while 0.x)
+Else, did you add a new capability?                    -> MINOR  (or PATCH while 0.x)
+Else (fix / polish / copy / refactor)?                 -> PATCH
+```
+
+## Workflow at the end of a task
+
+1. Decide the bump class from the change you made (table above).
+2. Edit the single line in `src/version.py`.
+3. If the version-bump is the *only* code change (rare), still rebuild
+   per [build-exe.mdc](build-exe.mdc) so the shipped `.exe` reports the
+   right number in Settings -> About.
+4. Mention the new version in the README changelog-style note only if
+   the user asks - the READMEs are not a per-patch changelog (see
+   [docs-and-license.mdc](docs-and-license.mdc)).
+
+## Don't
+
+- Do **not** invent a different scheme (date-based, build numbers,
+  `1.0.0.0` four-part). Stick to three-part SemVer.
+- Do **not** decrease the version, reuse a number, or skip ahead
+  several numbers to "look further along".
+- Do **not** add a `v` into `__version__` itself - the file holds the
+  bare number; display code adds the `v`.

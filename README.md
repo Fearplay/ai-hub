@@ -34,9 +34,11 @@ The left sidebar is **drag-and-drop reorderable** - grab the small grip
 on the right of any primary AI section and drop it where you want. The
 new order applies instantly (no restart, no language toggle). Order
 persists in `~/AI Hub/settings.json` so your layout survives restarts.
-The secondary group (**Dashboard** above **Settings**) stays pinned
-below the divider; both are non-reorderable so the navigation grid and
-the settings page are always one click away.
+The secondary group (**Dashboard** above **Settings**) sits directly
+below the AI module list under a thin divider; both are non-reorderable
+so the navigation grid and the settings page are always one click away.
+The **account card** sits just below that group (avatar + your display
+name).
 
 ## Requirements
 
@@ -151,7 +153,7 @@ binary**: `dist\AIHub.exe`. To cut a release:
    under the user's home directory, which is the **single** place the
    app writes anything outside the install folder:
    * `~/AI Hub/settings.json` - provider / model / sidebar order /
-     opt-in flags,
+     display name / opt-in flags,
    * `~/AI Hub/history.json` - run index for every section's saved
      outputs,
    * `~/AI Hub/career_profile.json` - the shared **My Profile** data
@@ -200,12 +202,16 @@ If you only want dev mode (no exe), steps 1-2 plus
 
 The **Settings** section (in the sidebar, under the divider) lets you:
 
+- set the **display name** shown in the sidebar account card (empty by
+  default - leave it blank to hide the name),
 - pick the AI provider (**OpenAI** / **Anthropic**) and model
   (defaults: `gpt-5.4-mini` / `claude-haiku-4-5`),
 - save and delete API keys (OpenAI / Anthropic / GitHub),
 - toggle the global "ask follow-up questions before running" preference,
 - enable / disable live market data for AI Finance,
-- open the **Debug logs** viewer (view / copy / clear / open folder).
+- open the **Debug logs** viewer (view / copy / clear / open folder),
+- see the running app version under **About** (single source of truth:
+  `src/version.py`, bumped with Semantic Versioning).
 
 Keys are not written to disk in plain text. The app pushes them to the
 OS-native secret store via [`keyring`](https://pypi.org/project/keyring/):
@@ -359,7 +365,8 @@ ai-hub/
     ├── components/               # shared UI primitives (PySide6)
     │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
-    │   ├── user_card.py
+    │   ├── profile_card.py       # account chip pinned at the sidebar bottom (opens My Profile)
+    │   ├── user_card.py          # legacy account chip, no longer wired into the sidebar
     │   ├── section_card.py
     │   ├── document_chip.py
     │   ├── header.py             # generic (icon, title, subtitle, ? button)
@@ -440,7 +447,7 @@ Details in
   is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, follow-up-question + market-data toggles, debug logs.
 - **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) plus a right context panel modelled on a "continue where you left off" feed: **recent saved runs** (from `store.list_runs()`, each click reopens the section), the live **session cost** (calls / input + output tokens / total $), and **quick actions**.
-- **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once**:
+- **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once** (opened from the account card pinned at the bottom of the sidebar - it is no longer a standalone nav row):
   - one structured LLM extraction (cached) into a unified `CAREER_PROFILE_SCHEMA` - identity, contact, summary, skills, experiences, education, certifications, languages, projects, links.
   - the parsed profile is persisted to `~/AI Hub/career_profile.json` and rendered as a read-only card; a **Build / re-extract** button refreshes it.
   - **Demo mode** (shared `...` pattern + orange `DEMO` pill) fills a curated profile offline; demo data is only written to disk if you explicitly build while demo is on.
@@ -512,9 +519,10 @@ Details in
 ## Hidden UI
 
 The sidebar currently shows the production-ready sections
-(My Profile, AI LinkedIn, AI CV / Career, AI Finance, AI Job Search,
+(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search,
 AI Bug Report) plus the **Dashboard** and **Settings** under the
-divider. Work-in-progress sections still live in
+divider, and the **account card** pinned at the bottom (which opens
+**My Profile**). Work-in-progress sections still live in
 the repo but their `section.py` sets `hidden=True` so
 `src/sections/__init__.py` skips them when building
 `PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
@@ -535,10 +543,18 @@ To bring any of them back, open the section's `section.py` and set
 `hidden=False` (or just delete the line). The `Section.hidden` field
 defaults to `False`.
 
-The sidebar also drops the **user card** ("Jan Novák" placeholder) for
-the same reason - there is no real user identity yet. Re-add it in
-`src/components/sidebar.py` once auth lands; the helper still lives in
-`src/components/user_card.py`.
+The sidebar pins an **account card** (`src/components/profile_card.py`)
+just **below** the Dashboard / Settings group: avatar + your display
+name + a `⋮` menu. The name is empty by default - the card shows a
+"Set your name" prompt until you type one in **Settings -> Your name**
+(persisted in `~/AI Hub/settings.json`). There is no hard-coded mock
+name and no "Pro version" plan label anymore. Clicking the card opens
+the **My Profile** view; the `⋮` menu offers quick links to My Profile
+and Settings. Because `my_profile`'s `section.py` now sets `hidden=True`,
+the profile is no longer its own nav row and is dropped from the
+dashboard module grid - the account card is the single entry point.
+The older `src/components/user_card.py` helper is kept for reference but
+is no longer wired into the sidebar.
 
 ## Not yet (deliberately)
 

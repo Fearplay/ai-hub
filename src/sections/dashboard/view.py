@@ -17,10 +17,9 @@ import importlib
 from functools import lru_cache
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -30,12 +29,13 @@ from src.components.header import header
 from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
+    ClampLabel,
     ClickFrame,
     IconLabel,
     MutedLabel,
+    Pill,
     PrimaryButton,
     TitleLabel,
-    custom_label,
     hbox,
     vbox,
     wrap_label_slot,
@@ -78,48 +78,36 @@ def _section_subtitle(section: Section, lang: str) -> str:
     return _section_subtitle_for_key(section.key, lang)
 
 
-def _stat_card(theme: Theme, *, count: int, label: str) -> QWidget:
-    card = QFrame()
-    card.setObjectName("DashboardStatCard")
-    card.setStyleSheet(
-        f"""
-        QFrame#DashboardStatCard {{
-            background-color: {theme.surface};
-            border: 1px solid {theme.border};
-            border-radius: 14px;
-        }}
-        """
-    )
-    card.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-    layout = hbox(spacing=14, margins=(18, 16, 22, 16))
-    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    card.setLayout(layout)
+def _modules_pill_text(count: int, lang: str, txt: dict) -> str:
+    """Short count chip copy, e.g. ``5 modulů`` / ``5 modules``.
 
-    icon_box = QFrame()
-    icon_box.setFixedSize(44, 44)
-    icon_box.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.14)}; border-radius: 12px;"
-    )
-    icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
-    icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    icon_box.setLayout(icon_layout)
-    icon_layout.addWidget(
-        IconLabel(Icons.AUTO_AWESOME, color=theme.primary, size=22),
-        alignment=Qt.AlignmentFlag.AlignCenter,
-    )
-    layout.addWidget(icon_box)
+    Czech has three plural forms (1 / 2-4 / 5+); English has two. We
+    pick the right key per language and fall back to ``modules_pill_other``
+    so a missing key never raises.
+    """
+    if lang == "cs":
+        if count == 1:
+            key = "modules_pill_one"
+        elif 2 <= count <= 4:
+            key = "modules_pill_few"
+        else:
+            key = "modules_pill_other"
+    else:
+        key = "modules_pill_one" if count == 1 else "modules_pill_other"
+    template = txt.get(key) or txt.get("modules_pill_other") or "{n}"
+    return template.format(n=count)
 
-    text_holder = QFrame()
-    text_holder.setStyleSheet("background: transparent;")
-    wrap_label_slot(text_holder)
-    text_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
-    text_holder.setLayout(text_layout)
-    text_layout.addWidget(
-        custom_label(str(count), color=theme.text, size=22, weight=QFont.Weight.Bold)
+
+def _count_pill(theme: Theme, *, count: int, lang: str, txt: dict) -> QWidget:
+    return Pill(
+        text=_modules_pill_text(count, lang, txt),
+        bg=rgba(theme.primary, 0.14),
+        fg=theme.primary,
+        icon=Icons.AUTO_AWESOME,
+        icon_size=14,
+        radius=12,
+        padding=(6, 12, 6, 12),
     )
-    text_layout.addWidget(MutedLabel(label, theme=theme, size=12))
-    layout.addWidget(text_holder, 1)
-    return card
 
 
 def _module_card(
@@ -143,13 +131,13 @@ def _module_card(
         f"""
         ClickFrame#DashboardModuleCard {{
             background-color: qlineargradient(
-                x1:0, y1:0, x2:0.85, y2:1,
-                stop:0 {rgba(accent, 0.20)},
-                stop:0.55 {theme.surface},
+                x1:0, y1:0, x2:1, y2:0,
+                stop:0 {rgba(accent, 0.16)},
+                stop:0.5 {theme.surface},
                 stop:1 {theme.surface}
             );
             border: 1px solid {theme.border};
-            border-radius: 16px;
+            border-radius: 14px;
         }}
         ClickFrame#DashboardModuleCard:hover {{
             border: 1px solid {accent};
@@ -157,55 +145,62 @@ def _module_card(
         """
     )
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    card.setMinimumHeight(84)
     card.clicked.connect(lambda: on_open(section))
 
-    layout = vbox(spacing=12, margins=(20, 20, 20, 20))
+    # Full-width "list" row: icon | title + blurb | Open button. A single
+    # column of full-width rows always fills the centre column, so there is
+    # never an empty trailing grid cell or an empty band on the right -
+    # regardless of how wide the window gets.
+    layout = hbox(spacing=16, margins=(16, 14, 18, 14))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     card.setLayout(layout)
 
-    # Larger accent icon tile sitting on its own line at the top.
     icon_box = QFrame()
-    icon_box.setFixedSize(52, 52)
+    icon_box.setFixedSize(48, 48)
     icon_box.setStyleSheet(
-        f"background-color: {rgba(accent, 0.16)}; border-radius: 14px;"
+        f"background-color: {rgba(accent, 0.16)}; border-radius: 13px;"
     )
     icon_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
     icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon_box.setLayout(icon_layout)
     icon_layout.addWidget(
-        IconLabel(section.icon, color=accent, size=26),
+        IconLabel(section.icon, color=accent, size=24),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
     layout.addWidget(icon_box)
 
-    title_label = TitleLabel(
-        section.label(lang), theme=theme, size=16, weight=QFont.Weight.Bold,
+    # Single-line title + blurb, each clamped to one line. ClampLabel wraps
+    # internally, so its minimum width is just the widest word - that lets
+    # the text column shrink and elide on narrow windows instead of forcing
+    # the whole row wider than the centre column (which pushed the Open
+    # button and the count pill off the right edge). The row never wraps,
+    # so AlignVCenter is safe and the card height stays uniform.
+    text_col = QFrame()
+    text_col.setStyleSheet("background: transparent;")
+    wrap_label_slot(text_col)
+    text_layout = vbox(spacing=3, margins=(0, 0, 0, 0))
+    text_col.setLayout(text_layout)
+    text_layout.addWidget(
+        ClampLabel(
+            section.label(lang),
+            color=theme.text,
+            size=15,
+            weight=QFont.Weight.Bold,
+            lines=1,
+        )
     )
-    wrap_label_slot(title_label)
-    layout.addWidget(title_label)
-
     subtitle = _section_subtitle(section, lang)
     if subtitle:
-        subtitle_label = MutedLabel(subtitle, theme=theme, size=12)
-        wrap_label_slot(subtitle_label)
-        # Reserve enough height for common Czech wraps so cards in the
-        # same grid row stay visually aligned.
-        metrics = QFontMetrics(subtitle_label.font())
-        approx_lines = max(2, min(5, (len(subtitle) // 30) + 1))
-        subtitle_label.setMinimumHeight(metrics.lineSpacing() * approx_lines)
-        layout.addWidget(subtitle_label)
+        text_layout.addWidget(
+            ClampLabel(subtitle, color=theme.text_muted, size=12, lines=1)
+        )
+    layout.addWidget(text_col, 1)
 
-    layout.addStretch(1)
-
-    btn_row = QFrame()
-    btn_row.setStyleSheet("background: transparent;")
-    btn_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
-    btn_row.setLayout(btn_layout)
     # ``accent_theme`` so the "Open" button matches the tile accent.
     open_btn = PrimaryButton(open_label, theme=accent_theme, icon=Icons.ARROW_FORWARD)
     open_btn.clicked.connect(lambda: on_open(section))
-    btn_layout.addWidget(open_btn)
-    btn_layout.addStretch(1)
-    layout.addWidget(btn_row)
+    layout.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
     return card
 
@@ -309,63 +304,68 @@ def build_view(theme: Theme, lang: str) -> QWidget:
 
     sections = _other_visible_sections()
     count = len(sections)
-    count_label = txt["module_count_one"] if count == 1 else txt["module_count_other"]
 
-    stats_row = QFrame()
-    stats_row.setStyleSheet("background: transparent;")
-    stats_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
-    stats_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    stats_row.setLayout(stats_layout)
-    stats_layout.addWidget(_stat_card(theme, count=count, label=count_label))
-    stats_layout.addStretch(1)
-    body_layout.addWidget(stats_row)
+    # Section heading with a compact count chip pinned to the right.
+    # This replaces the standalone "5 modules" stat card that used to
+    # float above the grid and waste a whole row of vertical space.
+    title_row = QFrame()
+    title_row.setStyleSheet("background: transparent;")
+    title_row_layout = hbox(spacing=12, margins=(0, 4, 0, 0))
+    title_row_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    title_row.setLayout(title_row_layout)
 
-    grid_title_holder = QFrame()
-    grid_title_holder.setStyleSheet("background: transparent;")
-    gth_layout = vbox(spacing=4, margins=(0, 4, 0, 0))
-    grid_title_holder.setLayout(gth_layout)
-    gth_layout.addWidget(
+    title_col = QFrame()
+    title_col.setStyleSheet("background: transparent;")
+    wrap_label_slot(title_col)
+    title_col_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    title_col.setLayout(title_col_layout)
+    title_col_layout.addWidget(
         TitleLabel(
             txt["modules_grid_title"], theme=theme, size=15, weight=QFont.Weight.Bold,
         )
     )
-    gth_layout.addWidget(MutedLabel(txt["modules_grid_desc"], theme=theme, size=12))
-    body_layout.addWidget(grid_title_holder)
+    title_col_layout.addWidget(
+        MutedLabel(txt["modules_grid_desc"], theme=theme, size=12)
+    )
+    title_row_layout.addWidget(title_col, 1)
+    title_row_layout.addWidget(
+        _count_pill(theme, count=count, lang=lang, txt=txt),
+        0,
+        Qt.AlignmentFlag.AlignTop,
+    )
+    body_layout.addWidget(title_row)
 
     if not sections:
         body_layout.addWidget(
             _empty_state(theme, title=txt["empty_title"], desc=txt["empty_desc"])
         )
     else:
-        grid_holder = QFrame()
-        grid_holder.setStyleSheet("background: transparent;")
-        grid = QGridLayout(grid_holder)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(14)
+        list_holder = QFrame()
+        list_holder.setStyleSheet("background: transparent;")
+        list_layout = vbox(spacing=12, margins=(0, 0, 0, 0))
+        list_holder.setLayout(list_layout)
 
         try:
-            # Two columns now that the dashboard has a right-hand context
-            # panel - three would squeeze the cards on a 1220 px window.
-            columns = 2
-            for index, section in enumerate(sections):
-                card = _module_card(
-                    theme,
-                    section,
-                    lang=lang,
-                    open_label=txt["open_btn"],
-                    on_open=_on_open_section,
+            # One full-width row per module. A single column fills the centre
+            # column at any width, so there is no empty trailing cell / empty
+            # band on the right that the old 2-column grid left behind.
+            for section in sections:
+                list_layout.addWidget(
+                    _module_card(
+                        theme,
+                        section,
+                        lang=lang,
+                        open_label=txt["open_btn"],
+                        on_open=_on_open_section,
+                    )
                 )
-                grid.addWidget(card, index // columns, index % columns)
-            for col in range(columns):
-                grid.setColumnStretch(col, 1)
         except Exception as exc:
             logger_service.log_exception(
-                "dashboard.view", "build_grid_failed", exc,
+                "dashboard.view", "build_list_failed", exc,
             )
             raise
 
-        body_layout.addWidget(grid_holder)
+        body_layout.addWidget(list_holder)
 
     body_layout.addStretch(1)
 

@@ -33,9 +33,11 @@ Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Nové pořadí se
 projeví okamžitě (žádný restart, žádné přepínání jazyka). Pořadí se
 ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
-Sekundární skupina (**Dashboard** nad **Nastavením**) zůstává pevně
-pod oddělovačem; obě sekce se nedají přerovnávat, takže navigační
-mřížka i stránka s nastavením jsou vždy na jedno kliknutí.
+Sekundární skupina (**Dashboard** nad **Nastavením**) sedí přímo
+**pod** seznamem AI modulů pod tenkým oddělovačem; obě sekce se nedají
+přerovnávat, takže navigační mřížka i stránka s nastavením jsou vždy na
+jedno kliknutí. **Karta účtu** (avatar + tvoje jméno) sedí hned pod
+touto skupinou.
 
 ## Požadavky
 
@@ -144,7 +146,7 @@ Doručitelný balík pro běžné uživatele je **jeden samostatný binár**:
    adresáři vytvoří `~/AI Hub/`, což je **jediné** místo, kam aplikace
    mimo install folder zapisuje:
    * `~/AI Hub/settings.json` - provider / model / pořadí sidebaru /
-     opt-in přepínače,
+     zobrazované jméno / opt-in přepínače,
    * `~/AI Hub/history.json` - index uložených výstupů ze všech sekcí,
    * `~/AI Hub/career_profile.json` - sdílená data **Mého profilu**
      (CV / LinkedIn / GitHub naparsované jednou a sdílené napříč
@@ -191,11 +193,15 @@ Pokud chceš jen pustit dev mód (bez exe), stačí krok 1-2 plus
 
 Sekce **Nastavení** (v sidebaru pod oddělovačem) umožní:
 
+- nastavit **zobrazované jméno** v kartě účtu v sidebaru (defaultně
+  prázdné - nech prázdné, ať se jméno nezobrazuje),
 - vybrat AI providera (**OpenAI** / **Anthropic**) a model (default `gpt-5.4-mini` / `claude-haiku-4-5`),
 - uložit a smazat API klíče (OpenAI / Anthropic / GitHub),
 - přepnout, zda se mají automaticky ptát doplňující otázky před spuštěním pipeline,
 - zapnout / vypnout živá tržní data v AI Finance,
-- otevřít **Debug logy** (zobrazit / zkopírovat / vymazat / otevřít složku).
+- otevřít **Debug logy** (zobrazit / zkopírovat / vymazat / otevřít složku),
+- vidět verzi aplikace v sekci **O aplikaci** (jediný zdroj pravdy:
+  `src/version.py`, mění se podle sémantického verzování).
 
 Klíče se neukládají na disk v plain textu. Aplikace je pošle do nativního úložiště OS přes balíček [`keyring`](https://pypi.org/project/keyring/):
 
@@ -356,7 +362,8 @@ ai-hub/
     ├── components/               # sdílené UI prvky (PySide6)
     │   ├── sidebar.py            # iteruje registr sekcí, header / scroll / footer
     │   ├── nav_item.py
-    │   ├── user_card.py
+    │   ├── profile_card.py       # karta účtu připnutá dole v sidebaru (otevírá Můj profil)
+    │   ├── user_card.py          # starší karta účtu, do sidebaru se už nepoužívá
     │   ├── section_card.py
     │   ├── document_chip.py
     │   ├── header.py             # generický (icon, title, subtitle, ? button)
@@ -436,7 +443,7 @@ Detaily v
   bývalá ~3sekundová pauza na sekci AI Career je pryč.
 - **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, přepínače pro doplňující otázky a živá tržní data, debug logy
 - **Dashboard** - výchozí úvodní obrazovka. Přepracované dlaždice s akcentovým gradientem (jedna na každý viditelný AI modul) plus pravý kontextový panel ve stylu „pokračuj, kdes přestal": **nedávné uložené běhy** (z `store.list_runs()`, kliknutí znovu otevře sekci), živé **náklady relace** (volání / vstupní + výstupní tokeny / celkem $) a **rychlé akce**.
-- **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou**:
+- **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou** (otevírá se z karty účtu připnuté dole v sidebaru - už to není samostatná položka v navigaci):
   - jedna strukturovaná LLM extrakce (cachovaná) do sjednoceného `CAREER_PROFILE_SCHEMA` - identita, kontakt, shrnutí, dovednosti, zkušenosti, vzdělání, certifikace, jazyky, projekty, odkazy.
   - naparsovaný profil se ukládá do `~/AI Hub/career_profile.json` a vykreslí jako read-only karta; tlačítko **Sestavit / přeextrahovat** ho obnoví.
   - **Demo režim** (sdílený `...` vzor + oranžová pilulka `DEMO`) naplní připravený profil offline; demo data se na disk zapíšou jen když sestavíš profil se zapnutým demem.
@@ -507,9 +514,10 @@ Detaily v
 
 ## Schované UI
 
-V sidebaru jsou teď produkční sekce (Můj profil, AI LinkedIn,
+V sidebaru jsou teď produkční sekce (AI LinkedIn,
 AI Životopis / Kariéra, AI Finance, AI Hledání práce, AI Bug Report)
-plus **Dashboard** a **Nastavení** pod oddělovačem. Rozpracované sekce
+plus **Dashboard** a **Nastavení** pod oddělovačem a **karta účtu**
+připnutá dole (která otevírá **Můj profil**). Rozpracované sekce
 v repu zůstávají,
 ale jejich `section.py` má `hidden=True`, takže
 `src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
@@ -530,10 +538,18 @@ Když chceš kteroukoli z nich vrátit, otevři `section.py` dané sekce a
 nastav `hidden=False` (nebo ten řádek prostě smaž). Pole
 `Section.hidden` defaultně `False`.
 
-Sidebar taky aktuálně nevykresluje **uživatelskou kartu** ("Jan Novák"
-placeholder) - žádná reálná identita zatím neexistuje. Až přibyde
-auth, vrať volání zpátky do `src/components/sidebar.py`; helper pořád
-žije v `src/components/user_card.py`.
+Sidebar připíná **pod** skupinu Dashboard / Nastavení **kartu účtu**
+(`src/components/profile_card.py`): avatar + zobrazované jméno + menu
+`⋮`. Jméno je defaultně prázdné - karta ukáže výzvu „Nastav si jméno",
+dokud ho nezadáš v **Nastavení -> Tvoje jméno** (ukládá se do
+`~/AI Hub/settings.json`). Žádné natvrdo zadrátované jméno ani štítek
+tarifu („Pro verze") už tam nejsou. Klik na kartu otevře **Můj
+profil**; menu `⋮` nabízí rychlé odkazy na Můj profil a Nastavení.
+Protože `section.py` u `my_profile` má teď
+`hidden=True`, profil už není samostatná položka navigace a mizí
+i z dlaždic na dashboardu - karta účtu je jediný vstupní bod. Starší
+helper `src/components/user_card.py` zůstává pro referenci, ale do
+sidebaru se už nepoužívá.
 
 ## Co zatím **neumí** (záměrně)
 

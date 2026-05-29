@@ -357,6 +357,40 @@ class AIHubApp(QMainWindow):
             except Exception:
                 pass
 
+    @staticmethod
+    def _context_panel_width(widget: QWidget) -> int:
+        """Return the fixed width of the context panel, or 0 (wide layout).
+
+        The right column is always a ``setFixedWidth(336)`` panel - either
+        returned directly (the dashboard's ``build_context``) or wrapped in
+        a plain ``QFrame`` (most AI sections wrap ``context_panel_shell``).
+        We therefore look at the widget *and* its descendants for the first
+        sizeable fixed-width frame (``min == max``, well above the tiny
+        fixed-size avatars / icon tiles) and use its width. ``wide_layout``
+        sections return a bare placeholder with no such frame, so we fall
+        back to 0 and the centre column spans the full width.
+        """
+        for candidate in (widget, *widget.findChildren(QWidget)):
+            mn, mx = candidate.minimumWidth(), candidate.maximumWidth()
+            if mn == mx and 200 <= mx < 16777215:
+                return mx
+        return 0
+
+    def _sync_context_holder_width(self, widget: QWidget) -> None:
+        """Pin the right-hand holder to the context panel's real width.
+
+        The context panel is ``setFixedWidth(336)`` but its ``sizeHint``
+        is wider (a non-wrapping child reports a ~468 px preferred width).
+        ``QStackedLayout`` sizes the holder to that inflated hint, which
+        reserved a ~130 px empty strip to the *right* of the panel (the
+        band the user circled). Pinning the holder to the panel's own
+        fixed width makes the panel sit flush against the window edge,
+        while ``wide_layout`` sections collapse the holder to zero.
+        """
+        if self._context_holder is None:
+            return
+        self._context_holder.setFixedWidth(self._context_panel_width(widget))
+
     def _swap_context(self, new_widget: QWidget) -> None:
         if self._context_layout is None:
             return
@@ -364,6 +398,7 @@ class AIHubApp(QMainWindow):
         self._context_widget = new_widget
         self._context_layout.addWidget(new_widget)
         self._context_layout.setCurrentWidget(new_widget)
+        self._sync_context_holder_width(new_widget)
         if old_widget is not None:
             self._context_layout.removeWidget(old_widget)
             old_widget.deleteLater()
@@ -512,6 +547,7 @@ class AIHubApp(QMainWindow):
         self._context_layout = context_stack
         self._context_widget = context_view
         layout.addWidget(context_holder)
+        self._sync_context_holder_width(context_view)
 
         self.setCentralWidget(central)
 

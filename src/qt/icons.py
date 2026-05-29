@@ -219,6 +219,7 @@ class Icons:
     MIC_NONE_OUTLINED = "mdi6.microphone-outline"
     MOOD_OUTLINED = "mdi6.emoticon-outline"
     MORE_HORIZ = "mdi6.dots-horizontal"
+    MORE_VERT = "mdi6.dots-vertical"
     NOTES = "mdi6.note-text-outline"
     OPEN_IN_FULL = "mdi6.arrow-expand"
     OPEN_IN_NEW = "mdi6.open-in-new"

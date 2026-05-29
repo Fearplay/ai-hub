@@ -682,6 +682,102 @@ def _general_card(
     )
 
 
+def _profile_card(theme: Theme, lang: str, txt: dict) -> QFrame:
+    """Set the sidebar account name (empty by default = no name shown)."""
+    body = QFrame()
+    body.setStyleSheet("background: transparent; border: none;")
+    body_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+
+    body_layout.addWidget(
+        SubtleLabel(txt["profile_name_label"], theme=theme, size=11, weight=QFont.Weight.Medium)
+    )
+
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    rl = hbox(spacing=8, margins=(0, 0, 0, 0))
+    rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(rl)
+
+    name_field = themed_line_edit(theme, placeholder=txt["profile_name_hint"])
+    name_field.setText(settings_store.get_profile_name())
+    rl.addWidget(name_field, 1)
+
+    save_btn = PrimaryButton(txt["profile_save_btn"], theme=theme, icon=Icons.SAVE_OUTLINED)
+    rl.addWidget(save_btn)
+    body_layout.addWidget(row)
+
+    status = SubtleLabel("", theme=theme, size=12, weight=QFont.Weight.Medium)
+    body_layout.addWidget(status)
+
+    def _save() -> None:
+        value = (name_field.text() or "").strip()
+        settings_store.set_profile_name(value)
+        status.setText(txt["profile_saved"] if value else txt["profile_cleared"])
+        status.setStyleSheet("color: #22C55E; background: transparent;")
+        logger_service.log_event(
+            "INFO", "settings.view", "profile_name_saved", has_name=bool(value),
+        )
+        # Repaint the sidebar account card with the new name right away.
+        try:
+            from src.app import request_sidebar_refresh
+
+            request_sidebar_refresh()
+        except Exception as exc:
+            logger_service.log_exception(
+                "settings.view", "profile_name_refresh_failed", exc,
+            )
+
+    save_btn.clicked.connect(_save)
+    name_field.returnPressed.connect(_save)
+
+    return _card(
+        theme,
+        icon=Icons.PERSON_OUTLINE,
+        title=txt["profile_card_title"],
+        desc=txt["profile_card_desc"],
+        body=body,
+    )
+
+
+def _about_card(theme: Theme, lang: str, txt: dict) -> QFrame:
+    """Show the running app version (single source: ``src/version.py``)."""
+    from src.version import APP_NAME, __version__
+
+    body = QFrame()
+    body.setStyleSheet("background: transparent; border: none;")
+    body_layout = vbox(spacing=4, margins=(0, 0, 0, 0))
+    body.setLayout(body_layout)
+
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    rl = hbox(spacing=10, margins=(2, 2, 2, 2))
+    rl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(rl)
+    rl.addWidget(
+        BodyLabel(txt["about_version_label"], theme=theme, size=13, weight=QFont.Weight.DemiBold)
+    )
+    rl.addStretch(1)
+    rl.addWidget(
+        custom_label(
+            f"{APP_NAME} v{__version__}",
+            color=theme.primary,
+            size=13,
+            weight=QFont.Weight.DemiBold,
+            selectable=True,
+        )
+    )
+    body_layout.addWidget(row)
+
+    return _card(
+        theme,
+        icon=Icons.INFO_OUTLINE,
+        title=txt["about_card_title"],
+        desc=txt["about_card_desc"],
+        body=body,
+    )
+
+
 def _logs_view(
     theme: Theme,
     txt: dict,
@@ -878,9 +974,11 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             inner.setStyleSheet(f"background-color: {theme.bg};")
             il = vbox(spacing=16, margins=(24, 20, 24, 20))
             inner.setLayout(il)
+            il.addWidget(_profile_card(theme, lang, txt))
             il.addWidget(_provider_card(theme, lang, txt, on_provider_change=_rerender_body))
             il.addWidget(_keys_card(theme, lang, txt))
             il.addWidget(_general_card(theme, lang, txt, on_view_logs=_show_logs))
+            il.addWidget(_about_card(theme, lang, txt))
             il.addStretch(1)
             scroll.setWidget(inner)
             body_layout.addWidget(scroll)
