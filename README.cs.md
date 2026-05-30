@@ -99,6 +99,26 @@ synchronní obálka nad knihovnou
 `win32clipboard` / `pbcopy` / `xclip` / `tkinter`), takže Copy / Paste
 tlačítka jsou robustní bez ohledu na stav Qt session.
 
+## UI smoke testy (vývoj)
+
+Qt layout může v kódu vypadat OK a přesto se za běhu ořízne nebo
+překrývá, takže repo obsahuje malý screenshotovací nástroj
+`tools/smoke_shot.py`. Nabootuje skutečnou aplikaci, přepne na sekci,
+vykreslí ji v zadané velikosti (defaultně minimum okna **1220x760**, kde
+se oříznutí pravého okraje projeví nejdřív) a uloží PNG do
+git-ignorované složky `.smoke/`:
+
+```bash
+python tools/smoke_shot.py --section ai_linkedin --lang cs --theme dark
+python tools/smoke_shot.py --section my_profile  --lang en --theme light
+python tools/smoke_shot.py --all          # každá viditelná sekce
+```
+
+Otevři PNG a zkontroluj, že se nic neořízne, nepřekrývá ani není
+přeškrtnuté - v obou motivech i jazycích - pak oprav a vyfoť znovu.
+Nástroj žije mimo `src/`, takže se nikdy nezabalí do `.exe`. Pravidlo
+`.cursor/rules/ui-smoke-test.mdc` to dělá povinné u každé změny UI.
+
 ## Build .exe (Windows)
 
 Pro distribuci na Windows je v rootu repa skript [`build_exe.bat`](build_exe.bat). Dvojklikem vyrobí jediný soubor `dist\AIHub.exe`, který si uživatel pustí na čistém PC bez Pythonu / venv / SDK.

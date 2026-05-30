@@ -1,0 +1,74 @@
+---
+description: Screenshot-based UI smoke test - run tools/smoke_shot.py and eyeball the result whenever you add or change a section view, build_context, or shared UI widget
+alwaysApply: true
+---
+
+# AI Hub - UI smoke test (screenshot every UI change)
+
+Qt layouts look fine in code and still clip, overlap, or strike text
+through at runtime. So **every time you add or change UI** you MUST
+render it and look at the pixels before declaring the task done. Do not
+rely on reading the code alone.
+
+## When this is mandatory
+
+Any change that builds Qt widgets: a new/edited `build_view` or
+`build_context`, a new section under `src/sections/<key>/`, or a shared
+widget under `src/components/**` / `src/qt/widgets.py`. Pure
+backend/prompt/string edits with no widget change are exempt.
+
+## How to run
+
+```bash
+# Default = the app minimum size (1220x760), where right-edge clipping
+# shows up first. Screenshots land in the git-ignored .smoke/ folder.
+python tools/smoke_shot.py --section ai_linkedin --lang cs --theme dark
+python tools/smoke_shot.py --section my_profile  --lang en --theme light
+python tools/smoke_shot.py --all          # every visible section
+```
+
+Then **open the PNG** in `.smoke/` and look. To inspect a suspect spot
+at the pixel level, crop + magnify with Qt:
+
+```python
+from PySide6.QtGui import QImage
+img = QImage(r".smoke\ai_linkedin-cs-dark-1220x760.png")
+img.copy(img.width() - 230, 0, 230, img.height()).scaled(690, img.height() * 3).save(r".smoke\crop.png")
+```
+
+## What to check (fix, then re-shoot until clean)
+
+- Nothing is clipped at the right edge or cut off at the bottom.
+- No widget overlaps another (icon over text, status icon over a wrapped
+  second line - see [qt-text.mdc](qt-text.mdc)).
+- No text is struck through, elided unexpectedly, or truncated mid-word.
+- Scrollbars sit in the gutter and do not crowd cards' rounded corners.
+- Looks correct in **both** themes (`--theme dark`/`light`) and **both**
+  languages (`--lang cs`/`en`); Czech is longer and clips first.
+
+The harness prints `SMOKE_PASS` when it saved every screenshot, but that
+only means the render succeeded - the visual check is still on you.
+
+## Clean up when you're done (mandatory)
+
+Smoke screenshots are **throwaway debugging artefacts**, not deliverables.
+Once you have eyeballed them and the UI looks right, **delete them** - do
+not leave PNGs lying around in `.smoke/` after the task. Wipe the folder
+as the last step, after the visual check passes:
+
+```bash
+rmdir /s /q .smoke      REM Windows
+rm -rf .smoke           # macOS / Linux
+```
+
+Re-running the harness recreates `.smoke/` automatically, so deleting it
+is always safe. Also delete any throwaway crop / diagnostic scripts you
+dropped in there while investigating.
+
+## Don't
+
+- Do not commit `.smoke/` (it is git-ignored).
+- Do not leave the screenshots behind once the check is done - wipe
+  `.smoke/` at the end of the task (see above).
+- Do not move the harness under `src/` - it must stay in `tools/` so the
+  PyInstaller hooks and section auto-discovery never pick it up.

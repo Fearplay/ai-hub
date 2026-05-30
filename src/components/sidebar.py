@@ -287,14 +287,7 @@ def sidebar(
     profile_holder.setStyleSheet("background: transparent;")
     profile_layout = vbox(spacing=0, margins=(12, 0, 12, 6))
     profile_holder.setLayout(profile_layout)
-    profile_layout.addWidget(
-        profile_card(
-            theme,
-            lang,
-            on_open=lambda: on_section_change("my_profile"),
-            on_settings=lambda: on_section_change("settings"),
-        )
-    )
+    profile_layout.addWidget(profile_card(theme, lang))
     footer_layout.addWidget(profile_holder)
 
     footer_widgets: dict[str, QFrame] = {

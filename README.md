@@ -100,6 +100,26 @@ The clipboard handling itself is centralised in
 / `pbcopy` / `xclip` / `tkinter` fallbacks) so Copy / Paste buttons stay
 robust regardless of the Qt session state.
 
+## UI smoke tests (dev)
+
+Qt layouts can look fine in code and still clip or overlap at runtime,
+so the repo ships a tiny screenshot harness, `tools/smoke_shot.py`. It
+boots the real app, navigates to a section, renders it at a target size
+(default = the app minimum **1220x760**, where right-edge clipping shows
+first) and saves a PNG to the git-ignored `.smoke/` folder:
+
+```bash
+python tools/smoke_shot.py --section ai_linkedin --lang cs --theme dark
+python tools/smoke_shot.py --section my_profile  --lang en --theme light
+python tools/smoke_shot.py --all          # every visible section
+```
+
+Open the PNG and confirm nothing clips, overlaps, or is struck through
+in both themes / both languages, then fix and re-shoot. The harness
+lives outside `src/` so it is never bundled into the `.exe`. The
+`.cursor/rules/ui-smoke-test.mdc` rule makes this mandatory for any UI
+change.
+
 ## Build the .exe (Windows)
 
 For Windows distribution, the repo root contains [`build_exe.bat`](build_exe.bat).

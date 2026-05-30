@@ -5,6 +5,9 @@ __pycache__/
 *.so
 outputs/
 
+# ===== UI smoke-test screenshots (tools/smoke_shot.py) =====
+.smoke/
+
 # ===== Distribution / packaging =====
 build/
 dist/

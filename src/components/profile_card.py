@@ -1,16 +1,20 @@
-"""Sidebar profile card (avatar + name + overflow menu).
+"""Sidebar profile card (avatar + name).
 
 Rendered below the secondary nav (Dashboard / Settings) near the bottom
-of the sidebar. It replaces the old "My Profile" nav row - the section
-itself is now ``hidden`` from the nav list and is reached by clicking
-this card instead. The whole card is clickable (opens the profile
-view); the trailing ``⋮`` button opens a small menu with quick links to
-the profile and the settings section.
+of the sidebar. Clicking anywhere on the card opens a small modal to set
+or edit the display name.
+
+There is intentionally **no** overflow (three-dots) menu: it used to jump
+straight to the My Profile section, which skipped the name step the card
+is meant to capture. The My Profile section is still reachable from the
+"edit profile" banner inside the AI sections (see
+``src/components/shared_profile_banner.py``), and Settings lives in the
+sidebar's secondary nav, so nothing is stranded by dropping the menu.
 
 The display name comes from ``settings_store.get_profile_name()`` and is
 **empty by default** - the card shows a muted "set your name" placeholder
-until the user types one in Settings. There is no hard-coded mock name
-and no subscription/plan line anymore.
+until the user types one in. There is no hard-coded mock name and no
+subscription/plan line anymore.
 
 The card intentionally uses neutral surface/border/text tokens (no
 per-section accent) so the in-place accent restyle that runs on every
@@ -20,11 +24,9 @@ circle exactly like a real account chip.
 
 from __future__ import annotations
 
-from typing import Callable
-
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QDialog, QFrame, QMenu, QSizePolicy
+from PySide6.QtWidgets import QDialog, QFrame, QSizePolicy
 
 from src.i18n import t
 from src.qt.dialog import BaseDialog, show_dialog
@@ -35,7 +37,6 @@ from src.qt.widgets import (
     ClickFrame,
     GhostButton,
     IconLabel,
-    IconOnlyButton,
     PrimaryButton,
     custom_label,
     hbox,
@@ -46,30 +47,6 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import settings_store
 from src.theme import Theme
-
-
-def _themed_menu(theme: Theme) -> QMenu:
-    menu = QMenu()
-    menu.setStyleSheet(
-        f"""
-        QMenu {{
-            background-color: {theme.surface};
-            color: {theme.text};
-            border: 1px solid {theme.border};
-            border-radius: 10px;
-            padding: 6px;
-        }}
-        QMenu::item {{
-            padding: 8px 14px;
-            border-radius: 6px;
-        }}
-        QMenu::item:selected {{
-            background-color: {rgba(theme.primary, 0.18)};
-            color: {theme.text};
-        }}
-        """
-    )
-    return menu
 
 
 def _open_name_dialog(theme: Theme, lang: str) -> None:
@@ -123,15 +100,10 @@ def _open_name_dialog(theme: Theme, lang: str) -> None:
         logger_service.log_exception("profile_card", "profile_name_refresh_failed", exc)
 
 
-def profile_card(
-    theme: Theme,
-    lang: str,
-    *,
-    on_open: Callable[[], None],
-    on_settings: Callable[[], None],
-) -> QFrame:
+def profile_card(theme: Theme, lang: str) -> QFrame:
     card = ClickFrame()
     card.setObjectName("ProfileCard")
+    card.setToolTip(t("profile_set_name", lang))
     card.setStyleSheet(
         f"""
         ClickFrame#ProfileCard {{
@@ -144,12 +116,14 @@ def profile_card(
         }}
         """
     )
-    # Clicking the card sets / edits the display name right here (per the
-    # user request "change the name directly in the profile"). The full My
-    # Profile section + Settings stay reachable via the overflow menu.
+    # The whole card opens the "set / edit name" dialog. There is no
+    # overflow (three-dots) menu: it used to jump straight to the My
+    # Profile section, which skipped the name step the card is meant to
+    # capture. My Profile stays reachable from the "edit profile" banner
+    # inside the AI sections, and Settings lives in the sidebar nav.
     card.clicked.connect(lambda: _open_name_dialog(theme, lang))
 
-    layout = hbox(spacing=10, margins=(10, 9, 8, 9))
+    layout = hbox(spacing=10, margins=(10, 9, 12, 9))
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     card.setLayout(layout)
 
@@ -189,26 +163,5 @@ def profile_card(
     wrap_label_slot(name_label)
     text_layout.addWidget(name_label)
     layout.addWidget(text_holder, 1)
-
-    menu_btn = IconOnlyButton(
-        Icons.MORE_VERT,
-        color=theme.text_muted,
-        size=18,
-        bg_hover=theme.surface_2,
-        tooltip=t("profile_menu_tooltip", lang),
-    )
-
-    def _open_menu() -> None:
-        menu = _themed_menu(theme)
-        act_profile = menu.addAction(t("my_profile", lang))
-        act_settings = menu.addAction(t("settings", lang))
-        chosen = menu.exec(menu_btn.mapToGlobal(QPoint(0, menu_btn.height() + 4)))
-        if chosen is act_profile:
-            on_open()
-        elif chosen is act_settings:
-            on_settings()
-
-    menu_btn.clicked.connect(_open_menu)
-    layout.addWidget(menu_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
     return card
