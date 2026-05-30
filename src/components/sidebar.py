@@ -262,13 +262,30 @@ def sidebar(
         _build_secondary(secondary_layout)
         middle_layout.addWidget(secondary_holder)
 
-    # Account card - sits *below* the Dashboard / Settings group ("the
-    # profile goes under Settings"). Clicking it opens the (nav-hidden)
-    # profile view; the name comes from Settings (empty placeholder until
-    # the user sets one).
+    # Flexible gap below the nav keeps the module list + tools packed at
+    # the top; the account card + footer toggles stay pinned to the bottom
+    # (the account card now lives in the footer, directly above the
+    # language toggle - see below).
+    middle_layout.addStretch(1)
+
+    scroll.setWidget(middle)
+    root.addWidget(scroll, 1)
+
+    # footer ----------------------------------------------------------------
+    # The account chip sits at the very top of the footer - directly above
+    # the language + theme toggles (per the user request "profile above
+    # languages"). Keeping it in the footer (not the scrollable middle)
+    # means it is always visible and never separated from the toggles by a
+    # large gap. The card uses neutral tokens, so the per-section accent
+    # restyle in ``update_theme`` never has to touch it.
+    footer = QFrame()
+    footer.setStyleSheet("background: transparent;")
+    footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
+    footer.setLayout(footer_layout)
+
     profile_holder = QFrame()
     profile_holder.setStyleSheet("background: transparent;")
-    profile_layout = vbox(spacing=0, margins=(0, 8, 0, 4))
+    profile_layout = vbox(spacing=0, margins=(12, 0, 12, 6))
     profile_holder.setLayout(profile_layout)
     profile_layout.addWidget(
         profile_card(
@@ -278,24 +295,7 @@ def sidebar(
             on_settings=lambda: on_section_change("settings"),
         )
     )
-    middle_layout.addWidget(profile_holder)
-
-    # Flexible gap below everything keeps the module list + tools + account
-    # card packed at the top; the footer toggles stay pinned to the bottom.
-    middle_layout.addStretch(1)
-
-    scroll.setWidget(middle)
-    root.addWidget(scroll, 1)
-
-    # footer ----------------------------------------------------------------
-    # The account chip now lives at the bottom of the scrollable middle
-    # (see ``profile_card`` above, just over the Dashboard / Settings
-    # group); the footer keeps only the language + theme toggles pinned
-    # to the very bottom.
-    footer = QFrame()
-    footer.setStyleSheet("background: transparent;")
-    footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
-    footer.setLayout(footer_layout)
+    footer_layout.addWidget(profile_holder)
 
     footer_widgets: dict[str, QFrame] = {
         "lang": language_toggle(theme, lang, on_toggle=on_lang_toggle),

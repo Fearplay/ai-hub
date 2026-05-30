@@ -707,6 +707,7 @@ class Pill(QFrame):
         icon_size: int = 14,
         radius: int = 10,
         padding: tuple[int, int, int, int] = (4, 8, 4, 8),
+        border: Optional[str] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -724,10 +725,12 @@ class Pill(QFrame):
         self._text_label.setFont(font)
         self._text_label.setStyleSheet(f"color: {fg}; background: transparent;")
         self._row.addWidget(self._text_label)
+        border_line = f"border: 1px solid {border};" if border else ""
         self.setStyleSheet(
             f"""
             QFrame#Pill {{
                 background-color: {bg};
+                {border_line}
                 border-radius: {radius}px;
             }}
             """

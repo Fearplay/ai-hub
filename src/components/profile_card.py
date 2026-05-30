@@ -24,20 +24,26 @@ from typing import Callable
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QFrame, QMenu, QSizePolicy
+from PySide6.QtWidgets import QDialog, QFrame, QMenu, QSizePolicy
 
 from src.i18n import t
+from src.qt.dialog import BaseDialog, show_dialog
 from src.qt.icons import Icons
+from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     ClickFrame,
+    GhostButton,
     IconLabel,
     IconOnlyButton,
+    PrimaryButton,
     custom_label,
     hbox,
+    themed_line_edit,
     vbox,
     wrap_label_slot,
 )
+from src.services import logger as logger_service
 from src.services import settings_store
 from src.theme import Theme
 
@@ -66,6 +72,57 @@ def _themed_menu(theme: Theme) -> QMenu:
     return menu
 
 
+def _open_name_dialog(theme: Theme, lang: str) -> None:
+    """Set / edit the sidebar display name straight from the card.
+
+    Opens a small themed modal prefilled with the current name, saves it
+    to ``settings_store`` and refreshes the sidebar so the new name shows
+    on the card immediately - no detour through the Settings section.
+    """
+    dlg = BaseDialog(
+        parent=get_main_window(),
+        theme=theme,
+        title=t("profile_set_name", lang),
+        width=440,
+    )
+    dlg.body_layout.addWidget(
+        custom_label(
+            t("profile_name_dialog_label", lang),
+            color=theme.text,
+            size=12,
+            weight=QFont.Weight.DemiBold,
+        )
+    )
+    name_field = themed_line_edit(theme, placeholder=t("profile_name_dialog_hint", lang))
+    name_field.setText(settings_store.get_profile_name())
+    dlg.body_layout.addWidget(name_field)
+
+    dlg.add_action(GhostButton(t("profile_cancel_btn", lang), theme=theme), role="cancel")
+    dlg.add_action(
+        PrimaryButton(t("profile_save_btn", lang), theme=theme, icon=Icons.SAVE_OUTLINED),
+        role="accept",
+    )
+
+    if show_dialog(dlg) != QDialog.DialogCode.Accepted:
+        return
+
+    value = (name_field.text() or "").strip()
+    try:
+        settings_store.set_profile_name(value)
+    except Exception as exc:
+        logger_service.log_exception("profile_card", "set_profile_name_failed", exc)
+        return
+    logger_service.log_event(
+        "INFO", "profile_card", "profile_name_saved", has_name=bool(value),
+    )
+    try:
+        from src.app import request_sidebar_refresh
+
+        request_sidebar_refresh()
+    except Exception as exc:
+        logger_service.log_exception("profile_card", "profile_name_refresh_failed", exc)
+
+
 def profile_card(
     theme: Theme,
     lang: str,
@@ -87,7 +144,10 @@ def profile_card(
         }}
         """
     )
-    card.clicked.connect(on_open)
+    # Clicking the card sets / edits the display name right here (per the
+    # user request "change the name directly in the profile"). The full My
+    # Profile section + Settings stay reachable via the overflow menu.
+    card.clicked.connect(lambda: _open_name_dialog(theme, lang))
 
     layout = hbox(spacing=10, margins=(10, 9, 8, 9))
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)

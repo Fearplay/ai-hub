@@ -193,6 +193,11 @@ def _row(
         if os.path.isfile(candidate):
             word_path = candidate
 
+    # Drive the whole card's accent off the severity so the user reads
+    # "how bad is it" at a glance: a coloured left edge + a matching badge
+    # tint, falling back to the section accent when severity is unknown.
+    accent = _SEVERITY_COLORS.get(severity, theme.primary)
+
     row = ClickFrame()
     row.setObjectName("BugReportHistoryRow")
     row.clicked.connect(lambda _checked=False, f=folder: on_open_app(f))
@@ -201,10 +206,13 @@ def _row(
         QFrame#BugReportHistoryRow {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
+            border-left: 3px solid {accent};
             border-radius: 12px;
         }}
         QFrame#BugReportHistoryRow:hover {{
+            background-color: {rgba(accent, 0.06)};
             border: 1px solid {rgba(theme.primary, 0.45)};
+            border-left: 3px solid {accent};
         }}
         """
     )
@@ -212,17 +220,17 @@ def _row(
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     row.setLayout(layout)
 
-    # Left: accent "bug" badge.
+    # Left: severity-tinted "bug" badge.
     badge = QFrame()
     badge.setFixedSize(40, 40)
     badge.setStyleSheet(
-        f"background-color: {rgba(theme.primary, 0.16)}; border-radius: 10px;"
+        f"background-color: {rgba(accent, 0.16)}; border-radius: 10px;"
     )
     bl = hbox(spacing=0, margins=(0, 0, 0, 0))
     bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     badge.setLayout(bl)
     bl.addWidget(
-        IconLabel(Icons.BUG_REPORT_OUTLINED, color=theme.primary, size=20),
+        IconLabel(Icons.BUG_REPORT_OUTLINED, color=accent, size=20),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
     layout.addWidget(badge)
@@ -261,6 +269,7 @@ def _row(
                     text=priority_label(lang, priority),
                     bg=theme.surface_2,
                     fg=theme.text,
+                    border=theme.border,
                 )
             )
         if reproducibility:
@@ -269,19 +278,36 @@ def _row(
                     text=reproducibility_label(lang, reproducibility),
                     bg=theme.surface_2,
                     fg=theme.text_muted,
+                    border=theme.border,
                 )
             )
         il.addWidget(chips_row)
 
-    meta_bits = [
-        bit
-        for bit in (timestamp, _attachment_summary(txt, image_count, doc_count))
-        if bit
-    ]
-    if meta_bits:
-        meta_label = MutedLabel("  ·  ".join(meta_bits), theme=theme, size=11)
-        wrap_label_slot(meta_label)
-        il.addWidget(meta_label)
+    attachment_text = _attachment_summary(txt, image_count, doc_count)
+    if timestamp or attachment_text:
+        meta_row = QFrame()
+        meta_row.setStyleSheet("background: transparent;")
+        wrap_label_slot(meta_row)
+        meta_layout = hbox(spacing=16, margins=(0, 2, 0, 0))
+        meta_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        meta_row.setLayout(meta_layout)
+
+        def _meta_chip(icon_name: str, text: str) -> QFrame:
+            chip = QFrame()
+            chip.setStyleSheet("background: transparent;")
+            cl = hbox(spacing=5, margins=(0, 0, 0, 0))
+            cl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            chip.setLayout(cl)
+            cl.addWidget(IconLabel(icon_name, color=theme.text_muted, size=13))
+            cl.addWidget(MutedLabel(text, theme=theme, size=11))
+            return chip
+
+        if timestamp:
+            meta_layout.addWidget(_meta_chip(Icons.SCHEDULE, timestamp))
+        if attachment_text:
+            meta_layout.addWidget(_meta_chip(Icons.IMAGE_OUTLINED, attachment_text))
+        meta_layout.addStretch(1)
+        il.addWidget(meta_row)
 
     layout.addWidget(info, 1)
 

@@ -37,8 +37,9 @@ persists in `~/AI Hub/settings.json` so your layout survives restarts.
 The secondary group (**Dashboard** above **Settings**) sits directly
 below the AI module list under a thin divider; both are non-reorderable
 so the navigation grid and the settings page are always one click away.
-The **account card** sits just below that group (avatar + your display
-name).
+The **account card** sits in the sidebar footer, directly above the
+language + theme toggles (avatar + your display name); clicking it opens
+a small inline dialog to set or edit that name.
 
 ## Requirements
 
@@ -365,7 +366,7 @@ ai-hub/
     ├── components/               # shared UI primitives (PySide6)
     │   ├── sidebar.py            # iterates the section registry, header / scroll / footer
     │   ├── nav_item.py
-    │   ├── profile_card.py       # account chip pinned at the sidebar bottom (opens My Profile)
+    │   ├── profile_card.py       # account chip in the sidebar footer (click to set/edit your display name inline)
     │   ├── user_card.py          # legacy account chip, no longer wired into the sidebar
     │   ├── section_card.py
     │   ├── document_chip.py
@@ -447,7 +448,7 @@ Details in
   is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, follow-up-question + market-data toggles, debug logs.
 - **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) plus a right context panel modelled on a "continue where you left off" feed: **recent saved runs** (from `store.list_runs()`, each click reopens the section), the live **session cost** (calls / input + output tokens / total $), and **quick actions**.
-- **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once** (opened from the account card pinned at the bottom of the sidebar - it is no longer a standalone nav row):
+- **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once** (opened from the account card's `⋮` menu in the sidebar footer - it is no longer a standalone nav row):
   - one structured LLM extraction (cached) into a unified `CAREER_PROFILE_SCHEMA` - identity, contact, summary, skills, experiences, education, certifications, languages, projects, links.
   - the parsed profile is persisted to `~/AI Hub/career_profile.json` and rendered as a read-only card; a **Build / re-extract** button refreshes it.
   - **Demo mode** (shared `...` pattern + orange `DEMO` pill) fills a curated profile offline; demo data is only written to disk if you explicitly build while demo is on.
@@ -521,8 +522,8 @@ Details in
 The sidebar currently shows the production-ready sections
 (AI LinkedIn, AI CV / Career, AI Finance, AI Job Search,
 AI Bug Report) plus the **Dashboard** and **Settings** under the
-divider, and the **account card** pinned at the bottom (which opens
-**My Profile**). Work-in-progress sections still live in
+divider, and the **account card** pinned at the bottom (whose `⋮` menu
+opens **My Profile**). Work-in-progress sections still live in
 the repo but their `section.py` sets `hidden=True` so
 `src/sections/__init__.py` skips them when building
 `PRIMARY_SECTIONS` / `SECONDARY_SECTIONS`. They keep auto-discovering
@@ -544,13 +545,15 @@ To bring any of them back, open the section's `section.py` and set
 defaults to `False`.
 
 The sidebar pins an **account card** (`src/components/profile_card.py`)
-just **below** the Dashboard / Settings group: avatar + your display
-name + a `⋮` menu. The name is empty by default - the card shows a
-"Set your name" prompt until you type one in **Settings -> Your name**
-(persisted in `~/AI Hub/settings.json`). There is no hard-coded mock
-name and no "Pro version" plan label anymore. Clicking the card opens
-the **My Profile** view; the `⋮` menu offers quick links to My Profile
-and Settings. Because `my_profile`'s `section.py` now sets `hidden=True`,
+in the **footer, directly above the language + theme toggles**: avatar +
+your display name + a `⋮` menu. The name is empty by default - the card
+shows a "Set your name" prompt until you set one. **Clicking the card
+opens a small inline dialog to set or edit your display name right
+there** (persisted in `~/AI Hub/settings.json`; the sidebar refreshes
+immediately) - no detour through Settings, though the **Settings -> Your
+name** field still works too. There is no hard-coded mock name and no
+"Pro version" plan label anymore. The `⋮` menu offers quick links to My
+Profile and Settings. Because `my_profile`'s `section.py` now sets `hidden=True`,
 the profile is no longer its own nav row and is dropped from the
 dashboard module grid - the account card is the single entry point.
 The older `src/components/user_card.py` helper is kept for reference but

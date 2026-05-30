@@ -36,8 +36,9 @@ ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
 Sekundární skupina (**Dashboard** nad **Nastavením**) sedí přímo
 **pod** seznamem AI modulů pod tenkým oddělovačem; obě sekce se nedají
 přerovnávat, takže navigační mřížka i stránka s nastavením jsou vždy na
-jedno kliknutí. **Karta účtu** (avatar + tvoje jméno) sedí hned pod
-touto skupinou.
+jedno kliknutí. **Karta účtu** (avatar + tvoje jméno) sedí v patce
+sidebaru přímo nad přepínači jazyka a režimu; kliknutím na ni otevřeš
+inline dialog pro nastavení nebo úpravu jména.
 
 ## Požadavky
 
@@ -362,7 +363,7 @@ ai-hub/
     ├── components/               # sdílené UI prvky (PySide6)
     │   ├── sidebar.py            # iteruje registr sekcí, header / scroll / footer
     │   ├── nav_item.py
-    │   ├── profile_card.py       # karta účtu připnutá dole v sidebaru (otevírá Můj profil)
+    │   ├── profile_card.py       # karta účtu v patce sidebaru (klikni a nastav/uprav si jméno inline)
     │   ├── user_card.py          # starší karta účtu, do sidebaru se už nepoužívá
     │   ├── section_card.py
     │   ├── document_chip.py
@@ -443,7 +444,7 @@ Detaily v
   bývalá ~3sekundová pauza na sekci AI Career je pryč.
 - **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, přepínače pro doplňující otázky a živá tržní data, debug logy
 - **Dashboard** - výchozí úvodní obrazovka. Přepracované dlaždice s akcentovým gradientem (jedna na každý viditelný AI modul) plus pravý kontextový panel ve stylu „pokračuj, kdes přestal": **nedávné uložené běhy** (z `store.list_runs()`, kliknutí znovu otevře sekci), živé **náklady relace** (volání / vstupní + výstupní tokeny / celkem $) a **rychlé akce**.
-- **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou** (otevírá se z karty účtu připnuté dole v sidebaru - už to není samostatná položka v navigaci):
+- **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou** (otevírá se z menu `⋮` na kartě účtu v patce sidebaru - už to není samostatná položka v navigaci):
   - jedna strukturovaná LLM extrakce (cachovaná) do sjednoceného `CAREER_PROFILE_SCHEMA` - identita, kontakt, shrnutí, dovednosti, zkušenosti, vzdělání, certifikace, jazyky, projekty, odkazy.
   - naparsovaný profil se ukládá do `~/AI Hub/career_profile.json` a vykreslí jako read-only karta; tlačítko **Sestavit / přeextrahovat** ho obnoví.
   - **Demo režim** (sdílený `...` vzor + oranžová pilulka `DEMO`) naplní připravený profil offline; demo data se na disk zapíšou jen když sestavíš profil se zapnutým demem.
@@ -517,7 +518,7 @@ Detaily v
 V sidebaru jsou teď produkční sekce (AI LinkedIn,
 AI Životopis / Kariéra, AI Finance, AI Hledání práce, AI Bug Report)
 plus **Dashboard** a **Nastavení** pod oddělovačem a **karta účtu**
-připnutá dole (která otevírá **Můj profil**). Rozpracované sekce
+připnutá dole (jejíž menu `⋮` otevírá **Můj profil**). Rozpracované sekce
 v repu zůstávají,
 ale jejich `section.py` má `hidden=True`, takže
 `src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
@@ -538,13 +539,16 @@ Když chceš kteroukoli z nich vrátit, otevři `section.py` dané sekce a
 nastav `hidden=False` (nebo ten řádek prostě smaž). Pole
 `Section.hidden` defaultně `False`.
 
-Sidebar připíná **pod** skupinu Dashboard / Nastavení **kartu účtu**
-(`src/components/profile_card.py`): avatar + zobrazované jméno + menu
-`⋮`. Jméno je defaultně prázdné - karta ukáže výzvu „Nastav si jméno",
-dokud ho nezadáš v **Nastavení -> Tvoje jméno** (ukládá se do
-`~/AI Hub/settings.json`). Žádné natvrdo zadrátované jméno ani štítek
-tarifu („Pro verze") už tam nejsou. Klik na kartu otevře **Můj
-profil**; menu `⋮` nabízí rychlé odkazy na Můj profil a Nastavení.
+Sidebar připíná **kartu účtu** (`src/components/profile_card.py`) do
+**patky, přímo nad přepínače jazyka a režimu**: avatar + zobrazované
+jméno + menu `⋮`. Jméno je defaultně prázdné - karta ukáže výzvu „Nastav
+si jméno", dokud ho nezadáš. **Klik na kartu teď otevře malý inline
+dialog, kde jméno nastavíš nebo upravíš rovnou tady** (ukládá se do
+`~/AI Hub/settings.json` a sidebar se hned překreslí) - není nutná
+zajížďka do Nastavení, i když pole **Nastavení -> Tvoje jméno** pořád
+funguje taky. Žádné natvrdo zadrátované jméno ani štítek tarifu
+(„Pro verze") už tam nejsou. Menu `⋮` nabízí rychlé odkazy na Můj profil
+a Nastavení.
 Protože `section.py` u `my_profile` má teď
 `hidden=True`, profil už není samostatná položka navigace a mizí
 i z dlaždic na dashboardu - karta účtu je jediný vstupní bod. Starší

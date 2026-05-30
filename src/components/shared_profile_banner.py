@@ -23,6 +23,7 @@ from src.qt.icons import Icons
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
+    FlowLayout,
     GhostButton,
     IconLabel,
     MutedLabel,
@@ -86,9 +87,21 @@ def shared_profile_banner(
         }}
         """
     )
-    layout = hbox(spacing=12, margins=(14, 12, 14, 12))
-    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    # Vertical card: a [badge | text] row on top, then the action buttons
+    # on their own wrapping row below. Previously the buttons sat in a
+    # column to the *right* of an expanding text block, so in a narrow
+    # column (e.g. AI LinkedIn's Builder with the context panel open) their
+    # labels got clipped ("Pouzit zd...", "Upravit p..."). Giving them the
+    # full card width - and letting them wrap via FlowLayout - keeps every
+    # label fully readable at any window size.
+    layout = vbox(spacing=10, margins=(14, 12, 14, 12))
     card.setLayout(layout)
+
+    top_row = QFrame()
+    top_row.setStyleSheet("background: transparent;")
+    top_layout = hbox(spacing=12, margins=(0, 0, 0, 0))
+    top_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    top_row.setLayout(top_layout)
 
     badge = QFrame()
     badge.setFixedSize(36, 36)
@@ -104,7 +117,7 @@ def shared_profile_banner(
         ),
         alignment=Qt.AlignmentFlag.AlignCenter,
     )
-    layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+    top_layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
 
     text_holder = QFrame()
     text_holder.setStyleSheet("background: transparent;")
@@ -119,20 +132,25 @@ def shared_profile_banner(
         summary_label = MutedLabel(summary, theme=theme, size=11)
         wrap_label_slot(summary_label)
         tl.addWidget(summary_label)
-    layout.addWidget(text_holder, 1)
+    top_layout.addWidget(text_holder, 1)
+    layout.addWidget(top_row)
 
     actions = QFrame()
     actions.setStyleSheet("background: transparent;")
-    al = vbox(spacing=6, margins=(0, 0, 0, 0))
-    al.setAlignment(Qt.AlignmentFlag.AlignTop)
-    actions.setLayout(al)
+    # ``setHeightForWidth`` lets the parent vbox grow the row to two lines
+    # when FlowLayout wraps the second button on a very narrow column.
+    actions_policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+    actions_policy.setHeightForWidth(True)
+    actions.setSizePolicy(actions_policy)
+    actions_flow = FlowLayout(actions, margin=0, h_spacing=8, v_spacing=8)
+    actions.setLayout(actions_flow)
     if not applied and use_label and on_use is not None:
         use_btn = PrimaryButton(use_label, theme=theme, icon=Icons.DOWNLOAD_OUTLINED)
         use_btn.clicked.connect(on_use)
-        al.addWidget(use_btn)
+        actions_flow.addWidget(use_btn)
     edit_btn = GhostButton(edit_label, theme=theme, icon=Icons.OPEN_IN_NEW)
     edit_btn.clicked.connect(on_edit)
-    al.addWidget(edit_btn)
-    layout.addWidget(actions, 0, Qt.AlignmentFlag.AlignTop)
+    actions_flow.addWidget(edit_btn)
+    layout.addWidget(actions)
 
     return card
