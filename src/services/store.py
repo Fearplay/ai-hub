@@ -6,7 +6,7 @@ analysis, and zero or more generated documents (CV, cover letter, …).
 Disk layout::
 
     <repo-root>/outputs/
-        ai_career/
+        ai_cv/
             qa-engineer-gen-20260508-204231/
                 summary.json
                 Tailored_CV.pdf
@@ -112,7 +112,7 @@ def new_run_dir(role: str, company: str = "", *, section: str = "") -> Path:
     """Create + return a fresh ``outputs/<section>/<slug>-<stamp>/`` folder.
 
     ``section`` should be the section key (e.g. ``"ai_jobs"``,
-    ``"ai_career"``, ``"ai_finance"``, ``"ai_linkedin"``). When empty,
+    ``"ai_cv"``, ``"ai_finance"``, ``"ai_linkedin"``). When empty,
     the folder is created directly under ``outputs/`` with a WARNING
     log so contributors notice they should pass the key. Existing
     history entries that point at old top-level paths keep working

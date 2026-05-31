@@ -216,7 +216,7 @@ write `STATE.activity = ...` directly inside an event handler must
 follow up with the same helper so the right-hand panel actually
 reflects the new state.
 
-Reference implementation: [`src/sections/ai_career/`](mdc:../../src/sections/ai_career)
+Reference implementation: [`src/sections/ai_cv/`](mdc:../../src/sections/ai_cv)
 (`view.py`, `tab_chat.py`, `tab_documents.py`, `pipeline.py`,
 `refs.py`).
 

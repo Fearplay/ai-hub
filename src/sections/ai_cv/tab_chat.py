@@ -36,14 +36,14 @@ from src.qt.widgets import (
 )
 from src.services import logger as logger_service
 from src.services.file_parser import ParsedFile, parse_file
-from src.sections.ai_career import pipeline
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import (
+from src.sections.ai_cv import pipeline
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import (
     MODE_FORM,
     STATE,
     TAB_SETUP,
 )
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 
@@ -55,7 +55,7 @@ def _request_full_refresh() -> None:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_chat", "request_full_refresh_import", exc,
+            "ai_cv.tab_chat", "request_full_refresh_import", exc,
         )
         return
     request_section_refresh()
@@ -351,7 +351,7 @@ def _build_input_bar(
                 )
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "send_worker_failed", exc,
+                    "ai_cv.tab_chat", "send_worker_failed", exc,
                 )
                 assistant_text = ""
                 error = str(exc) or "unexpected error"
@@ -392,7 +392,7 @@ def _quick_actions(theme: Theme, lang: str, txt: dict, on_after_send: Callable[[
                 )
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_chat", "quick_send_worker_failed", exc,
+                    "ai_cv.tab_chat", "quick_send_worker_failed", exc,
                 )
                 assistant_text = ""
                 error = str(exc) or "unexpected error"

@@ -176,7 +176,21 @@ def get_sidebar_order() -> list[str]:
     value = get("sidebar_order", []) or []
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value if isinstance(item, str) and item]
+    # Migrate legacy section keys so a user's saved drag-and-drop order
+    # survives a section rename (ai_career -> ai_cv). Unknown keys are
+    # still filtered against the discovered sections by the caller.
+    legacy = {"ai_career": "ai_cv"}
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not (isinstance(item, str) and item):
+            continue
+        key = legacy.get(item, item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def set_sidebar_order(keys: list[str]) -> bool:

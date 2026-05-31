@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from src.components.how_to_dialog import HowToSection, open_how_to
 from src.qt.icons import Icons
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 

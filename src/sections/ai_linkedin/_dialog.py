@@ -1,6 +1,6 @@
 """Modal dialog helpers for the AI LinkedIn section (PySide6 port).
 
-Mirrors :mod:`src.sections.ai_career._dialog` so the LinkedIn section
+Mirrors :mod:`src.sections.ai_cv._dialog` so the LinkedIn section
 can keep its own copy and stay isolated per the section contract.
 """
 

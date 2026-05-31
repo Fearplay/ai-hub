@@ -203,7 +203,7 @@ def file_drop_zone(
     ``hint``, ``extensions``, ``unsupported_message``,
     ``on_file_resolved``, ``height``, ``paste_path_label``,
     ``paste_path_tooltip``, ``cta_label``) so existing call sites in
-    ``ai_career`` / ``ai_linkedin`` work without edits.
+    ``ai_cv`` / ``ai_linkedin`` work without edits.
     """
     allowed_lower: tuple[str, ...] = tuple(e.lower().lstrip(".") for e in extensions)
 

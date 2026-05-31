@@ -15,17 +15,17 @@ zbytek okna (původní pravý kontextový panel byl odstraněn, takže každá
 sekce dostane plnou šířku). Defaultní úvodní obrazovka je
 **Dashboard** - navigační mřížka s jednou kartou pro každý viditelný
 AI modul, takže uživatel po startu může jedním klikem skočit do
-libovolného asistenta. Sekce **AI Životopis / Kariéra**,
+libovolného asistenta. Sekce **AI Životopis**,
 **AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
 a **AI Bug Report** jsou plně napojené na OpenAI / Anthropic (nová
 sekce mluví i s **vision** API obou providerů, takže screenshoty
 zpracovává společně s textovým promptem). Nový hub **Můj profil**
 umožní nahrát životopis / LinkedIn export / GitHub jednou a používat
-ho napříč AI Kariérou, AI Hledáním práce i AI LinkedInem; tyhle tři
+ho napříč AI Životopisem, AI Hledáním práce i AI LinkedInem; tyhle tři
 si navíc předávají práci přes **one-click handoffy** (Ušít CV / Vylaď
 LinkedIn z výsledku hledání), AI Hledání práce si teď vede
 **Tracker žádostí** a označuje nabídky **nové od posledního běhu** a
-AI Kariéra přidává interaktivní **Mock Interview** simulátor se
+AI Životopis přidává interaktivní **Mock Interview** simulátor se
 STAR feedbackem. Rozpracované sekce (AI Právní asistent, AI Podnikání,
 AI Marketing, AI Studium, AI Dokumenty, AI Asistent dokumentů) jsou
 v repu ponechané, ale aktuálně **schované ze sidebaru** - jak je zase
@@ -51,7 +51,7 @@ nastavení nebo úpravu jména.
 - PySide6 >= 6.7.0 (Qt 6.x; runtime se vozí s balíčkem - žádné extra SDK)
 - Alespoň jeden API klíč nastavený v sekci **Nastavení**:
   - **OpenAI** (`sk-…`) nebo **Anthropic** (`sk-ant-…`)
-  - **GitHub** personal access token (volitelný, zvedne rate-limit pro AI Career)
+  - **GitHub** personal access token (volitelný, zvedne rate-limit pro AI Životopis)
 
 > Žádné Flutter SDK, Qt SDK ani Visual Studio C++ není potřeba. Build
 > běží přes `pyinstaller` (volaný z `build_exe.bat`), který si vystačí
@@ -76,7 +76,7 @@ py main.py            # Windows
 python main.py        # macOS / Linux
 ```
 
-Upload zóny v **AI Právní asistent**, **AI Životopis / Kariéra**,
+Upload zóny v **AI Právní asistent**, **AI Životopis**,
 **AI LinkedIn Profile Builder**, **AI Doc Assistant** a **AI Bug
 Report** sdílí jednu komponentu (`src/components/file_drop_zone.py`),
 která:
@@ -92,7 +92,7 @@ která:
   `dropEvent` - soubor přetažený z Průzkumníku / Finderu / Files se
   naplní okamžitě.
 * Přijímá **PDF / DOCX / HTML / HTM / TXT / MD** - extrahovaný text je
-  to, co krmí AI prompty v **AI Právním asistentovi**, **AI Career** a
+  to, co krmí AI prompty v **AI Právním asistentovi**, **AI Životopis** a
   podobně. Sekce **AI Bug Report** si přes malý lokální helper přidává
   obrázky (PNG / JPG / WEBP / GIF / BMP / HEIC) i `.log` / `.json`
   navíc, takže screenshoty mířily do vision API modelu a syrové logy
@@ -335,10 +335,10 @@ Od května 2026 je log strukturovaný do **sloupcového formátu**, takže
 se v něm dá zorientovat na první pohled:
 
 ```
-2026-05-09 19:32:14.501 | INFO  | ai_career.pipeline       | run_full_analysis_start  | url=… kind=cv
-2026-05-09 19:32:14.620 | INFO  | ai_career.pipeline       | activity                  | text="Fetching job posting…"
-2026-05-09 19:32:18.044 | INFO  | ai_career.pipeline       | run_full_analysis_done    | duration_ms=3543 status=ok
-2026-05-09 19:32:18.060 | ERROR | ai_career.tab_documents  | refine_failed             | reason=ProviderError trace=…
+2026-05-09 19:32:14.501 | INFO  | ai_cv.pipeline       | run_full_analysis_start  | url=… kind=cv
+2026-05-09 19:32:14.620 | INFO  | ai_cv.pipeline       | activity                  | text="Fetching job posting…"
+2026-05-09 19:32:18.044 | INFO  | ai_cv.pipeline       | run_full_analysis_done    | duration_ms=3543 status=ok
+2026-05-09 19:32:18.060 | ERROR | ai_cv.tab_documents  | refine_failed             | reason=ProviderError trace=…
 ```
 
 Co je nového:
@@ -348,7 +348,7 @@ Co je nového:
 - `logger_service.log_state("…", state, fields=("…",))` je standardní
   způsob, jak zalogovat snapshot sekce ve chvíli, kdy se tam zrovna něco
   děje (např. před spuštěním pipeline).
-- Skoro všechny `except: pass` výjimky v sekcích `ai_career` a
+- Skoro všechny `except: pass` výjimky v sekcích `ai_cv` a
   `ai_linkedin` byly nahrazeny voláním `logger_service.log_exception(...)`,
   takže žádná chyba v UI nebo workeru už nemizí potichu.
 
@@ -391,7 +391,7 @@ ai-hub/
     │   ├── document_chip.py
     │   ├── header.py             # generický (icon, title, subtitle, ? button)
     │   ├── how_to_dialog.py      # generický modal "Jak používat asistenta"
-    │   ├── shared_profile_banner.py # banner "Používáš svůj sdílený profil" (Kariéra / Práce / LinkedIn)
+    │   ├── shared_profile_banner.py # banner "Používáš svůj sdílený profil" (Životopis / Práce / LinkedIn)
     │   ├── tab_bar.py            # generický (list záložek, active index)
     │   ├── chat_message.py
     │   ├── chat_input.py
@@ -421,7 +421,7 @@ ai-hub/
     │   ├── SECTION_TEMPLATE/     # šablona pro novou sekci (READ ME)
     │   ├── dashboard/            # navigační mřížka (jedna karta na každý viditelný AI modul)
     │   ├── my_profile/           # sdílený kariérní profil (nahraj jednou, používej všude)
-    │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter, mock interview)
+    │   ├── ai_cv/            # plně napojené na AI (HR expert, CV / cover letter, mock interview)
     │   ├── ai_linkedin/          # plně napojené (LinkedIn Profile Builder + content)
     │   ├── ai_legal/              # AI-napojený chat (multi-formát upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
@@ -453,7 +453,7 @@ Detaily v
 - Dvousloupcový layout (levý sidebar + pracovní plocha přes plnou šířku), scrollovatelný sidebar (header / scroll / footer s blokem nákladů + Aktivity)
 - **Přepínač jazyka** EN ↔ CS v sidebaru (default English, jak chtěl tým)
 - Auto-discovery sekcí (primary + secondary skupina; Settings je jediný záznam ve secondary)
-- **Sjednocený Demo režim** - v hlavičce každé AI sekce je v menu `...` položka `Zobrazit demo data`. Po kliknutí se sekce naplní pečlivě připravenými offline daty (AI Kariéra persona, AI LinkedIn profil, AI Finance rozpočet, AI Hledání práce ukázkový výpis, AI Bug Report ukázka, AI Asistent dokumentů ukázka, AI Právní asistent ukázka) a v hlavičce se rozsvítí oranžová pilulka `DEMO`, takže je vždycky vidět, že koukáš na ukázku. Demo režim je **zdarma** - pipeline obchází každé volání AI, takže si appku můžeš ukázat na čisté instalaci bez API klíče a bez utracení jediného tokenu. `Skrýt demo data` ukázku zase smaže a vrátí prázdnou Setup záložku.
+- **Sjednocený Demo režim** - v hlavičce každé AI sekce je v menu `...` položka `Zobrazit demo data`. Po kliknutí se sekce naplní pečlivě připravenými offline daty (AI Životopis persona, AI LinkedIn profil, AI Finance rozpočet, AI Hledání práce ukázkový výpis, AI Bug Report ukázka, AI Asistent dokumentů ukázka, AI Právní asistent ukázka) a v hlavičce se rozsvítí oranžová pilulka `DEMO`, takže je vždycky vidět, že koukáš na ukázku. Demo režim je **zdarma** - pipeline obchází každé volání AI, takže si appku můžeš ukázat na čisté instalaci bez API klíče a bez utracení jediného tokenu. `Skrýt demo data` ukázku zase smaže a vrátí prázdnou Setup záložku.
 - Přepínač světlý / tmavý režim - **Windows OS title bar** (proužek
   s X / minimalizovat / maximalizovat a názvem appky) se přebarví
   podle aktivního theme přes DWM API, takže v dark módu už nepřežívá
@@ -463,16 +463,16 @@ Detaily v
   jenom znovu aplikuje globální QSS, přestaví sidebar a přestaví
   **jenom** aktivní sekci (ostatní si nový jazyk vyzvednou až při
   příštím kliknutí). Celé okno se už nepřebudovává od nuly, takže
-  bývalá ~3sekundová pauza na sekci AI Career je pryč.
+  bývalá ~3sekundová pauza na sekci AI Životopis je pryč.
 - **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, přepínače pro web search a živá tržní data, debug logy
 - **Dashboard** - výchozí úvodní obrazovka. Přepracované dlaždice s akcentovým gradientem (jedna na každý viditelný AI modul) vyplní pracovní plochu přes plnou šířku. Živé **náklady relace** (volání / tokeny / celkem $), které dřív ukazoval, teď žijí v patce levého sidebaru a jsou vidět z každé sekce.
 - **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou** (otevírá se z menu `⋮` na kartě účtu v patce sidebaru - už to není samostatná položka v navigaci):
   - jedna strukturovaná LLM extrakce (cachovaná) do sjednoceného `CAREER_PROFILE_SCHEMA` - identita, kontakt, shrnutí, dovednosti, zkušenosti, vzdělání, certifikace, jazyky, projekty, odkazy.
   - naparsovaný profil se ukládá do `~/AI Hub/career_profile.json` a vykreslí jako read-only karta; tlačítko **Sestavit / přeextrahovat** ho obnoví.
   - **Demo režim** (sdílený `...` vzor + oranžová pilulka `DEMO`) naplní připravený profil offline; demo data se na disk zapíšou jen když sestavíš profil se zapnutým demem.
-  - view přes plnou šířku ukazuje stav profilu + rychlé skoky do AI Kariéra / AI Hledání práce / AI LinkedIn. Celé EN + CS.
-- **Sdílený profil + one-click handoffy** - AI Kariéra, AI Hledání práce i AI LinkedIn ukazují banner *„Používáš svůj sdílený profil"* (s **Upravit profil** / **Použít tady**), který předvyplní jejich setup z `career_profile.json` bez opakovaného nahrávání. Z karty výsledku AI Hledání práce pošle **Ušít CV** nabídku do AI Kariéry a **Vylaď LinkedIn** předvyplní cílovou roli v AI LinkedInu - obojí rovnou skočí do správné sekce přes in-memory službu `handoff` (bez cross-importů mezi sekcemi).
-- **AI Životopis / Kariéra** - dva režimy přepínatelné v hlavičce sekce:
+  - view přes plnou šířku ukazuje stav profilu + rychlé skoky do AI Životopis / AI Hledání práce / AI LinkedIn. Celé EN + CS.
+- **Sdílený profil + one-click handoffy** - AI Životopis, AI Hledání práce i AI LinkedIn ukazují banner *„Používáš svůj sdílený profil"* (s **Upravit profil** / **Použít tady**), který předvyplní jejich setup z `career_profile.json` bez opakovaného nahrávání. Z karty výsledku AI Hledání práce pošle **Ušít CV** nabídku do AI Životopisu a **Vylaď LinkedIn** předvyplní cílovou roli v AI LinkedInu - obojí rovnou skočí do správné sekce přes in-memory službu `handoff` (bez cross-importů mezi sekcemi).
+- **AI Životopis** - dva režimy přepínatelné v hlavičce sekce:
   - **Chat** (Verze B) - konverzační HR asistent, který si můžeš zeptat na cokoli k roli, životopisu, motivačnímu dopisu nebo přípravě na pohovor; do bubliny se dají připojit dokumenty (PDF / DOCX / TXT / MD / HTML) a kontext se přenáší do dalších otázek.
   - **Formulářový režim** (Verze A) - 5 stage tabů (Setup → Match → Documents → Mock Interview → History):
     - scrape inzerátu z URL nebo paste textu
@@ -481,7 +481,8 @@ Detaily v
     - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
     - **automatické upřesňující otázky** - analýza se modelu vždy zeptá, jestli něco není jasné, a sdílený modal otevře jen když opravdu nějaké otázky vrátí (žádný ruční přepínač „nejdřív se zeptat"); když model nic nevrátí, jede rovnou na build
     - inline refine ("Problem 1, Problem 2 …" → AI revize)
-    - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/ai_career/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
+    - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/ai_cv/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu; sekce se dříve jmenovala *AI Career*, takže starší běhy uložené v `outputs/ai_career/` se nikdy nepřesouvají a zůstávají vidět v záložce History
+    - **explicitní cíl refine** - karta refine má rozbalovací výběr „Opravit dokument", kde vybereš přesně který dokument (Moderní CV, motivační dopis, …) má AI upravit
   - **Mock Interview** záložka - interaktivní simulátor, který používá stejné chat bubliny: AI hraje náboráře na tvou cílovou roli, ptá se vždy na jednu otázku a každou odpověď pak koučuje metodou **STAR** (feedback + co fungovalo + co zlepšit + podloženou **vzorovou odpověď**) a teprve potom položí navazující otázku. Jede přes `ai_provider.run` se strukturovaným `INTERVIEW_TURN_SCHEMA`; demo režim přehrává připravené tahy zdarma.
   - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
 - **AI LinkedIn Profile Builder** - kompletní pipeline pro generování / přepis LinkedIn profilu:
@@ -492,7 +493,7 @@ Detaily v
   - **Profile Completeness Checklist** s prioritami (must-have / nice-to-have / advanced) a celkovým profile score 0-100
   - **Output** tab - náhled per sekce + tlačítka Copy, Refine ("Problem 1 …"), Regenerate
   - Save complete LinkedIn package → `outputs/ai_linkedin/<handle>-<timestamp>/full_linkedin_profile.html` + jednotlivé sekce v MD / TXT / DOCX
-  - EN/CS strings; **automatické upřesňující otázky** - stejně jako u AI Kariéry build vždy nechá rozhodnout model, sdílený modal se otevře jen když nějaké otázky přijdou, a chyba při parsování běh nikdy nezablokuje (zaloguje se a pokračuje)
+  - EN/CS strings; **automatické upřesňující otázky** - stejně jako u AI Životopisu build vždy nechá rozhodnout model, sdílený modal se otevře jen když nějaké otázky přijdou, a chyba při parsování běh nikdy nezablokuje (zaloguje se a pokračuje)
 - **AI Finance** - opatrný osobní finanční asistent bez halucinací s osmi záložkami:
   - **Chat** - libovolné dotazy. Úvodní bublina ukáže tvůj poslední rozpočet (donut + rozpis) až poté, co si ho v záložce **Rozpočet** sestavíš; do té doby chat startuje s čistým pozdravem. Quick-action chipy navigují do strukturovaných záložek a **flow-wrap** se přelamují, takže nepřetékají v úzkých oknech.
   - **Rozpočet** - vyber metodu (`50/30/20`, `60/20/20`, `70/20/10`, zero-based, vlastní), zadej příjem + esenciály + cíle. Získáš strukturovaný `BudgetPlan` (cachovaný JSON) + donut, tabulku kategorií, upozornění a další kroky. Pod výsledkem najdeš ještě kartu **Plán spoření** (timeline milníků + projektovaný zůstatek po 6 / 12 / 24 / 36 měsících z `generate_savings_plan`) a box **Upravit / doladit**, který volá `edit_budget`, když chceš jen rychle „méně restaurací, víc penzijka" bez přepisování celého formuláře.
@@ -538,7 +539,7 @@ Detaily v
 ## Schované UI
 
 V sidebaru jsou teď produkční sekce (AI LinkedIn,
-AI Životopis / Kariéra, AI Finance, AI Hledání práce, AI Bug Report)
+AI Životopis, AI Finance, AI Hledání práce, AI Bug Report)
 plus **Dashboard** a **Nastavení** pod oddělovačem a **karta účtu**
 připnutá dole (jejíž menu `⋮` otevírá **Můj profil**). Rozpracované sekce
 v repu zůstávají,
@@ -581,7 +582,7 @@ sidebaru se už nepoužívá.
 
 - Streaming odpovědí v UI (první iterace volání blokuje s loaderem + Aktivitou v sidebaru)
 - Multi-jazyčný OUTPUT_LANGUAGE per dokument (jeden run = jeden výstupní jazyk; řízeno globálním lang toggle)
-- AI v ostatních sekcích - architektura je připravená, sekce se postupně dopisují podle vzoru AI Career
+- AI v ostatních sekcích - architektura je připravená, sekce se postupně dopisují podle vzoru AI Životopis
 
 ## Postaveno s Cursorem
 

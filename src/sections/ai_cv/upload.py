@@ -39,7 +39,7 @@ def upload_zone(
     """
     return file_drop_zone(
         theme,
-        log_area="ai_career.upload",
+        log_area="ai_cv.upload",
         title=title,
         hint=hint,
         extensions=extensions,

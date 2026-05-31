@@ -11,7 +11,7 @@ Keep keys grouped roughly by where they appear in the UI:
 * history tab
 * how-to dialog
 * shared menu / quick-action labels (mirrors the convention used by
-  the ai_career and ai_finance sections)
+  the ai_cv and ai_finance sections)
 """
 
 from __future__ import annotations

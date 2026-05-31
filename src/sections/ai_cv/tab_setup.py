@@ -37,16 +37,16 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
-from src.sections.ai_career import pipeline, shared_profile
-from src.sections.ai_career.followup_dialog import open_followup_dialog
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import (
+from src.sections.ai_cv import pipeline, shared_profile
+from src.sections.ai_cv.followup_dialog import open_followup_dialog
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import (
     STATE,
     TAB_MATCH,
     UploadedFile,
 )
-from src.sections.ai_career.strings import s
-from src.sections.ai_career.upload import upload_zone
+from src.sections.ai_cv.strings import s
+from src.sections.ai_cv.upload import upload_zone
 from src.theme import Theme
 
 
@@ -178,7 +178,7 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
             )
         except RuntimeError:
             logger_service.log_event(
-                "INFO", "ai_career.tab_setup", "fetch_status_stale",
+                "INFO", "ai_cv.tab_setup", "fetch_status_stale",
             )
 
     text_area = themed_text_edit(theme, placeholder=txt["job_text_hint"], min_height=140)
@@ -211,7 +211,7 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
                 text, error = pipeline.fetch_job_text(url)
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_setup", "fetch_worker_failed", exc,
+                    "ai_cv.tab_setup", "fetch_worker_failed", exc,
                 )
                 text, error = "", str(exc)
 
@@ -236,7 +236,7 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
                         _set_fetch_status(STATE.last_error, error=True)
                 except RuntimeError:
                     logger_service.log_event(
-                        "INFO", "ai_career.tab_setup", "fetch_apply_stale",
+                        "INFO", "ai_cv.tab_setup", "fetch_apply_stale",
                     )
                 REFS.request_context_refresh()
 
@@ -423,7 +423,7 @@ def build_setup_tab(
             fn()
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.tab_setup", "footer_refresh_failed", exc,
+                "ai_cv.tab_setup", "footer_refresh_failed", exc,
             )
 
     # Shared career profile - pull the once-uploaded CV (+ LinkedIn /
@@ -514,17 +514,8 @@ def build_setup_tab(
             )
         except RuntimeError:
             logger_service.log_event(
-                "INFO", "ai_career.tab_setup", "status_label_stale",
+                "INFO", "ai_cv.tab_setup", "status_label_stale",
             )
-
-    def _label_for(stage: str) -> str:
-        if stage == "followups":
-            return txt["footer_run_followups_running"]
-        if stage == "match":
-            return txt["footer_run_match_running"]
-        if stage == "running":
-            return txt["footer_run_running"]
-        return txt["footer_run_btn"]
 
     def _refresh_run_button() -> None:
         # Same closure-after-rebuild story as ``_set_status``: the
@@ -532,15 +523,21 @@ def build_setup_tab(
         # against a deleted button after the section was re-rendered.
         # The fresh section already rebuilt the button with the right
         # enabled state, so dropping the stale update is safe.
+        #
+        # The button keeps its stable "Run analysis" caption even while a
+        # run is in flight - the granular progress ("Scoring the
+        # match...", "Looking for unclear items...", ...) now shows in the
+        # left-sidebar Activity panel (see ``CareerRefs._activity_label``)
+        # instead of inside the button.
         stage = STATE.run_stage
         running = bool(stage)
         enabled = STATE.can_run() and not running
         try:
-            run_btn.setText(_label_for(stage))
+            run_btn.setText(txt["footer_run_btn"])
             run_btn.setEnabled(enabled)
         except RuntimeError:
             logger_service.log_event(
-                "INFO", "ai_career.tab_setup", "run_btn_stale",
+                "INFO", "ai_cv.tab_setup", "run_btn_stale",
                 stage=stage,
             )
 
@@ -621,6 +618,9 @@ def build_setup_tab(
         _set_status("")
         STATE.run_stage = "running"
         _refresh_run_button()
+        # Surface "Running analysis..." in the sidebar Activity panel right
+        # away; subsequent pipeline steps refresh it as the stage advances.
+        REFS.request_context_refresh()
 
         def _phase1() -> None:
             try:
@@ -667,7 +667,7 @@ def build_setup_tab(
 
                 _phase2_match()
             except Exception as exc:
-                logger_service.log_exception("ai_career.tab_setup", "phase1_failed", exc)
+                logger_service.log_exception("ai_cv.tab_setup", "phase1_failed", exc)
                 runtime_dispatch(lambda: _set_status(str(exc), error=True))
                 STATE.run_stage = ""
                 runtime_dispatch(_refresh_run_button)

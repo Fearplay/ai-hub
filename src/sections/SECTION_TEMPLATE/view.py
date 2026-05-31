@@ -7,7 +7,7 @@ Most sections will want to compose:
 * :func:`src.components.chat_message.chat_message`
 * :func:`src.components.chat_input.chat_input`
 
-See ``src/sections/ai_career/view.py`` for a chat-style example or
+See ``src/sections/ai_cv/view.py`` for a chat-style example or
 ``src/sections/ai_marketing/view.py`` for a richer custom layout.
 """
 

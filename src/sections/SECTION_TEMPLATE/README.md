@@ -18,12 +18,12 @@ startovací bod, když přidáváš novou sekci.
    - `order=<int>` - viz tabulka níž, vyber volné číslo
    - volitelně přidej `build_context=...` pokud chceš pravý panel
 5. **Uprav `view.py`** - vrať `ft.Control`, který tvoří hlavní obsah.
-   Inspiruj se v [`ai_career/view.py`](../ai_career/view.py) (jednoduchý
+   Inspiruj se v [`ai_cv/view.py`](../ai_cv/view.py) (jednoduchý
    chat) nebo [`ai_marketing/view.py`](../ai_marketing/view.py) (vlastní
    layout s mockupem).
 6. **(Volitelné) Pravý panel** - přidej `context.py` s funkcí
    `build_context(theme, lang)` a v `section.py` ji předej do `Section(...,
-   build_context=build_context)`. Viz [`ai_career/context.py`](../ai_career/context.py).
+   build_context=build_context)`. Viz [`ai_cv/context.py`](../ai_cv/context.py).
 7. **(Volitelné) Mock data** - přidej `data.py` se svými konstantami.
    Žádný globální mock soubor není potřeba.
 8. **Spusť `python main.py`** a koukni, jestli se sekce objevila v levém
@@ -37,7 +37,7 @@ nutnosti přečíslovávat:
 | order | section             | owner       |
 | ----- | ------------------- | ----------- |
 | 10    | `dashboard`         | volné       |
-| 20    | `ai_career`         | Fearplay    |
+| 20    | `ai_cv`         | Fearplay    |
 | 25    | `ai_jobs`           | Fearplay    |
 | 25    | `ai_linkedin`       | volné       |
 | 30    | `ai_legal`          | volné       |

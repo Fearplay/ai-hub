@@ -1,6 +1,6 @@
 """Orchestration for the AI LinkedIn section.
 
-The pipeline mirrors the structure used by :mod:`src.sections.ai_career.pipeline`
+The pipeline mirrors the structure used by :mod:`src.sections.ai_cv.pipeline`
 but speaks the LinkedIn voice: the first call extracts a normalised
 LinkedIn profile JSON; every subsequent generator (headlines, about,
 experience rewrite, skills buckets, featured, projects, services,
@@ -93,7 +93,7 @@ def _set_activity(value: str) -> None:
     Routed through :meth:`REFS.request_context_refresh` so background
     workers can repaint the activity label without the user having to
     poke the window. See the matching helper in
-    ``src.sections.ai_career.pipeline._set_activity`` for the rationale.
+    ``src.sections.ai_cv.pipeline._set_activity`` for the rationale.
     """
     prev = STATE.activity
     STATE.activity = value

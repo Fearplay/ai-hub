@@ -493,8 +493,8 @@ def _position_card(
     # not useful.
     if is_active:
         def _tailor_cv(payload: dict = _job_handoff_payload(item)) -> None:
-            handoff.set_payload("ai_career", payload)
-            _navigate_section("ai_career")
+            handoff.set_payload("ai_cv", payload)
+            _navigate_section("ai_cv")
 
         def _tune_linkedin(role: str = (item.get("title") or "").strip()) -> None:
             handoff.set_payload("ai_linkedin", {"target_role": role})

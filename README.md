@@ -16,16 +16,16 @@ workspace filling the rest of the window (the old right-hand context
 panel was removed so every section gets the full width). The default
 landing view is the **Dashboard** - a navigation grid with one card per visible
 AI module, so the user can jump straight into any assistant from a cold
-launch. **AI CV / Career**, **AI LinkedIn Profile Builder**, **AI
+launch. **AI CV**, **AI LinkedIn Profile Builder**, **AI
 Finance**, **AI Job Search**, and **AI Bug Report** are fully wired to
 OpenAI / Anthropic (the new section also speaks the providers'
 **vision** APIs so screenshots are processed alongside the text
 prompt). A new **My Profile** hub lets you upload your CV / LinkedIn
-export / GitHub once and reuse it across AI Career, AI Job Search, and
+export / GitHub once and reuse it across AI CV, AI Job Search, and
 AI LinkedIn; those three also hand work to each other with **one-click
 handoffs** (Tailor CV / Tune LinkedIn from a job result), AI Job Search
 now keeps an **Applications tracker** and flags postings that are **new
-since your last run**, and AI Career adds an interactive **Mock
+since your last run**, and AI CV adds an interactive **Mock
 Interview** simulator with STAR feedback. The work-in-progress sections
 (AI Legal, AI Business, AI Marketing, AI Study, AI Documents, AI Doc
 Assistant) are kept in the repo so the architecture stays documented
@@ -52,7 +52,7 @@ dialog to set or edit that name.
 - PySide6 >= 6.7.0 (Qt 6.x, ships its own Qt runtime - no extra SDK)
 - At least one provider API key configured under **Settings**:
   - **OpenAI** (`sk-...`) or **Anthropic** (`sk-ant-...`)
-  - **GitHub** personal access token (optional, lifts the rate limit for AI Career)
+  - **GitHub** personal access token (optional, lifts the rate limit for AI CV)
 
 > No Flutter SDK, Qt SDK, or Visual Studio C++ workload is required.
 > Builds run through `pyinstaller` (driven by `build_exe.bat`), which
@@ -77,7 +77,7 @@ py main.py            # Windows
 python main.py        # macOS / Linux
 ```
 
-The upload zones in **AI Legal assistant**, **AI CV / Career**,
+The upload zones in **AI Legal assistant**, **AI CV**,
 **AI LinkedIn Profile Builder**, **AI Doc Assistant**, and **AI Bug
 Report** all share one component (`src/components/file_drop_zone.py`)
 that:
@@ -93,7 +93,7 @@ that:
   `dropEvent` plumbing - drop a file from Explorer / Finder / Files
   directly onto the zone and it loads instantly.
 * Accepts **PDF / DOCX / HTML / HTM / TXT / MD** files - the extracted
-  text body is what feeds the AI prompts in **AI Legal**, **AI Career**
+  text body is what feeds the AI prompts in **AI Legal**, **AI CV**
   and friends. The AI Bug Report section opts in to **image files**
   (PNG / JPG / WEBP / GIF / BMP / HEIC) and `.log` / `.json` on top of
   the shared list via a small local helper, so screenshots are sent to
@@ -350,9 +350,9 @@ save), the app keeps a small log file:
 - Format is column-aligned for fast skimming:
 
   ```
-  2026-05-09 19:47:11.123 | INFO  | ai_career.pipeline     | activity_change            | prev=ready new=analyzing
-  2026-05-09 19:47:14.886 | ERROR | ai_career.pipeline     | extract_candidate_failed   | error=ProviderError(...) elapsed_ms=3759
-  2026-05-09 19:47:14.890 | ERROR | ai_career.pipeline     | extract_candidate_failed.traceback | Traceback (most recent call last): ...
+  2026-05-09 19:47:11.123 | INFO  | ai_cv.pipeline     | activity_change            | prev=ready new=analyzing
+  2026-05-09 19:47:14.886 | ERROR | ai_cv.pipeline     | extract_candidate_failed   | error=ProviderError(...) elapsed_ms=3759
+  2026-05-09 19:47:14.890 | ERROR | ai_cv.pipeline     | extract_candidate_failed.traceback | Traceback (most recent call last): ...
   ```
 
   Long-running pipeline steps emit `*_start` / `*_done` / `*_failed`
@@ -426,7 +426,7 @@ ai-hub/
     │   ├── SECTION_TEMPLATE/     # template for a new section (READ ME)
     │   ├── dashboard/            # navigation grid (one card per visible AI module)
     │   ├── my_profile/           # shared career profile hub (upload once, reuse everywhere)
-    │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter, mock interview)
+    │   ├── ai_cv/            # fully wired to AI (HR expert, CV / cover letter, mock interview)
     │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
     │   ├── ai_legal/              # AI-wired chat (multi-format upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
@@ -458,7 +458,7 @@ Details in
 - Two-column layout (left sidebar + full-width workspace), scrollable sidebar (header / scroll / footer with the cost + Activity status block).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
 - Section auto-discovery (primary + secondary; Settings is the only secondary entry).
-- **Unified Demo mode** - every AI section ships a `Show demo data` entry under its header `...` menu. Picking it fills the section with curated offline payloads (AI Career persona, AI LinkedIn profile, AI Finance budget, AI Jobs result list, AI Bug Report sample, AI Doc Assistant sample, AI Legal sample) and lights up an orange `DEMO` pill in the header so it is always obvious which view is mock. Demo mode is **free** - the pipeline short-circuits every provider call, so users can showcase the app on a fresh install without an API key or a single token. Picking `Hide demo data` clears the curated state and restores the empty Setup tab.
+- **Unified Demo mode** - every AI section ships a `Show demo data` entry under its header `...` menu. Picking it fills the section with curated offline payloads (AI CV persona, AI LinkedIn profile, AI Finance budget, AI Jobs result list, AI Bug Report sample, AI Doc Assistant sample, AI Legal sample) and lights up an orange `DEMO` pill in the header so it is always obvious which view is mock. Demo mode is **free** - the pipeline short-circuits every provider call, so users can showcase the app on a fresh install without an API key or a single token. Picking `Hide demo data` clears the curated state and restores the empty Setup tab.
 - Light / dark mode toggle - the **Windows OS title bar** (caption strip with
   X / minimise / maximise + app name) is tinted to match the active theme via
   the DWM API, so dark mode no longer leaves a bright white strip on top of
@@ -467,7 +467,7 @@ Details in
   the global QSS, rebuilds the sidebar widget, and rebuilds **only** the
   active section's center column (other sections pick up the new
   language on their next click). The full window is no longer torn down on
-  every toggle, so the previously-3-second freeze on the AI Career section
+  every toggle, so the previously-3-second freeze on the AI CV section
   is gone.
 - **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, web-search + market-data toggles, debug logs.
 - **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) fill the full-width workspace. The live **session cost** (calls / tokens / total $) it used to surface now lives in the left sidebar footer, visible from every section.
@@ -475,9 +475,9 @@ Details in
   - one structured LLM extraction (cached) into a unified `CAREER_PROFILE_SCHEMA` - identity, contact, summary, skills, experiences, education, certifications, languages, projects, links.
   - the parsed profile is persisted to `~/AI Hub/career_profile.json` and rendered as a read-only card; a **Build / re-extract** button refreshes it.
   - **Demo mode** (shared `...` pattern + orange `DEMO` pill) fills a curated profile offline; demo data is only written to disk if you explicitly build while demo is on.
-  - the full-width view shows the profile status + quick jumps to AI Career / AI Job Search / AI LinkedIn. EN + CS throughout.
-- **Shared profile + one-click handoffs** - AI Career, AI Job Search, and AI LinkedIn each show a *"Using your shared profile"* banner (with **Edit profile** / **Use it here**) that prefills their setup from `career_profile.json` without re-uploading. From an AI Job Search result card, **Tailor CV** sends the posting to AI Career and **Tune LinkedIn** seeds AI LinkedIn's target role - both jump straight to the right section via the in-memory `handoff` service (no cross-section imports).
-- **AI CV / Career** - two modes toggled in the section header:
+  - the full-width view shows the profile status + quick jumps to AI CV / AI Job Search / AI LinkedIn. EN + CS throughout.
+- **Shared profile + one-click handoffs** - AI CV, AI Job Search, and AI LinkedIn each show a *"Using your shared profile"* banner (with **Edit profile** / **Use it here**) that prefills their setup from `career_profile.json` without re-uploading. From an AI Job Search result card, **Tailor CV** sends the posting to AI CV and **Tune LinkedIn** seeds AI LinkedIn's target role - both jump straight to the right section via the in-memory `handoff` service (no cross-section imports).
+- **AI CV** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
   - **Form mode** (Version A) - 5 stage tabs (Setup -> Match -> Documents -> Mock Interview -> History):
     - scrape the job posting from a URL or paste the text,
@@ -486,14 +486,15 @@ Details in
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
     - **automatic clarifying questions** - the analysis always asks the model whether anything is unclear and only opens the shared follow-up dialog when it actually returns questions (no manual "ask first" toggle); if the model returns nothing it proceeds straight to the build,
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
-    - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/ai_career/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
+    - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/ai_cv/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder; this section was renamed from *AI Career*, so runs saved earlier under `outputs/ai_career/` are never moved and stay visible in the History tab).
+    - **explicit refine target** - the refine card has a "Document to fix" dropdown so you can pick exactly which document (Modern CV, cover letter, ...) the AI should revise.
   - **Mock Interview** tab - an interactive simulator that reuses the chat bubbles: the AI plays the hiring manager for your target role, asks one tailored question at a time, then coaches each answer with the **STAR** method (feedback + what worked + what to improve + a grounded **model answer**) before asking a follow-up. Runs through `ai_provider.run` with a structured `INTERVIEW_TURN_SCHEMA`; demo mode plays canned turns for free.
   - HR-expert system prompt with no-hallucination clause, REORDER NEVER DELETE, CEFR-only, ATS rules, etc.
 - **AI LinkedIn Profile Builder** - same two-mode shell (Chat / Builder), aimed at a complete LinkedIn rewrite:
   - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
   - **Sections** picker - presets (essentials / full polish / job hunt / thought leadership) + 12-section grid with checkboxes (Headline, About, Experience, Education, Certifications, Skills, Featured, Projects, Services, Courses, Recommendations, Posts).
   - One LLM **profile-extraction** call followed by per-section generators that all reuse the cached profile JSON (cost-aware - never re-sends the raw CV text).
-  - **automatic clarifying questions** - like AI Career, the build always lets the model decide whether to ask; the follow-up dialog opens only when questions come back, and a parse hiccup never blocks the run (it logs and continues).
+  - **automatic clarifying questions** - like AI CV, the build always lets the model decide whether to ask; the follow-up dialog opens only when questions come back, and a parse hiccup never blocks the run (it logs and continues).
   - **Anti-cringe + no-hallucination** prompts; an unsupported-claims report flags any AI bullet that wasn't backed by source evidence.
   - **Profile completeness checklist** with priority levels (critical / important / nice to have) and a 0-100 profile score.
   - **Output** tab renders every generated section as a card (with copy-to-clipboard) + the checklist + the score.
@@ -538,13 +539,13 @@ Details in
   - **Four quick-action chips** - Summarise / Find risks / Explain legal terms / Suggest changes - each opens a tailored prompt and streams the reply back into the chat. Plain typing in the input field also works.
   - **No-lawyer disclaimer** - inline banner under the header reminds the user the assistant does not replace legal advice; every long reply re-states it in plain language.
   - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
-- **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
+- **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI CV, AI LinkedIn, and AI Legal all use it.
 - **Left-sidebar status block** showing **session cost** (calls / tokens / $) and a real-time **Activity** dot that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - it updates from background worker threads via the global `cost_tracker.COST` + `activity_tracker.ACTIVITY` singletons (sections push their stage through `REFS.request_context_refresh()`), so the user never sees a stale "Ready" while the LLM is busy. This replaces the old per-section right context panel, which was removed so every section gets the full window width.
 
 ## Hidden UI
 
 The sidebar currently shows the production-ready sections
-(AI LinkedIn, AI CV / Career, AI Finance, AI Job Search,
+(AI LinkedIn, AI CV, AI Finance, AI Job Search,
 AI Bug Report) plus the **Dashboard** and **Settings** under the
 divider, and the **account card** pinned at the bottom (whose `⋮` menu
 opens **My Profile**). Work-in-progress sections still live in
@@ -587,7 +588,7 @@ is no longer wired into the sidebar.
 
 - Streaming responses in the UI (the first iteration blocks with a loader + the sidebar Activity status).
 - Multi-language `OUTPUT_LANGUAGE` per document (one run = one output language; driven by the global lang toggle).
-- AI in the remaining sections - the architecture is ready, sections are filled in following the AI Career template.
+- AI in the remaining sections - the architecture is ready, sections are filled in following the AI CV template.
 
 ## Built with Cursor
 

@@ -1,6 +1,6 @@
 """Cross-thread refresh helpers for the AI Jobs section.
 
-Mirror of :mod:`src.sections.ai_career.refs`. Worker threads in
+Mirror of :mod:`src.sections.ai_cv.refs`. Worker threads in
 ``pipeline.py`` mutate :data:`src.sections.ai_jobs.state.STATE` and then
 need the UI to repaint - both the right-hand context panel
 (``rerender_context``) and, occasionally, the entire section tree

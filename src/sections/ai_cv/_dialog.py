@@ -24,7 +24,7 @@ def open_dialog(page: Any, dialog: QDialog) -> None:  # noqa: ARG001
             dialog.exec()
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career._dialog", "open_dialog_failed", exc,
+            "ai_cv._dialog", "open_dialog_failed", exc,
         )
 
 

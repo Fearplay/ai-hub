@@ -39,10 +39,10 @@ from src.qt.widgets import (
     vbox,
 )
 from src.services import logger as logger_service
-from src.sections.ai_career import pipeline
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import STATE, TAB_DOCUMENTS, TAB_SETUP
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv import pipeline
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import STATE, TAB_DOCUMENTS, TAB_SETUP
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 
@@ -51,7 +51,7 @@ def _request_full_refresh() -> None:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_match", "request_full_refresh_import", exc,
+            "ai_cv.tab_match", "request_full_refresh_import", exc,
         )
         return
     request_section_refresh()
@@ -370,22 +370,12 @@ def _open_doc_lang_dialog(parent: QWidget, theme: Theme, txt: dict, *, current: 
     # 50-80 px empty band between the EN card and the Cancel / Continue
     # buttons.
     dialog = BaseDialog(parent=parent, theme=theme, title=txt["docs_lang_dialog_title"], width=420)
-    desc_card = QFrame()
-    desc_card.setStyleSheet(
-        f"""
-        QFrame {{
-            background-color: {theme.surface_2};
-            border: 1px solid {theme.border};
-            border-radius: 10px;
-        }}
-        """
-    )
-    dcl = vbox(spacing=0, margins=(12, 10, 12, 10))
-    desc_card.setLayout(dcl)
+    # Plain description text - no nested bordered card. Wrapping the
+    # short prompt in a surface_2 + border frame looked like a stray box
+    # inside the dialog, so the copy now sits directly in the dialog body.
     desc = BodyLabel(txt["docs_lang_dialog_desc"], theme=theme, size=12)
     desc.setWordWrap(True)
-    dcl.addWidget(desc)
-    dialog.body_layout.addWidget(desc_card)
+    dialog.body_layout.addWidget(desc)
 
     # Each language is rendered as a themed clickable card that wraps a
     # real QRadioButton. Clicking anywhere on the card toggles the
@@ -732,9 +722,13 @@ def build_match_tab(
         return STATE.activity == "generating"
 
     def _refresh_button() -> None:
+        # The button keeps a stable caption while generating; the
+        # "Generating documents..." progress now shows in the left-sidebar
+        # Activity panel (see ``CareerRefs._activity_label``) and via the
+        # progress bar below the button, not inside the button itself.
         running = _is_running()
         open_docs_btn.setEnabled(not running)
-        open_docs_btn.setText(txt["match_generating_documents"] if running else txt["match_open_documents_btn"])
+        open_docs_btn.setText(txt["match_open_documents_btn"])
         progress_bar.setVisible(running)
 
     def _start_with_lang(doc_lang: str) -> None:

@@ -10,7 +10,7 @@ Three render targets share one payload:
   preview in place.
 * :func:`render_html` - the same layout exported as a self-contained
   HTML file. Delegates to
-  :func:`src.sections.ai_career.themes.render_modern_cv_html` so HTML
+  :func:`src.sections.ai_cv.themes.render_modern_cv_html` so HTML
   + PDF + preview all agree on layout / palette.
 * :func:`render_pdf` - HTML -> A4 PDF via Playwright
   (:mod:`src.services.html_pdf`); falls back to a clean ``RuntimeError``
@@ -47,12 +47,21 @@ from PySide6.QtWidgets import (
 )
 
 from src.qt.theme import rgba
-from src.sections.ai_career import themes
-from src.sections.ai_career.state import STATE
+from src.sections.ai_cv import themes
+from src.sections.ai_cv.state import STATE
 from src.theme import Theme
 
 
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+# The in-app Qt preview is rendered larger than the exported A4 page so
+# the CV is comfortably readable on screen (the previous size was too
+# small to proofread before refining). This factor multiplies every
+# preview font size and the paper dimensions. The HTML / PDF export path
+# is separate (``themes.render_modern_cv_html``) and unaffected, so the
+# printed output keeps its exact A4 proportions.
+_PREVIEW_SCALE = 1.25
 
 
 def _split_bold(text: str) -> list[tuple[str, bool]]:
@@ -113,7 +122,7 @@ def _make_label(
     """
     label = QLabel(text)
     font = QFont()
-    font.setPixelSize(int(round(size)))
+    font.setPixelSize(int(round(size * _PREVIEW_SCALE)))
     font.setWeight(QFont.Weight(int(weight)))
     font.setItalic(italic)
     if letter_spacing:
@@ -162,7 +171,7 @@ def _rich_label(
     label = QLabel("".join(parts))
     label.setTextFormat(Qt.TextFormat.RichText)
     font = QFont()
-    font.setPixelSize(int(round(size)))
+    font.setPixelSize(int(round(size * _PREVIEW_SCALE)))
     font.setWeight(QFont.Weight(weight))
     if italic:
         font.setItalic(True)
@@ -528,8 +537,8 @@ def _leadership_banner(items: List[str], *, accent: str, accent_dark: str, rule:
 # --- main render entry points -----------------------------------------------
 
 
-_PAPER_WIDTH = 680
-_PAPER_HEIGHT = 962
+_PAPER_WIDTH = int(round(680 * _PREVIEW_SCALE))
+_PAPER_HEIGHT = int(round(962 * _PREVIEW_SCALE))
 
 
 def render_view(theme: Theme, data: Optional[dict]) -> QWidget:

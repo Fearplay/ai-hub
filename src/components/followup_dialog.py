@@ -68,7 +68,10 @@ class _QuestionRowState:
         self.question = question
         self.options: list[str] = list(question.get("options") or [])
         self.multi_select: bool = bool(question.get("multi_select"))
-        self.allow_free_text: bool = bool(question.get("allow_free_text", True))
+        # Free text is ALWAYS available, regardless of the model's
+        # allow_free_text flag: every question must let the user write
+        # their own answer (see the always-on "Other..." chip below).
+        self.allow_free_text: bool = True
         self.theme = theme
         self.other_label = other_label
         self.other_hint = other_hint
@@ -313,13 +316,16 @@ def open_followup_dialog(
                 chip.clicked.connect(lambda i=idx, st=state: st.toggle_option(i))
                 _add_chip(chip)
 
-            if state.allow_free_text or not state.options:
-                other_chip = _make_chip(theme, other_label, active=False)
-                state.other_chip = other_chip
-                other_chip.clicked.connect(lambda st=state: st.toggle_other())
-                _add_chip(other_chip)
-                if not state.options:
-                    state.toggle_other()
+            # Always offer a free-text "Other..." chip so the user can
+            # write their own answer on EVERY question - even when the
+            # model set allow_free_text=false. When a question has no
+            # preset options we open the field immediately.
+            other_chip = _make_chip(theme, other_label, active=False)
+            state.other_chip = other_chip
+            other_chip.clicked.connect(lambda st=state: st.toggle_other())
+            _add_chip(other_chip)
+            if not state.options:
+                state.toggle_other()
             _close_row()
             card_layout.addWidget(chips_holder)
 

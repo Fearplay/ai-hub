@@ -37,8 +37,8 @@ from src.qt.widgets import (
 )
 from src.services import logger as logger_service
 from src.services import store
-from src.sections.ai_career.state import STATE, TAB_MATCH
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv.state import STATE, TAB_MATCH
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 
@@ -54,7 +54,7 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["xdg-open", path])
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_history", "open_in_explorer_failed", exc, path=path,
+            "ai_cv.tab_history", "open_in_explorer_failed", exc, path=path,
         )
 
 
@@ -91,7 +91,7 @@ def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
             STATE.modern_cv_data = json.loads(modern_json.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             logger_service.log_exception(
-                "ai_career.tab_history", "restore_modern_cv_failed", exc,
+                "ai_cv.tab_history", "restore_modern_cv_failed", exc,
                 folder=folder,
             )
     theme = summary.get("modern_cv_theme")
@@ -107,12 +107,14 @@ def _restore_run(folder: str, on_done: Callable[[], None]) -> None:
 
 def _is_career_run(summary: store.RunSummary) -> bool:
     note = (getattr(summary, "note", "") or "").strip().lower()
-    if note == "ai_career":
+    # Accept the new "ai_cv" note as well as the legacy "ai_career" note
+    # so runs saved before the section was renamed stay visible.
+    if note in ("ai_cv", "ai_career"):
         return True
     # Backwards compatibility for older history rows saved before
-    # ``note`` was written by AI Career.
+    # ``note`` was written, plus pre-rename runs under outputs/ai_career/.
     folder_text = (summary.folder or "").replace("\\", "/").lower()
-    return "/outputs/ai_career/" in folder_text
+    return "/outputs/ai_cv/" in folder_text or "/outputs/ai_career/" in folder_text
 
 
 def _row(

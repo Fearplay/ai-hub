@@ -180,12 +180,22 @@ FOLLOWUP_QUESTIONS_SYSTEM = (
     "    - 'Do you require a minimum salary?' when none was given -> "
     "options ['<60k CZK', '60-90k CZK', '90k+ CZK', 'No preference'], "
     "multi_select=false, allow_free_text=true\n"
-    "* Do NOT ask about things the user already filled in (location, "
-    "selected sources, work-mode radio, contract types, age window, "
-    "search mode). Those are explicit inputs - asking again is "
-    "annoying.\n"
-    "* Do NOT ask filler questions just to hit a quota. Zero questions "
-    "is a perfectly valid output when the brief is already coherent.\n"
+    "* Do NOT re-ask about fields the user EXPLICITLY set (a concrete "
+    "location, selected sources, work-mode radio, contract types, age "
+    "window, search mode). Re-asking an explicit input is annoying.\n"
+    "* MUST-ASK gaps - always ask these when the brief marks them "
+    "UNSPECIFIED, and treat them as higher priority than every other "
+    "question:\n"
+    "    - LOCATION: if the brief says the location is UNSPECIFIED, you "
+    "MUST ask where the user wants to work (country / city, or whether "
+    "remote is fine and in which region). Never silently assume "
+    "worldwide - a user in Czechia does not want US-only postings.\n"
+    "    - TARGET ROLE: if keywords / target role are UNSPECIFIED or "
+    "too vague to search, you MUST ask which role(s) to look for.\n"
+    "* Apart from the MUST-ASK gaps, do NOT ask filler questions just "
+    "to hit a quota. Zero questions is acceptable ONLY when location "
+    "and target role are both clear and the rest of the brief is "
+    "coherent.\n"
     "* Output 0-8 questions total.\n"
     "* Each question must be a direct yes/no or 1-2 sentence question "
     "to the user ('you' / 'vy'), with a short rationale.\n"
@@ -196,8 +206,11 @@ FOLLOWUP_QUESTIONS_SYSTEM = (
     "Keep each option short - ideally 1-4 words, never a full sentence.\n"
     "* Set multi_select=true ONLY when several options can apply at "
     "once. Otherwise multi_select=false.\n"
-    "* Set allow_free_text=true unless the options clearly enumerate "
-    "every possible answer.\n\n"
+    "* The UI always lets the user type their own answer, so set "
+    "allow_free_text=true (set false only for a strict enumeration). "
+    "For open MUST-ASK questions like location, offer a few example "
+    "options (e.g. 'Prague', 'Czech Republic', 'Remote (EU)', 'Remote "
+    "(worldwide)') and keep allow_free_text=true.\n\n"
     "LANGUAGE (HARD REQUIREMENT):\n"
     "* OUTPUT_LANGUAGE applies to topic, question, rationale AND every "
     "option. Never mix English options into a Czech question."
@@ -209,6 +222,7 @@ def build_followup_user(
     output_lang: str,
     keywords: str,
     location_label: str,
+    location_specified: bool = True,
     work_mode: str,
     seniority: str,
     profile_text: str,
@@ -253,8 +267,18 @@ def build_followup_user(
         "array is acceptable when the brief is already coherent.",
         "",
         "# Brief",
-        f"Keywords: {keywords.strip() or '(none provided)'}",
-        f"Location: {location_label.strip() or '(any)'}",
+        (
+            f"Keywords / target role: {keywords.strip()}"
+            if keywords.strip()
+            else "Keywords / target role: UNSPECIFIED (the user typed no "
+            "role - you MUST ask which role(s) to search for)"
+        ),
+        (
+            f"Location: {location_label.strip()}"
+            if location_specified and location_label.strip()
+            else "Location: UNSPECIFIED (the user did not choose a place - "
+            "you MUST ask where to search before running)"
+        ),
         f"Work mode: {(work_mode or 'any').strip()}",
         f"Search mode: {(search_mode or 'smart').strip()}",
         f"Self-declared seniority: {(seniority or 'any').strip()}",
