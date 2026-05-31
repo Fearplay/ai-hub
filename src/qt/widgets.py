@@ -251,6 +251,103 @@ class ElidedLabel(QLabel):
         self.setToolTip(self._full_text)
 
 
+class ClampLabel(QLabel):
+    """Word-wrapping ``QLabel`` clamped to a fixed number of lines.
+
+    Where :class:`ElidedLabel` keeps text on a single line, this keeps
+    it on at most ``lines`` rows: the text wraps normally and the final
+    visible row is truncated with an ellipsis when it does not fit.
+    Used for card descriptions that must stay a uniform height so a grid
+    of cards lines up cleanly (e.g. the Dashboard module tiles) instead
+    of a short blurb leaving a tall sibling card half-empty.
+
+    The wrap points depend on the available width, so the clamp is
+    recomputed on every resize. The height is fixed up-front to ``lines``
+    rows so the surrounding layout reserves exactly that much room and
+    sibling cards in the same grid row share one height. Like
+    :class:`ElidedLabel` this is the one sanctioned exception to the
+    "labels go through ``_make_label``" rule because it manages its own
+    wrapping (qt-text rule 1).
+    """
+
+    def __init__(
+        self,
+        text: str,
+        *,
+        color: str,
+        size: int,
+        lines: int = 2,
+        weight: int | QFont.Weight = QFont.Weight.Normal,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._full_text = text or ""
+        self._lines = max(1, lines)
+        font = QFont()
+        font.setPixelSize(size)
+        font.setWeight(_coerce_weight(weight))
+        self.setFont(font)
+        self.setStyleSheet(f"color: {color}; background: transparent;")
+        self.setWordWrap(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.setIndent(0)
+        self.setMargin(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # Reserve a touch more than ``lines * lineSpacing``: some fonts lay
+        # wrapped lines out slightly taller than ``lineSpacing`` reports, which
+        # clips the descenders of the final row right above whatever sits below
+        # the label. The small pad costs nothing visually but kills the clip.
+        metrics = self.fontMetrics()
+        self.setFixedHeight(metrics.lineSpacing() * self._lines + metrics.descent() + 2)
+        self._relayout()
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full_text = text or ""
+        self._relayout()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self) -> None:
+        metrics = self.fontMetrics()
+        width = max(1, self.width())
+        words = self._full_text.split()
+        if not words:
+            super().setText("")
+            self.setToolTip("")
+            return
+        rows: list[str] = []
+        current = ""
+        index = 0
+        total = len(words)
+        while index < total and len(rows) < self._lines:
+            word = words[index]
+            trial = word if not current else f"{current} {word}"
+            if metrics.horizontalAdvance(trial) <= width or not current:
+                current = trial
+                index += 1
+                if index == total:
+                    rows.append(current)
+                    current = ""
+            else:
+                rows.append(current)
+                current = ""
+        truncated = index < total
+        if truncated and rows:
+            leftover = " ".join(words[index:])
+            rows[-1] = metrics.elidedText(
+                f"{rows[-1]} {leftover}", Qt.TextElideMode.ElideRight, width
+            )
+        elif rows and metrics.horizontalAdvance(rows[-1]) > width:
+            rows[-1] = metrics.elidedText(
+                rows[-1], Qt.TextElideMode.ElideRight, width
+            )
+        super().setText("\n".join(rows))
+        self.setToolTip(self._full_text if truncated else "")
+
+
 def AccentLabel(
     text: str, *, theme: Theme, size: int = 12, weight: int = QFont.Weight.DemiBold
 ) -> QLabel:
@@ -610,6 +707,7 @@ class Pill(QFrame):
         icon_size: int = 14,
         radius: int = 10,
         padding: tuple[int, int, int, int] = (4, 8, 4, 8),
+        border: Optional[str] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -627,10 +725,12 @@ class Pill(QFrame):
         self._text_label.setFont(font)
         self._text_label.setStyleSheet(f"color: {fg}; background: transparent;")
         self._row.addWidget(self._text_label)
+        border_line = f"border: 1px solid {border};" if border else ""
         self.setStyleSheet(
             f"""
             QFrame#Pill {{
                 background-color: {bg};
+                {border_line}
                 border-radius: {radius}px;
             }}
             """
@@ -1104,6 +1204,7 @@ __all__ = [
     "AccentLabel",
     "BodyLabel",
     "Card",
+    "ClampLabel",
     "ClickFrame",
     "DangerButton",
     "GhostButton",

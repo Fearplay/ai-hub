@@ -20,6 +20,16 @@ STRINGS: dict[str, dict[str, str]] = {
             " LinkedIn profile - or just polish a single section."
         ),
         "header_help": "How to use this assistant",
+        # Shared career profile banner (My Profile section).
+        "shared_title_use": "Reuse your saved profile",
+        "shared_title_applied": "Using your shared profile",
+        "shared_use_btn": "Use it here",
+        "shared_edit_btn": "Edit profile",
+        "shared_summary_generic": "Your saved CV and details",
+        "shared_includes": "Includes: {items}",
+        "shared_item_cv": "CV",
+        "shared_item_linkedin": "LinkedIn",
+        "shared_item_github": "GitHub",
         # Mode tabs
         "mode_tab_chat": "Chat",
         "mode_tab_builder": "Builder",
@@ -284,6 +294,16 @@ STRINGS: dict[str, dict[str, str]] = {
             " LinkedIn profil - nebo doladí jen jednu sekci."
         ),
         "header_help": "Jak tohoto asistenta používat",
+        # Shared career profile banner (My Profile section).
+        "shared_title_use": "Použít uložený profil",
+        "shared_title_applied": "Používáš svůj sdílený profil",
+        "shared_use_btn": "Použít zde",
+        "shared_edit_btn": "Upravit profil",
+        "shared_summary_generic": "Tvůj uložený životopis a údaje",
+        "shared_includes": "Obsahuje: {items}",
+        "shared_item_cv": "Životopis",
+        "shared_item_linkedin": "LinkedIn",
+        "shared_item_github": "GitHub",
         # Mode tabs
         "mode_tab_chat": "Chat",
         "mode_tab_builder": "Tvůrce",

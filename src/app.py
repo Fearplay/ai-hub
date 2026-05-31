@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QMainWindow,
     QStackedLayout,
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.components.context_panel import empty_context_panel
-from src.components.sidebar import SetActive, sidebar
+from src.components.sidebar import SetActive, UpdateTheme, sidebar
 from src.i18n import DEFAULT_LANG, normalize_lang
 from src.qt import qss_for_theme
 from src.qt import runtime as qt_runtime
@@ -120,6 +121,7 @@ class AIHubApp(QMainWindow):
         self._context_holder: Optional[QWidget] = None
         self._context_layout: Optional[QStackedLayout] = None
         self._sidebar_set_active: Optional[SetActive] = None
+        self._sidebar_update_theme: Optional[UpdateTheme] = None
         self._main_widget: Optional[QWidget] = None
         self._context_widget: Optional[QWidget] = None
         self._central_layout: Optional[QHBoxLayout] = None
@@ -215,6 +217,12 @@ class AIHubApp(QMainWindow):
             self._apply_global_qss(section_theme)
             self._swap_main(new_main)
             self._swap_context(new_context)
+            # Restyle the sidebar to the new section's accent *before*
+            # flipping the active row, so the logo tile / active row /
+            # footer toggles pick up the accent on the same frame as the
+            # centre column instead of lagging until the next rebuild.
+            if self._sidebar_update_theme is not None:
+                self._sidebar_update_theme(section_theme)
             self._sidebar_set_active(key)
         finally:
             self.setUpdatesEnabled(True)
@@ -323,6 +331,65 @@ class AIHubApp(QMainWindow):
         if old_widget is not None:
             self._main_layout.removeWidget(old_widget)
             old_widget.deleteLater()
+        self._fade_in(new_widget)
+
+    def _fade_in(self, widget: QWidget) -> None:
+        """Briefly fade a freshly-swapped widget in so navigation feels
+        smooth instead of popping. The opacity effect is removed once the
+        animation finishes - leaving it attached would force Qt to render
+        heavy sections (e.g. the Career CV preview) through an offscreen
+        buffer on every repaint.
+        """
+        try:
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+            anim = QPropertyAnimation(effect, b"opacity", widget)
+            anim.setDuration(130)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.finished.connect(lambda w=widget: w.setGraphicsEffect(None))
+            anim.start()
+        except Exception as exc:
+            logger_service.log_exception("app", "fade_in_failed", exc)
+            try:
+                widget.setGraphicsEffect(None)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _context_panel_width(widget: QWidget) -> int:
+        """Return the fixed width of the context panel, or 0 (wide layout).
+
+        The right column is always a ``setFixedWidth(336)`` panel - either
+        returned directly (the dashboard's ``build_context``) or wrapped in
+        a plain ``QFrame`` (most AI sections wrap ``context_panel_shell``).
+        We therefore look at the widget *and* its descendants for the first
+        sizeable fixed-width frame (``min == max``, well above the tiny
+        fixed-size avatars / icon tiles) and use its width. ``wide_layout``
+        sections return a bare placeholder with no such frame, so we fall
+        back to 0 and the centre column spans the full width.
+        """
+        for candidate in (widget, *widget.findChildren(QWidget)):
+            mn, mx = candidate.minimumWidth(), candidate.maximumWidth()
+            if mn == mx and 200 <= mx < 16777215:
+                return mx
+        return 0
+
+    def _sync_context_holder_width(self, widget: QWidget) -> None:
+        """Pin the right-hand holder to the context panel's real width.
+
+        The context panel is ``setFixedWidth(336)`` but its ``sizeHint``
+        is wider (a non-wrapping child reports a ~468 px preferred width).
+        ``QStackedLayout`` sizes the holder to that inflated hint, which
+        reserved a ~130 px empty strip to the *right* of the panel (the
+        band the user circled). Pinning the holder to the panel's own
+        fixed width makes the panel sit flush against the window edge,
+        while ``wide_layout`` sections collapse the holder to zero.
+        """
+        if self._context_holder is None:
+            return
+        self._context_holder.setFixedWidth(self._context_panel_width(widget))
 
     def _swap_context(self, new_widget: QWidget) -> None:
         if self._context_layout is None:
@@ -331,11 +398,17 @@ class AIHubApp(QMainWindow):
         self._context_widget = new_widget
         self._context_layout.addWidget(new_widget)
         self._context_layout.setCurrentWidget(new_widget)
+        self._sync_context_holder_width(new_widget)
         if old_widget is not None:
             self._context_layout.removeWidget(old_widget)
             old_widget.deleteLater()
 
-    def _swap_sidebar(self, new_widget: QWidget, set_active: SetActive) -> None:
+    def _swap_sidebar(
+        self,
+        new_widget: QWidget,
+        set_active: SetActive,
+        update_theme: UpdateTheme,
+    ) -> None:
         if self._central_layout is None:
             return
         if self._sidebar_widget is not None:
@@ -344,6 +417,7 @@ class AIHubApp(QMainWindow):
         self._sidebar_widget = new_widget
         self._central_layout.insertWidget(0, new_widget)
         self._sidebar_set_active = set_active
+        self._sidebar_update_theme = update_theme
 
     def _smart_rebuild(self) -> None:
         """In-place rebuild of sidebar + active section + context.
@@ -372,7 +446,7 @@ class AIHubApp(QMainWindow):
         section = self._resolve_section()
         section_theme = self._section_theme(section)
 
-        sidebar_widget, set_active = sidebar(
+        sidebar_widget, set_active, update_theme = sidebar(
             section_theme,
             lang=self.lang,
             active_section=self.active_section,
@@ -391,7 +465,7 @@ class AIHubApp(QMainWindow):
         self.setUpdatesEnabled(False)
         try:
             self._apply_global_qss(section_theme)
-            self._swap_sidebar(sidebar_widget, set_active)
+            self._swap_sidebar(sidebar_widget, set_active, update_theme)
             self._swap_main(new_main)
             self._swap_context(new_context)
 
@@ -436,7 +510,7 @@ class AIHubApp(QMainWindow):
         layout.setSpacing(0)
         self._central_layout = layout
 
-        sidebar_widget, set_active = sidebar(
+        sidebar_widget, set_active, update_theme = sidebar(
             section_theme,
             lang=self.lang,
             active_section=self.active_section,
@@ -446,6 +520,7 @@ class AIHubApp(QMainWindow):
             on_lang_toggle=self.toggle_lang,
         )
         self._sidebar_set_active = set_active
+        self._sidebar_update_theme = update_theme
         self._sidebar_widget = sidebar_widget
         layout.addWidget(sidebar_widget)
 
@@ -472,6 +547,7 @@ class AIHubApp(QMainWindow):
         self._context_layout = context_stack
         self._context_widget = context_view
         layout.addWidget(context_holder)
+        self._sync_context_holder_width(context_view)
 
         self.setCentralWidget(central)
 

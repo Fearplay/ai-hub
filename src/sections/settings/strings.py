@@ -9,6 +9,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "title": "Settings",
         "subtitle": "Pick your AI provider, store API keys safely on your computer, tune defaults.",
 
+        "profile_card_title": "Your name",
+        "profile_card_desc": "Shown in the account card at the bottom of the sidebar. Leave it empty to hide the name.",
+        "profile_name_label": "Display name",
+        "profile_name_hint": "e.g. Jane Doe",
+        "profile_save_btn": "Save name",
+        "profile_saved": "Saved.",
+        "profile_cleared": "Name cleared.",
+
+        "about_card_title": "About",
+        "about_card_desc": "The version of AI Hub you're running.",
+        "about_version_label": "Version",
+
         "provider_card_title": "AI provider & model",
         "provider_card_desc": "Each AI section uses these defaults. Sections may override the model from their own UI.",
         "provider_label": "Provider",
@@ -81,6 +93,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "nav_label": "Nastavení",
         "title": "Nastavení",
         "subtitle": "Vyber AI providera, ulož si API klíče bezpečně na svém počítači a uprav výchozí volby.",
+
+        "profile_card_title": "Tvoje jméno",
+        "profile_card_desc": "Zobrazí se v kartě účtu dole v levém panelu. Nech prázdné, ať se jméno nezobrazuje.",
+        "profile_name_label": "Zobrazované jméno",
+        "profile_name_hint": "např. Jan Novák",
+        "profile_save_btn": "Uložit jméno",
+        "profile_saved": "Uloženo.",
+        "profile_cleared": "Jméno smazáno.",
+
+        "about_card_title": "O aplikaci",
+        "about_card_desc": "Verze AI Hubu, kterou používáš.",
+        "about_version_label": "Verze",
 
         "provider_card_title": "AI provider & model",
         "provider_card_desc": "Tyto volby používají všechny AI sekce. Konkrétní sekce si může model přepsat ze svého UI.",

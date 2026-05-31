@@ -86,6 +86,7 @@ def tabs(lang: str) -> list[str]:
     return [
         txt["tab_setup"],
         txt["tab_results"],
+        txt["tab_applications"],
         txt["tab_skill_gap"],
         txt["tab_history"],
     ]

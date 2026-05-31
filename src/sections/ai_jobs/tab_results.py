@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
+from src.qt.runtime import get_main_window
 from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
@@ -47,7 +48,9 @@ from src.qt.widgets import (
     hbox,
     vbox,
 )
+from src.services import applications_store
 from src.services import clipboard
+from src.services import handoff
 from src.services import logger as logger_service
 from src.sections.ai_jobs import pipeline
 from src.sections.ai_jobs.refs import REFS
@@ -206,6 +209,22 @@ def _relaxed_pill(theme: Theme, txt: dict) -> QFrame:
     return pill
 
 
+def _new_pill(theme: Theme, txt: dict) -> QFrame:
+    """Green "New" pill for postings not seen in an earlier run."""
+    color = "#22C55E"
+    pill = QFrame()
+    pill.setStyleSheet(
+        f"background-color: {rgba(color, 0.18)}; border-radius: 9px;"
+    )
+    layout = hbox(spacing=4, margins=(8, 3, 8, 3))
+    pill.setLayout(layout)
+    layout.addWidget(custom_label(
+        txt["results_new_pill"], color=color, size=10, weight=QFont.Weight.Bold,
+    ))
+    pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    return pill
+
+
 def _skill_chip(theme: Theme, label: str, *, color: str, fill: str) -> QFrame:
     """Small pill that mirrors the saved-HTML ``.skill-chip`` look.
 
@@ -286,12 +305,42 @@ def _recommendation_card(theme: Theme, *, title: str, body: str) -> Optional[QFr
     return card
 
 
+def _job_handoff_payload(item: dict) -> dict:
+    """Compose a Career-bound handoff payload from a result card."""
+    title = (item.get("title") or "").strip()
+    company = (item.get("company") or "").strip()
+    location = (item.get("location") or "").strip()
+    summary = (item.get("summary") or "").strip()
+    rec = (item.get("recommendation") or "").strip()
+    head = " | ".join(b for b in (title, company, location) if b)
+    text_bits = [b for b in (head, summary, rec) if b]
+    return {
+        "job_url": (item.get("url") or "").strip(),
+        "job_title": title,
+        "company": company,
+        "job_text": "\n\n".join(text_bits),
+    }
+
+
+def _navigate_section(section_key: str) -> None:
+    window = get_main_window()
+    if window is None:
+        return
+    try:
+        window.set_section(section_key)
+    except Exception as exc:
+        logger_service.log_exception(
+            "ai_jobs.tab_results", "navigate_failed", exc, key=section_key,
+        )
+
+
 def _position_card(
     theme: Theme,
     txt: dict,
     item: dict,
     *,
     on_link_copied: Callable[[str], None],
+    on_saved_application: Callable[[str, bool], None],
 ) -> QFrame:
     is_active = bool(item.get("is_active", True))
     is_relaxed = bool(item.get("is_relaxed", False))
@@ -331,6 +380,8 @@ def _position_card(
     title_label = TitleLabel(item.get("title", ""), theme=theme, size=15, weight=QFont.Weight.Bold)
     title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     title_layout.addWidget(title_label, 1)
+    if item.get("is_new"):
+        title_layout.addWidget(_new_pill(theme, txt))
     if not is_active:
         marker = (item.get("inactive_reason") or "").strip()
         title_layout.addWidget(_inactive_pill(theme, txt, marker=marker))
@@ -413,10 +464,106 @@ def _position_card(
             on_link_copied(url)
     copy_btn.clicked.connect(lambda _checked=False: _copy())
     actions_layout.addWidget(copy_btn)
+
+    # Save the posting into the Application Tracker (deduped by URL).
+    save_app_btn = GhostButton(
+        txt["results_save_application_btn"], theme=theme, icon=Icons.BOOKMARK_OUTLINE,
+    )
+
+    def _save_application() -> None:
+        try:
+            record, created = applications_store.add_application(
+                title=item.get("title", ""),
+                company=item.get("company", ""),
+                url=item.get("url", ""),
+                source=item.get("source", ""),
+            )
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_jobs.tab_results", "save_application_failed", exc,
+            )
+            return
+        on_saved_application(record.get("title", ""), created)
+
+    save_app_btn.clicked.connect(lambda _checked=False: _save_application())
+    actions_layout.addWidget(save_app_btn)
+
+    # One-click handoffs into the rest of the career suite. Only offered
+    # for active postings - tailoring a CV / profile to a dead listing is
+    # not useful.
+    if is_active:
+        def _tailor_cv(payload: dict = _job_handoff_payload(item)) -> None:
+            handoff.set_payload("ai_career", payload)
+            _navigate_section("ai_career")
+
+        def _tune_linkedin(role: str = (item.get("title") or "").strip()) -> None:
+            handoff.set_payload("ai_linkedin", {"target_role": role})
+            _navigate_section("ai_linkedin")
+
+        tailor_btn = GhostButton(
+            txt["results_tailor_cv_btn"], theme=theme, icon=Icons.ASSIGNMENT_IND_OUTLINED,
+        )
+        tailor_btn.clicked.connect(lambda _checked=False: _tailor_cv())
+        actions_layout.addWidget(tailor_btn)
+
+        tune_btn = GhostButton(
+            txt["results_tune_linkedin_btn"], theme=theme, icon=Icons.LINKEDIN,
+        )
+        tune_btn.clicked.connect(lambda _checked=False: _tune_linkedin())
+        actions_layout.addWidget(tune_btn)
+
     actions_layout.addStretch(1)
     layout.addWidget(actions)
 
     return card
+
+
+def _new_summary_row(theme: Theme, txt: dict, new_count: int, filter_offered: bool) -> QFrame:
+    """Green "X new since last run" badge + optional All / New toggle."""
+    row = QFrame()
+    row.setStyleSheet("background: transparent;")
+    layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    row.setLayout(layout)
+
+    badge = QFrame()
+    badge.setStyleSheet(
+        f"background-color: {rgba('#22C55E', 0.16)}; border-radius: 10px;"
+    )
+    badge_layout = hbox(spacing=6, margins=(10, 5, 10, 5))
+    badge.setLayout(badge_layout)
+    badge_layout.addWidget(IconLabel(Icons.AUTO_AWESOME, color="#22C55E", size=14))
+    badge_layout.addWidget(custom_label(
+        txt["results_new_badge_template"].format(count=new_count),
+        color="#22C55E", size=12, weight=QFont.Weight.DemiBold,
+    ))
+    badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+    layout.addWidget(badge)
+    layout.addStretch(1)
+
+    if filter_offered:
+        total = len(STATE.results)
+        show_new = bool(STATE.show_new_only)
+
+        def _toggle(new_only: bool) -> None:
+            if STATE.show_new_only == new_only:
+                return
+            STATE.show_new_only = new_only
+            REFS.dispatch(_request_full_refresh)
+
+        all_btn = (PrimaryButton if not show_new else SecondaryButton)(
+            txt["results_filter_all_template"].format(count=total), theme=theme,
+        )
+        all_btn.clicked.connect(lambda _checked=False: _toggle(False))
+        layout.addWidget(all_btn)
+
+        new_btn = (PrimaryButton if show_new else SecondaryButton)(
+            txt["results_filter_new_template"].format(count=new_count), theme=theme,
+        )
+        new_btn.clicked.connect(lambda _checked=False: _toggle(True))
+        layout.addWidget(new_btn)
+
+    return row
 
 
 def _empty_state(theme: Theme, txt: dict) -> QWidget:
@@ -526,6 +673,19 @@ def build_results_tab(theme: Theme, lang: str) -> QWidget:
     if summary_card is not None:
         body_layout.addWidget(summary_card)
 
+    # --- new-since-last-run badge + All / New filter ------------------
+    total_count = len(STATE.results)
+    new_count = int(STATE.last_new_count or 0)
+    seen_count = total_count - new_count
+    filter_offered = new_count > 0 and seen_count > 0
+    if new_count > 0:
+        body_layout.addWidget(_new_summary_row(theme, txt, new_count, filter_offered))
+
+    if STATE.show_new_only and new_count > 0:
+        items_to_show = [it for it in STATE.results if it.get("is_new")]
+    else:
+        items_to_show = list(STATE.results)
+
     # Status label captured by closures so the Save action can update it
     # without rebuilding the tab.
     status_label = SubtleLabel("", theme=theme, size=11)
@@ -533,8 +693,18 @@ def build_results_tab(theme: Theme, lang: str) -> QWidget:
     def _on_link_copied(url: str) -> None:
         runtime_dispatch(lambda: status_label.setText(txt["results_copied_template"].format(url=url)))
 
-    for item in STATE.results:
-        body_layout.addWidget(_position_card(theme, txt, item, on_link_copied=_on_link_copied))
+    def _on_saved_application(title: str, created: bool) -> None:
+        template = txt["apps_added_template"] if created else txt["apps_exists_template"]
+        runtime_dispatch(lambda: status_label.setText(template.format(title=title)))
+
+    if not items_to_show:
+        body_layout.addWidget(MutedLabel(txt["results_new_empty"], theme=theme, size=13))
+    for item in items_to_show:
+        body_layout.addWidget(_position_card(
+            theme, txt, item,
+            on_link_copied=_on_link_copied,
+            on_saved_application=_on_saved_application,
+        ))
     body_layout.addStretch(1)
 
     scroll = QScrollArea()

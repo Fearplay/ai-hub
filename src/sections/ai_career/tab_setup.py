@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.components.shared_profile_banner import open_my_profile, shared_profile_banner
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
@@ -36,7 +37,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
-from src.sections.ai_career import pipeline
+from src.sections.ai_career import pipeline, shared_profile
 from src.sections.ai_career.followup_dialog import open_followup_dialog
 from src.sections.ai_career.refs import REFS
 from src.sections.ai_career.state import (
@@ -379,6 +380,28 @@ def build_setup_tab(
             logger_service.log_exception(
                 "ai_career.tab_setup", "footer_refresh_failed", exc,
             )
+
+    # Shared career profile - pull the once-uploaded CV (+ LinkedIn /
+    # GitHub) into this flow instead of re-uploading. The upload zones in
+    # the steps below stay editable for a per-run override.
+    if shared_profile.has_shared():
+        def _use_shared() -> None:
+            shared_profile.apply()
+            runtime_dispatch(_request_full_refresh)
+
+        _applied = shared_profile.is_applied()
+        body_layout.addWidget(
+            shared_profile_banner(
+                theme,
+                title=txt["shared_title_applied"] if _applied else txt["shared_title_use"],
+                summary=shared_profile.build_summary(txt),
+                edit_label=txt["shared_edit_btn"],
+                on_edit=open_my_profile,
+                use_label=txt["shared_use_btn"],
+                on_use=_use_shared,
+                applied=_applied,
+            )
+        )
 
     body_layout.addWidget(_step_1(theme, txt, _on_state_change))
     body_layout.addWidget(_step_2(theme, txt, _on_state_change))

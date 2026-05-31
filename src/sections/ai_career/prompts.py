@@ -480,6 +480,89 @@ CHAT_MODE_SYSTEM = (
 )
 
 
+INTERVIEW_SYSTEM = (
+    HR_EXPERT_RULES
+    + "\n\nTASK: You are running a MOCK INTERVIEW for the candidate, playing two\n"
+    "roles at once:\n"
+    "1. INTERVIEWER - a hiring manager for the TARGET_ROLE who asks ONE\n"
+    "   focused question per turn (behavioural, technical, or situational),\n"
+    "   tailored to the role and the candidate's real background.\n"
+    "2. COACH - after each candidate answer, grade it with the STAR method\n"
+    "   (Situation, Task, Action, Result).\n\n"
+    "Rules:\n"
+    "* Ask exactly ONE question per turn. Make it realistic and specific;\n"
+    "  build on the candidate's evidence where you can.\n"
+    "* OPENING turn: there is no answer yet - return ONLY next_question +\n"
+    "  question_focus and leave feedback / strengths / gaps / improved_answer\n"
+    "  empty.\n"
+    "* LATER turns: grade the candidate's LAST answer - concise feedback,\n"
+    "  1-4 strengths, 1-4 gaps (name the missing STAR element), and an\n"
+    "  improved_answer rewritten using ONLY the candidate's real evidence.\n"
+    "  Use [insert metric] placeholders instead of inventing numbers.\n"
+    "* Then ask the next question, probing a DIFFERENT competency than before.\n"
+    "* Wrap up with done=true and an empty next_question after about six\n"
+    "  questions, or immediately if the candidate says they want to stop.\n"
+    "* Never invent the candidate's experience. If a fact is missing, coach\n"
+    "  them on how to phrase it - do not fabricate it.\n"
+    "* OUTPUT_LANGUAGE applies to every human-readable string in the JSON.\n"
+    "Return only the InterviewTurn JSON described by the schema."
+)
+
+
+def build_interview_user(
+    *,
+    output_lang: str,
+    target_role: str,
+    candidate_context: str,
+    job_context: str,
+    transcript: list[dict],
+    candidate_answer: str,
+    is_opening: bool,
+) -> str:
+    """Render one Mock Interview turn for :func:`ai_provider.run`."""
+    parts: list[str] = [
+        language_directive(output_lang),
+        "",
+        f"TARGET_ROLE: {target_role or 'Unknown - infer from the candidate background'}",
+    ]
+    if candidate_context:
+        parts += ["", "=== CANDIDATE BACKGROUND ===", _trim(candidate_context, 12000)]
+    else:
+        parts += [
+            "",
+            "=== CANDIDATE BACKGROUND ===",
+            "(No structured profile provided - ask broader questions and "
+            "request specifics where you would otherwise need a fact.)",
+        ]
+    if job_context:
+        parts += ["", "=== TARGET JOB ===", _trim(job_context, 8000)]
+    if transcript:
+        parts += ["", "=== INTERVIEW SO FAR ==="]
+        labels = {"interviewer": "Interviewer", "candidate": "Candidate", "coach": "Coach"}
+        for turn in transcript:
+            role = (turn.get("role") or "").strip().lower()
+            text = (turn.get("text") or "").strip()
+            if not text:
+                continue
+            parts.append(f"{labels.get(role, role.title())}: {text}")
+    if is_opening:
+        parts += [
+            "",
+            "This is the OPENING turn. Return only the first question "
+            "(feedback / strengths / gaps / improved_answer must be empty).",
+        ]
+    else:
+        parts += [
+            "",
+            "=== CANDIDATE'S LATEST ANSWER ===",
+            candidate_answer.strip() or "(no answer given)",
+            "",
+            "Grade this answer with STAR, then ask the next question.",
+        ]
+    parts += ["", "Return only the InterviewTurn JSON."]
+    return "\n".join(parts)
+
+
 def build_chat_user_block(
     *,
     output_lang: str,

@@ -1,0 +1,167 @@
+"""Sidebar profile card (avatar + name).
+
+Rendered below the secondary nav (Dashboard / Settings) near the bottom
+of the sidebar. Clicking anywhere on the card opens a small modal to set
+or edit the display name.
+
+There is intentionally **no** overflow (three-dots) menu: it used to jump
+straight to the My Profile section, which skipped the name step the card
+is meant to capture. The My Profile section is still reachable from the
+"edit profile" banner inside the AI sections (see
+``src/components/shared_profile_banner.py``), and Settings lives in the
+sidebar's secondary nav, so nothing is stranded by dropping the menu.
+
+The display name comes from ``settings_store.get_profile_name()`` and is
+**empty by default** - the card shows a muted "set your name" placeholder
+until the user types one in. There is no hard-coded mock name and no
+subscription/plan line anymore.
+
+The card intentionally uses neutral surface/border/text tokens (no
+per-section accent) so the in-place accent restyle that runs on every
+section switch never has to touch it - the avatar stays a calm grey
+circle exactly like a real account chip.
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QDialog, QFrame, QSizePolicy
+
+from src.i18n import t
+from src.qt.dialog import BaseDialog, show_dialog
+from src.qt.icons import Icons
+from src.qt.runtime import get_main_window
+from src.qt.theme import rgba
+from src.qt.widgets import (
+    ClickFrame,
+    GhostButton,
+    IconLabel,
+    PrimaryButton,
+    custom_label,
+    hbox,
+    themed_line_edit,
+    vbox,
+    wrap_label_slot,
+)
+from src.services import logger as logger_service
+from src.services import settings_store
+from src.theme import Theme
+
+
+def _open_name_dialog(theme: Theme, lang: str) -> None:
+    """Set / edit the sidebar display name straight from the card.
+
+    Opens a small themed modal prefilled with the current name, saves it
+    to ``settings_store`` and refreshes the sidebar so the new name shows
+    on the card immediately - no detour through the Settings section.
+    """
+    dlg = BaseDialog(
+        parent=get_main_window(),
+        theme=theme,
+        title=t("profile_set_name", lang),
+        width=440,
+    )
+    dlg.body_layout.addWidget(
+        custom_label(
+            t("profile_name_dialog_label", lang),
+            color=theme.text,
+            size=12,
+            weight=QFont.Weight.DemiBold,
+        )
+    )
+    name_field = themed_line_edit(theme, placeholder=t("profile_name_dialog_hint", lang))
+    name_field.setText(settings_store.get_profile_name())
+    dlg.body_layout.addWidget(name_field)
+
+    dlg.add_action(GhostButton(t("profile_cancel_btn", lang), theme=theme), role="cancel")
+    dlg.add_action(
+        PrimaryButton(t("profile_save_btn", lang), theme=theme, icon=Icons.SAVE_OUTLINED),
+        role="accept",
+    )
+
+    if show_dialog(dlg) != QDialog.DialogCode.Accepted:
+        return
+
+    value = (name_field.text() or "").strip()
+    try:
+        settings_store.set_profile_name(value)
+    except Exception as exc:
+        logger_service.log_exception("profile_card", "set_profile_name_failed", exc)
+        return
+    logger_service.log_event(
+        "INFO", "profile_card", "profile_name_saved", has_name=bool(value),
+    )
+    try:
+        from src.app import request_sidebar_refresh
+
+        request_sidebar_refresh()
+    except Exception as exc:
+        logger_service.log_exception("profile_card", "profile_name_refresh_failed", exc)
+
+
+def profile_card(theme: Theme, lang: str) -> QFrame:
+    card = ClickFrame()
+    card.setObjectName("ProfileCard")
+    card.setToolTip(t("profile_set_name", lang))
+    card.setStyleSheet(
+        f"""
+        ClickFrame#ProfileCard {{
+            background-color: {theme.surface};
+            border: 1px solid {theme.border};
+            border-radius: 12px;
+        }}
+        ClickFrame#ProfileCard:hover {{
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
+        """
+    )
+    # The whole card opens the "set / edit name" dialog. There is no
+    # overflow (three-dots) menu: it used to jump straight to the My
+    # Profile section, which skipped the name step the card is meant to
+    # capture. My Profile stays reachable from the "edit profile" banner
+    # inside the AI sections, and Settings lives in the sidebar nav.
+    card.clicked.connect(lambda: _open_name_dialog(theme, lang))
+
+    layout = hbox(spacing=10, margins=(10, 9, 12, 9))
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    card.setLayout(layout)
+
+    avatar = QFrame()
+    avatar.setFixedSize(38, 38)
+    avatar.setStyleSheet(
+        f"background-color: {theme.surface_2}; border-radius: 19px;"
+    )
+    avatar_layout = hbox(spacing=0, margins=(0, 0, 0, 0))
+    avatar_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    avatar.setLayout(avatar_layout)
+    avatar_layout.addWidget(
+        IconLabel(Icons.PERSON, color=theme.text_muted, size=22),
+        alignment=Qt.AlignmentFlag.AlignCenter,
+    )
+    layout.addWidget(avatar)
+
+    text_holder = QFrame()
+    text_holder.setStyleSheet("background: transparent; border: none;")
+    text_holder.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+    )
+    text_layout = vbox(spacing=1, margins=(0, 0, 0, 0))
+    text_holder.setLayout(text_layout)
+
+    # Empty until the user sets it in Settings -> show a muted prompt
+    # rather than a fake placeholder name.
+    name = settings_store.get_profile_name()
+    if name:
+        name_label = custom_label(
+            name, color=theme.text, size=13, weight=QFont.Weight.DemiBold
+        )
+    else:
+        name_label = custom_label(
+            t("profile_set_name", lang), color=theme.text_muted, size=13
+        )
+    wrap_label_slot(name_label)
+    text_layout.addWidget(name_label)
+    layout.addWidget(text_holder, 1)
+
+    return card

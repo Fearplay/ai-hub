@@ -658,3 +658,77 @@ MATCH_ANALYSIS_SCHEMA: dict = {
         },
     },
 }
+
+
+# One turn of the Mock Interview simulator. The model plays both the
+# interviewer (asks the next tailored question) and the coach (grades the
+# candidate's previous answer against the STAR method). ``feedback`` /
+# ``strengths`` / ``gaps`` / ``improved_answer`` are empty on the very
+# first turn (there is no answer to grade yet); ``next_question`` is empty
+# only when ``done`` is true.
+INTERVIEW_TURN_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "feedback",
+        "strengths",
+        "gaps",
+        "improved_answer",
+        "next_question",
+        "question_focus",
+        "done",
+    ],
+    "properties": {
+        "feedback": {
+            "type": "string",
+            "description": (
+                "2-4 sentence STAR critique of the candidate's previous "
+                "answer. Empty string on the opening turn."
+            ),
+        },
+        "strengths": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {"type": "string"},
+            "description": "What the answer did well (STAR). Empty on the opening turn.",
+        },
+        "gaps": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {"type": "string"},
+            "description": (
+                "Missing STAR elements / weak spots, each a short imperative "
+                "line. Empty on the opening turn."
+            ),
+        },
+        "improved_answer": {
+            "type": "string",
+            "description": (
+                "A rewritten model answer grounded ONLY in the candidate's "
+                "evidence. Use [insert metric] placeholders rather than "
+                "inventing numbers. Empty on the opening turn."
+            ),
+        },
+        "next_question": {
+            "type": "string",
+            "description": (
+                "The next interview question, tailored to the role and the "
+                "candidate's background. Empty only when done is true."
+            ),
+        },
+        "question_focus": {
+            "type": "string",
+            "description": (
+                "Short tag for the next question's theme, e.g. "
+                "'Behavioural - leadership' / 'Technical - testing'."
+            ),
+        },
+        "done": {
+            "type": "boolean",
+            "description": (
+                "True when the interviewer decides to wrap up (after ~6 "
+                "questions or when the candidate asks to stop)."
+            ),
+        },
+    },
+}

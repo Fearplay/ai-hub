@@ -17,19 +17,28 @@ libovolného asistenta. Sekce **AI Životopis / Kariéra**,
 **AI LinkedIn Profile Builder**, **AI Finance**, **AI Hledání práce**
 a **AI Bug Report** jsou plně napojené na OpenAI / Anthropic (nová
 sekce mluví i s **vision** API obou providerů, takže screenshoty
-zpracovává společně s textovým promptem). Rozpracované sekce
-(AI Právní asistent, AI Podnikání, AI Marketing, AI Studium,
-AI Dokumenty, AI Asistent dokumentů) jsou v repu ponechané, ale
-aktuálně **schované ze sidebaru** - jak je zase zapnout, viz
-[Schované UI](#schované-ui) níže.
+zpracovává společně s textovým promptem). Nový hub **Můj profil**
+umožní nahrát životopis / LinkedIn export / GitHub jednou a používat
+ho napříč AI Kariérou, AI Hledáním práce i AI LinkedInem; tyhle tři
+si navíc předávají práci přes **one-click handoffy** (Ušít CV / Vylaď
+LinkedIn z výsledku hledání), AI Hledání práce si teď vede
+**Tracker žádostí** a označuje nabídky **nové od posledního běhu** a
+AI Kariéra přidává interaktivní **Mock Interview** simulátor se
+STAR feedbackem. Rozpracované sekce (AI Právní asistent, AI Podnikání,
+AI Marketing, AI Studium, AI Dokumenty, AI Asistent dokumentů) jsou
+v repu ponechané, ale aktuálně **schované ze sidebaru** - jak je zase
+zapnout, viz [Schované UI](#schované-ui) níže.
 
 Levý sidebar je teď **drag-and-drop přerovnatelný** - chytni malý úchyt
 napravo u kterékoli AI sekce a pusť ji tam, kam chceš. Nové pořadí se
 projeví okamžitě (žádný restart, žádné přepínání jazyka). Pořadí se
 ukládá do `~/AI Hub/settings.json`, takže layout přežije restart.
-Sekundární skupina (**Dashboard** nad **Nastavením**) zůstává pevně
-pod oddělovačem; obě sekce se nedají přerovnávat, takže navigační
-mřížka i stránka s nastavením jsou vždy na jedno kliknutí.
+Sekundární skupina (**Dashboard** nad **Nastavením**) sedí přímo
+**pod** seznamem AI modulů pod tenkým oddělovačem; obě sekce se nedají
+přerovnávat, takže navigační mřížka i stránka s nastavením jsou vždy na
+jedno kliknutí. **Karta účtu** (avatar + tvoje jméno) sedí v patce
+sidebaru přímo nad přepínači jazyka a režimu; kliknutím na ni otevřeš
+inline dialog pro nastavení nebo úpravu jména.
 
 ## Požadavky
 
@@ -90,6 +99,26 @@ synchronní obálka nad knihovnou
 `win32clipboard` / `pbcopy` / `xclip` / `tkinter`), takže Copy / Paste
 tlačítka jsou robustní bez ohledu na stav Qt session.
 
+## UI smoke testy (vývoj)
+
+Qt layout může v kódu vypadat OK a přesto se za běhu ořízne nebo
+překrývá, takže repo obsahuje malý screenshotovací nástroj
+`tools/smoke_shot.py`. Nabootuje skutečnou aplikaci, přepne na sekci,
+vykreslí ji v zadané velikosti (defaultně minimum okna **1220x760**, kde
+se oříznutí pravého okraje projeví nejdřív) a uloží PNG do
+git-ignorované složky `.smoke/`:
+
+```bash
+python tools/smoke_shot.py --section ai_linkedin --lang cs --theme dark
+python tools/smoke_shot.py --section my_profile  --lang en --theme light
+python tools/smoke_shot.py --all          # každá viditelná sekce
+```
+
+Otevři PNG a zkontroluj, že se nic neořízne, nepřekrývá ani není
+přeškrtnuté - v obou motivech i jazycích - pak oprav a vyfoť znovu.
+Nástroj žije mimo `src/`, takže se nikdy nezabalí do `.exe`. Pravidlo
+`.cursor/rules/ui-smoke-test.mdc` to dělá povinné u každé změny UI.
+
 ## Build .exe (Windows)
 
 Pro distribuci na Windows je v rootu repa skript [`build_exe.bat`](build_exe.bat). Dvojklikem vyrobí jediný soubor `dist\AIHub.exe`, který si uživatel pustí na čistém PC bez Pythonu / venv / SDK.
@@ -138,8 +167,16 @@ Doručitelný balík pro běžné uživatele je **jeden samostatný binár**:
    adresáři vytvoří `~/AI Hub/`, což je **jediné** místo, kam aplikace
    mimo install folder zapisuje:
    * `~/AI Hub/settings.json` - provider / model / pořadí sidebaru /
-     opt-in přepínače,
+     zobrazované jméno / opt-in přepínače,
    * `~/AI Hub/history.json` - index uložených výstupů ze všech sekcí,
+   * `~/AI Hub/career_profile.json` - sdílená data **Mého profilu**
+     (CV / LinkedIn / GitHub naparsované jednou a sdílené napříč
+     kariérními sekcemi),
+   * `~/AI Hub/applications.json` - **Tracker žádostí** z AI Hledání
+     práce (stav / deadline / poznámky / další krok u každé role),
+   * `~/AI Hub/jobs_seen_urls.json` - sidecar s „viděnými" URL pro
+     odznak **nové od posledního běhu** + dedup napříč běhy,
+   * `~/AI Hub/jobs_profiles.json` - uložené profily AI Hledání práce,
    * `~/AI Hub/logs/app.log` - rotující debug log (1 MB, 4 soubory),
    * `outputs/<sekce>/<title-slug>-<timestamp>/` - skutečné artefakty
      (DOCX, PDF, HTML, MD) vedle .exe.
@@ -177,11 +214,15 @@ Pokud chceš jen pustit dev mód (bez exe), stačí krok 1-2 plus
 
 Sekce **Nastavení** (v sidebaru pod oddělovačem) umožní:
 
+- nastavit **zobrazované jméno** v kartě účtu v sidebaru (defaultně
+  prázdné - nech prázdné, ať se jméno nezobrazuje),
 - vybrat AI providera (**OpenAI** / **Anthropic**) a model (default `gpt-5.4-mini` / `claude-haiku-4-5`),
 - uložit a smazat API klíče (OpenAI / Anthropic / GitHub),
 - přepnout, zda se mají automaticky ptát doplňující otázky před spuštěním pipeline,
 - zapnout / vypnout živá tržní data v AI Finance,
-- otevřít **Debug logy** (zobrazit / zkopírovat / vymazat / otevřít složku).
+- otevřít **Debug logy** (zobrazit / zkopírovat / vymazat / otevřít složku),
+- vidět verzi aplikace v sekci **O aplikaci** (jediný zdroj pravdy:
+  `src/version.py`, mění se podle sémantického verzování).
 
 Klíče se neukládají na disk v plain textu. Aplikace je pošle do nativního úložiště OS přes balíček [`keyring`](https://pypi.org/project/keyring/):
 
@@ -342,11 +383,13 @@ ai-hub/
     ├── components/               # sdílené UI prvky (PySide6)
     │   ├── sidebar.py            # iteruje registr sekcí, header / scroll / footer
     │   ├── nav_item.py
-    │   ├── user_card.py
+    │   ├── profile_card.py       # karta účtu v patce sidebaru (klikni a nastav/uprav si jméno inline)
+    │   ├── user_card.py          # starší karta účtu, do sidebaru se už nepoužívá
     │   ├── section_card.py
     │   ├── document_chip.py
     │   ├── header.py             # generický (icon, title, subtitle, ? button)
     │   ├── how_to_dialog.py      # generický modal "Jak používat asistenta"
+    │   ├── shared_profile_banner.py # banner "Používáš svůj sdílený profil" (Kariéra / Práce / LinkedIn)
     │   ├── tab_bar.py            # generický (list záložek, active index)
     │   ├── chat_message.py
     │   ├── chat_input.py
@@ -363,6 +406,9 @@ ai-hub/
     │   ├── job_scraper.py         # URL → job posting text
     │   ├── file_parser.py         # PDF / DOCX / TXT / HTML → plain text
     │   ├── github_client.py       # public profile + repo summary
+    │   ├── career_profile_store.py # sdílený profil Můj profil (~/AI Hub/career_profile.json)
+    │   ├── applications_store.py  # tracker žádostí (~/AI Hub/applications.json)
+    │   ├── handoff.py             # jednorázová schránka pro přenos mezi sekcemi (bez cross-importů)
     │   ├── exporter.py            # Markdown → MD / HTML / DOCX / PDF
     │   ├── store.py               # JSON-backed history & run output paths
     │   └── logger.py              # rotující debug log do ~/AI Hub/logs/app.log
@@ -370,8 +416,9 @@ ai-hub/
     │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY skupina)
     │   ├── _base.py              # Section dataclass (s nav_group)
     │   ├── SECTION_TEMPLATE/     # šablona pro novou sekci (READ ME)
-    │   ├── dashboard/
-    │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter)
+    │   ├── dashboard/            # navigační mřížka + panel nedávných běhů / nákladů / rychlých akcí
+    │   ├── my_profile/           # sdílený kariérní profil (nahraj jednou, používej všude)
+    │   ├── ai_career/            # plně napojené na AI (HR expert, CV / cover letter, mock interview)
     │   ├── ai_linkedin/          # plně napojené (LinkedIn Profile Builder + content)
     │   ├── ai_legal/              # AI-napojený chat (multi-formát upload + 4 quick actions)
     │   ├── ai_business/          # placeholder
@@ -416,15 +463,23 @@ Detaily v
   příštím kliknutí). Celé okno se už nepřebudovává od nuly, takže
   bývalá ~3sekundová pauza na sekci AI Career je pryč.
 - **Nastavení** - API klíče (OpenAI / Anthropic / GitHub) v OS keystore, výběr providera + modelu, přepínače pro doplňující otázky a živá tržní data, debug logy
+- **Dashboard** - výchozí úvodní obrazovka. Přepracované dlaždice s akcentovým gradientem (jedna na každý viditelný AI modul) plus pravý kontextový panel ve stylu „pokračuj, kdes přestal": **nedávné uložené běhy** (z `store.list_runs()`, kliknutí znovu otevře sekci), živé **náklady relace** (volání / vstupní + výstupní tokeny / celkem $) a **rychlé akce**.
+- **Můj profil** - sdílený kariérní hub, takže životopis / LinkedIn export / GitHub URL / poznámky nahraješ **jen jednou** (otevírá se z menu `⋮` na kartě účtu v patce sidebaru - už to není samostatná položka v navigaci):
+  - jedna strukturovaná LLM extrakce (cachovaná) do sjednoceného `CAREER_PROFILE_SCHEMA` - identita, kontakt, shrnutí, dovednosti, zkušenosti, vzdělání, certifikace, jazyky, projekty, odkazy.
+  - naparsovaný profil se ukládá do `~/AI Hub/career_profile.json` a vykreslí jako read-only karta; tlačítko **Sestavit / přeextrahovat** ho obnoví.
+  - **Demo režim** (sdílený `...` vzor + oranžová pilulka `DEMO`) naplní připravený profil offline; demo data se na disk zapíšou jen když sestavíš profil se zapnutým demem.
+  - pravý panel ukazuje stav profilu + rychlé skoky do AI Kariéra / AI Hledání práce / AI LinkedIn. Celé EN + CS.
+- **Sdílený profil + one-click handoffy** - AI Kariéra, AI Hledání práce i AI LinkedIn ukazují banner *„Používáš svůj sdílený profil"* (s **Upravit profil** / **Použít tady**), který předvyplní jejich setup z `career_profile.json` bez opakovaného nahrávání. Z karty výsledku AI Hledání práce pošle **Ušít CV** nabídku do AI Kariéry a **Vylaď LinkedIn** předvyplní cílovou roli v AI LinkedInu - obojí rovnou skočí do správné sekce přes in-memory službu `handoff` (bez cross-importů mezi sekcemi).
 - **AI Životopis / Kariéra** - dva režimy přepínatelné v hlavičce sekce:
   - **Chat** (Verze B) - konverzační HR asistent, který si můžeš zeptat na cokoli k roli, životopisu, motivačnímu dopisu nebo přípravě na pohovor; do bubliny se dají připojit dokumenty (PDF / DOCX / TXT / MD / HTML) a kontext se přenáší do dalších otázek.
-  - **Formulářový režim** (Verze A) - 4 stage taby (Setup → Match → Documents → History):
+  - **Formulářový režim** (Verze A) - 5 stage tabů (Setup → Match → Documents → Mock Interview → History):
     - scrape inzerátu z URL nebo paste textu
     - upload životopisu (PDF / DOCX / TXT / HTML), volitelně LinkedIn export
     - GitHub URL s automatickým fetchem veřejných repos
     - 3 strukturované LLM kroky (Candidate / JobSpec / MatchAnalysis) + per-doc generátory (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence)
     - inline refine ("Problem 1, Problem 2 …" → AI revize)
     - export do MD / HTML / DOCX / PDF (PDF přes Playwright když je dostupné, jinak `reportlab` fallback) a uložení kompletní analýzy do `outputs/ai_career/<role>-<timestamp>/` (každý "Save complete analysis" jde do **nové** složky s novým časem); odkazy `[label](url)` a holé URL se v PDF i HTML renderují jako kliky a z print stylu se odstranily efekty (text-shadow / stroke / fill-color), které kazily kontrast a označování textu
+  - **Mock Interview** záložka - interaktivní simulátor, který používá stejné chat bubliny: AI hraje náboráře na tvou cílovou roli, ptá se vždy na jednu otázku a každou odpověď pak koučuje metodou **STAR** (feedback + co fungovalo + co zlepšit + podloženou **vzorovou odpověď**) a teprve potom položí navazující otázku. Jede přes `ai_provider.run` se strukturovaným `INTERVIEW_TURN_SCHEMA`; demo režim přehrává připravené tahy zdarma.
   - HR-expert system prompt s no-hallucination klauzulí, REORDER NEVER DELETE, CEFR-only, ATS pravidly atd.
 - **AI LinkedIn Profile Builder** - kompletní pipeline pro generování / přepis LinkedIn profilu:
   - **Setup** - jméno, město, jazyk profilu (EN/CS), tone (warm / sharp / executive / casual), cílová role, target jobs (URL nebo text), CV / LinkedIn export upload, GitHub URL, do-not-mention seznam (témata, která AI nesmí zmínit) a pin / preferred sekce
@@ -453,7 +508,9 @@ Detaily v
   - **Cíl = aktivní nabídky, over-fetch + top-up** - počet výsledků je počet pozic, na které **se opravdu dá přihlásit**, ne "co AI vrátila". Na pozadí discovery sahá 2x víc kandidátů (max 40), každý URL se ověří, a pokud po ověření zbývá málo aktivních, automaticky doběhne další discovery pass (s už viděnými URL na blacklistu v promptu). Výsledek: když si řekneš o 15, dostaneš až 15 použitelných plus malou sekci „Uzavřené nabídky" pro kontrolu detekce.
   - **Volitelné upřesňující otázky** - stejný sdílený modal jako AI Životopis / Kariéra a AI Bug Report. Když je v **Nastavení -> Ptát se na upřesnění** zapnuto, pipeline před discovery pasem (Pass 0) položí 0-8 krátkých otázek k briefu (nejistá seniorita, kontradiktorní klíčová slova, chybějící preference remote / platu, *„uvedl jsi Python, ale ne kolik let"*). Odpovědi se promítají do discovery, per-position scoringu i skill-gap promptu, takže AI přestane domýšlet. V patce sekce je přepínač „Nejdřív se zeptat na upřesnění" + jednořádkový popisek; vypni ho, když chceš jednoklikové spuštění bez modalu.
   - **Pětifázová pipeline**: (1) **discovery** s vestavěným web search a bohatým kontextem (režim, exclusion, stáří, zdroje, plat, případně seznam URL k vynechání pro top-up), (2) striktní JSON **extrakce** do `JOB_LISTINGS_SCHEMA` (název / firma / lokalita / vlozeno / ISO datum / plat / typ úvazku / shrnutí / URL / zdroj / forma práce), (3) **ověření URL** přes shared `job_scraper` (httpx + Playwright fallback - nabídky, které vrátí HTTP 404 / 410, přesměrují na placeholder „Stránka neexistuje", nebo se stránka načte ale obsahuje frázi typu „Už nepřijímá žádosti" / „No longer accepting applications" / „Tahle nabídka už je pryč" / „Nabídka není up-to-date", zůstanou viditelné s červeným odznakem **„Už nenabírá"**, jehož tooltip ukazuje konkrétní zachycenou frázi nebo HTTP status, takže můžeš detekci ověřit prokliknutím; zahazují se jen tvrdé pády scraperu - DNS / SSL / firewall), (4) **per-position match scoring** paralelně (`MATCH_SCHEMA`: shoda v %, sedící / chybějící skills, doporučení AI - skóruje se jen aktivní pozice, na uzavřené se neutrácí tokeny), (5) **agregovaná skill gap analýza** (`SKILL_GAP_SCHEMA`: nejčastější požadavky s počty, tvé silné stránky, chybějící skills, 1-6 konkrétních doporučení). Pasy 4 + 5 se automaticky přeskakují, pokud uživatel nedodal žádný profil.
-  - **Lean Výsledky tab** s malou "Shoda XX %" pillou na kartě (zelená / žlutá / červená pásma) plus chip pro plat + úvazek + forma práce. Per-position chipy a doporučení AI se renderují **hlavně do ukládaného HTML**, aby zůstal seznam na obrazovce přehledný.
+  - **Lean Výsledky tab** s malou "Shoda XX %" pillou na kartě (zelená / žlutá / červená pásma) plus chip pro plat + úvazek + forma práce. Per-position chipy a doporučení AI se renderují **hlavně do ukládaného HTML**, aby zůstal seznam na obrazovce přehledný. Každá karta má taky tlačítka **Ušít CV** / **Vylaď LinkedIn** (handoff) a **Uložit do žádostí**.
+  - **Nové od posledního běhu + dedup napříč běhy** - každé hledání se porovná se sidecarem „viděných" URL (`~/AI Hub/jobs_seen_urls.json`, klíčovaný slugem z klíčových slov). Nabídky, které jsi ještě neviděl(a), dostanou zelenou pilulku **Nové**, hlavička Výsledků ukáže odznak *„X nových od posledního běhu"* a přepínač **Vše / Nové** seznam zúží jen na čerstvé pozice. Dedup v rámci jednoho běhu už sbaluje duplicitní URL; tohle přidává vrstvu napříč běhy.
+  - **Záložka Tracker žádostí** - lehký tracker nad `~/AI Hub/applications.json`. Ulož libovolnou nabídku z Výsledků a tady ji spravuj: dropdown **stav** (Nalezeno -> CV připraveno -> Odesláno -> Pohovor -> Nabídka -> Zamítnuto / Přijato / Archiv), volný **deadline**, **další krok**, **poznámky**, odkazy na nabídku / přiložené dokumenty a smazání. Ukládání dedupuje podle URL, takže se stejná nabídka nikdy nesleduje dvakrát.
   - **Skill gap záložka** s top požadavky, silnými stránkami, chybějícími skills a doporučeními z Passu 5.
   - **Zamčené záložky + demo v menu** - Výsledky / Skill gap jsou disabled, dokud reálně neexistují data. Ukázkové výsledky jsou jen v horním `...` menu, ne jako trvalé tlačítko v UI.
   - **Uložené profily hledání** v `~/AI Hub/jobs_profiles.json` - jedno-klikové spuštění, edit, duplikování, smazání. Žádná nová dependency, žádný nový secret.
@@ -478,9 +535,11 @@ Detaily v
 
 ## Schované UI
 
-V sidebaru je teď pět produkčních sekcí (AI LinkedIn,
+V sidebaru jsou teď produkční sekce (AI LinkedIn,
 AI Životopis / Kariéra, AI Finance, AI Hledání práce, AI Bug Report)
-plus **Nastavení** pod oddělovačem. Rozpracované sekce v repu zůstávají,
+plus **Dashboard** a **Nastavení** pod oddělovačem a **karta účtu**
+připnutá dole (jejíž menu `⋮` otevírá **Můj profil**). Rozpracované sekce
+v repu zůstávají,
 ale jejich `section.py` má `hidden=True`, takže
 `src/sections/__init__.py` je při sestavování `PRIMARY_SECTIONS` /
 `SECONDARY_SECTIONS` přeskočí. Pořád se auto-discoverují a zůstávají
@@ -500,10 +559,21 @@ Když chceš kteroukoli z nich vrátit, otevři `section.py` dané sekce a
 nastav `hidden=False` (nebo ten řádek prostě smaž). Pole
 `Section.hidden` defaultně `False`.
 
-Sidebar taky aktuálně nevykresluje **uživatelskou kartu** ("Jan Novák"
-placeholder) - žádná reálná identita zatím neexistuje. Až přibyde
-auth, vrať volání zpátky do `src/components/sidebar.py`; helper pořád
-žije v `src/components/user_card.py`.
+Sidebar připíná **kartu účtu** (`src/components/profile_card.py`) do
+**patky, přímo nad přepínače jazyka a režimu**: avatar + zobrazované
+jméno + menu `⋮`. Jméno je defaultně prázdné - karta ukáže výzvu „Nastav
+si jméno", dokud ho nezadáš. **Klik na kartu teď otevře malý inline
+dialog, kde jméno nastavíš nebo upravíš rovnou tady** (ukládá se do
+`~/AI Hub/settings.json` a sidebar se hned překreslí) - není nutná
+zajížďka do Nastavení, i když pole **Nastavení -> Tvoje jméno** pořád
+funguje taky. Žádné natvrdo zadrátované jméno ani štítek tarifu
+(„Pro verze") už tam nejsou. Menu `⋮` nabízí rychlé odkazy na Můj profil
+a Nastavení.
+Protože `section.py` u `my_profile` má teď
+`hidden=True`, profil už není samostatná položka navigace a mizí
+i z dlaždic na dashboardu - karta účtu je jediný vstupní bod. Starší
+helper `src/components/user_card.py` zůstává pro referenci, ale do
+sidebaru se už nepoužívá.
 
 ## Co zatím **neumí** (záměrně)
 

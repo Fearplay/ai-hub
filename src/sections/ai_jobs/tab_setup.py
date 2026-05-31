@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.components.followup_dialog import open_followup_dialog
+from src.components.shared_profile_banner import open_my_profile, shared_profile_banner
 from src.qt.dialog import BaseDialog, show_dialog
 from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
@@ -69,7 +70,7 @@ from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
 from src.sections.ai_jobs import data as jobs_data
-from src.sections.ai_jobs import pipeline, profiles_store
+from src.sections.ai_jobs import pipeline, profiles_store, shared_profile
 from src.sections.ai_jobs.refs import REFS
 from src.sections.ai_jobs.state import (
     MAX_RESULTS_MAX,
@@ -1468,6 +1469,28 @@ def build_setup_tab(
     hero_layout.addWidget(TitleLabel(txt["setup_hero_title"], theme=theme, size=18, weight=QFont.Weight.Bold))
     hero_layout.addWidget(MutedLabel(txt["setup_hero_desc"], theme=theme, size=12))
     body_layout.addWidget(hero)
+
+    # Shared career profile - offer to pull the once-uploaded CV into the
+    # form instead of re-uploading. The upload zone in Step 2 stays editable
+    # for a per-run override.
+    if shared_profile.has_shared():
+        def _use_shared() -> None:
+            shared_profile.apply()
+            runtime_dispatch(_request_full_refresh)
+
+        _applied = shared_profile.is_applied()
+        body_layout.addWidget(
+            shared_profile_banner(
+                theme,
+                title=txt["shared_title_applied"] if _applied else txt["shared_title_use"],
+                summary=shared_profile.build_summary(txt),
+                edit_label=txt["shared_edit_btn"],
+                on_edit=open_my_profile,
+                use_label=txt["shared_use_btn"],
+                on_use=_use_shared,
+                applied=_applied,
+            )
+        )
 
     # Footer status label lives below the scroll so worker threads can
     # update it without finding the right widget across step cards.

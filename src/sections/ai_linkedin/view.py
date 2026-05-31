@@ -44,6 +44,7 @@ from src.sections.ai_linkedin.tab_history import build_history_tab
 from src.sections.ai_linkedin.tab_output import build_output_tab
 from src.sections.ai_linkedin.tab_sections import build_sections_tab
 from src.sections.ai_linkedin.tab_setup import build_setup_tab
+from src.services import handoff
 from src.services import logger as logger_service
 from src.services import store
 from src.theme import Theme
@@ -52,6 +53,31 @@ from src.theme import Theme
 def _refresh() -> None:
     from src.app import request_section_refresh
     request_section_refresh()
+
+
+def _consume_handoff() -> None:
+    """Pull a Job Search -> LinkedIn handoff (if any) into STATE.
+
+    Job Search's "Tune LinkedIn" action stashes the picked role; we add
+    it to the target-roles list and jump to the Builder/Setup flow.
+    """
+    payload = handoff.take("ai_linkedin")
+    if not payload:
+        return
+    try:
+        role = str(payload.get("target_role") or "").strip()
+        if role:
+            roles = [r for r in (STATE.target_roles or []) if r.strip()]
+            if role not in roles:
+                roles.insert(0, role)
+            STATE.target_roles = roles
+            STATE.mode = MODE_BUILDER
+            STATE.active_tab = TAB_SETUP
+        logger_service.log_event(
+            "INFO", "ai_linkedin.view", "handoff_consumed", has_role=bool(role),
+        )
+    except Exception as exc:
+        logger_service.log_exception("ai_linkedin.view", "handoff_consume_failed", exc)
 
 
 def _open_in_explorer(path: str) -> None:
@@ -121,6 +147,7 @@ def _builder_tab_enabled(index: int) -> bool:
 
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    _consume_handoff()
     try:
         STATE.runs_history = [
             run for run in store.list_runs()

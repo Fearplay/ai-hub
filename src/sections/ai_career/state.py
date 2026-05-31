@@ -29,7 +29,8 @@ from typing import Any, Optional
 TAB_SETUP = 0
 TAB_MATCH = 1
 TAB_DOCUMENTS = 2
-TAB_HISTORY = 3
+TAB_INTERVIEW = 3
+TAB_HISTORY = 4
 
 
 # Top-level mode (Chat vs. Form). Each mode has its own UI; the "Form"
@@ -105,6 +106,17 @@ class CareerState:
     chat_running: bool = False
     chat_last_error: str = ""
 
+    # Mock Interview transcript (TAB_INTERVIEW). Each entry is a dict:
+    #   {"kind": "question"|"answer"|"feedback", "text": str, "time": str,
+    #    "focus": str,                 # question only - short topic tag
+    #    "strengths": [str], "gaps": [str], "improved": str}  # feedback only
+    # The interviewer/coach turns come from ``pipeline.interview_turn``;
+    # the candidate turns are appended by the tab when the user answers.
+    interview_messages: list[dict] = field(default_factory=list)
+    interview_running: bool = False
+    interview_last_error: str = ""
+    interview_done: bool = False
+
     job_url: str = ""
     job_text: str = ""
     job_text_source: str = ""  # "scrape" | "paste"
@@ -177,6 +189,7 @@ class CareerState:
         self.last_error = ""
         self.last_run_folder = ""
         self.run_stage = ""
+        self.reset_interview()
 
     def reset_chat(self) -> None:
         """Wipe the Chat-mode transcript and attachments."""
@@ -184,6 +197,13 @@ class CareerState:
         self.chat_attachments = {}
         self.chat_running = False
         self.chat_last_error = ""
+
+    def reset_interview(self) -> None:
+        """Wipe the Mock Interview transcript."""
+        self.interview_messages = []
+        self.interview_running = False
+        self.interview_last_error = ""
+        self.interview_done = False
 
     def reset_all(self) -> None:
         """Hard wipe used by the "New analysis" menu / quick action.

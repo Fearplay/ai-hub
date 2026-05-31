@@ -55,11 +55,45 @@ def context_panel_shell(theme: Theme, *cards: QWidget) -> QFrame:
     container.setLayout(outer)
 
     scroll = QScrollArea()
+    scroll.setObjectName("ContextScroll")
     scroll.setWidgetResizable(True)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setStyleSheet("QScrollArea { background: transparent; }")
+    # The context panel always holds more cards than fit on a short window,
+    # so the vertical scrollbar is effectively permanent. The global 10px
+    # bar sat right against the cards' right rounded corners, which reads
+    # as "the right edge is covering the tiles". Scope a slim 6px inset
+    # rail to this panel only (the wide sidebar / main scrollbars keep the
+    # global style) so the rail tucks into the gutter and the cards keep
+    # their rounded corners clear.
+    scroll.setStyleSheet(
+        f"""
+        QScrollArea#ContextScroll {{ background: transparent; border: none; }}
+        QScrollArea#ContextScroll QScrollBar:vertical {{
+            background: transparent;
+            width: 6px;
+            margin: 8px 1px 8px 1px;
+        }}
+        QScrollArea#ContextScroll QScrollBar::handle:vertical {{
+            background: {rgba(theme.border, 0.55)};
+            border-radius: 3px;
+            min-height: 28px;
+        }}
+        QScrollArea#ContextScroll QScrollBar::handle:vertical:hover {{
+            background: {rgba(theme.primary, 0.45)};
+        }}
+        QScrollArea#ContextScroll QScrollBar::add-line:vertical,
+        QScrollArea#ContextScroll QScrollBar::sub-line:vertical {{
+            height: 0;
+            background: transparent;
+        }}
+        QScrollArea#ContextScroll QScrollBar::add-page:vertical,
+        QScrollArea#ContextScroll QScrollBar::sub-page:vertical {{
+            background: transparent;
+        }}
+        """
+    )
     outer.addWidget(scroll)
 
     inner = QFrame()

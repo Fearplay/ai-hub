@@ -258,6 +258,21 @@ def extract_profile(*, output_lang: str) -> PipelineResult:
             " running the profile build."
         )
 
+    # Fetch the GitHub profile on demand. Previously ``fetch_github_profile``
+    # existed but was never invoked, so ``github_summary`` was always empty
+    # even when the user supplied a username/URL.
+    if (
+        (STATE.github_url or "").strip()
+        and not STATE.github_skip
+        and STATE.github_profile is None
+    ):
+        try:
+            STATE.github_profile = fetch_github_profile(STATE.github_url)
+        except Exception as exc:
+            logger_service.log_exception(
+                "ai_linkedin.pipeline", "extract_profile_github_fetch_failed", exc,
+            )
+
     _set_activity("extracting")
     user = prompts.build_profile_extract_user(
         output_lang=output_lang,

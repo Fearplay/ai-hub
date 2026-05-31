@@ -25,6 +25,7 @@ from src.sections.ai_career.state import (
     STATE,
     TAB_DOCUMENTS,
     TAB_HISTORY,
+    TAB_INTERVIEW,
     TAB_MATCH,
     TAB_SETUP,
 )
@@ -33,7 +34,9 @@ from src.sections.ai_career.tab_chat import build_chat_tab
 from src.sections.ai_career.tab_documents import build_documents_tab
 from src.sections.ai_career.tab_history import build_history_tab
 from src.sections.ai_career.tab_match import build_match_tab
+from src.sections.ai_career.tab_mock_interview import build_mock_interview_tab
 from src.sections.ai_career.tab_setup import build_setup_tab
+from src.services import handoff
 from src.services import logger as logger_service
 from src.services import store
 from src.theme import Theme
@@ -42,6 +45,37 @@ from src.theme import Theme
 def _refresh() -> None:
     from src.app import request_section_refresh
     request_section_refresh()
+
+
+def _consume_handoff() -> None:
+    """Pull a Job Search -> Career handoff (if any) into STATE.
+
+    Job Search's "Tailor CV" action stashes the picked posting; we
+    pre-fill the position fields and jump to the Form/Setup flow so the
+    user lands ready to run.
+    """
+    payload = handoff.take("ai_career")
+    if not payload:
+        return
+    try:
+        job_url = str(payload.get("job_url") or "").strip()
+        job_text = str(payload.get("job_text") or "").strip()
+        target_role = str(payload.get("job_title") or "").strip()
+        if job_url:
+            STATE.job_url = job_url
+        if job_text:
+            STATE.job_text = job_text
+            STATE.job_text_source = "paste"
+        if target_role:
+            STATE.target_role = target_role
+        STATE.mode = MODE_FORM
+        STATE.active_tab = TAB_SETUP
+        logger_service.log_event(
+            "INFO", "ai_career.view", "handoff_consumed",
+            has_url=bool(job_url), has_text=bool(job_text), has_role=bool(target_role),
+        )
+    except Exception as exc:
+        logger_service.log_exception("ai_career.view", "handoff_consume_failed", exc)
 
 
 def _open_in_explorer(path: str) -> None:
@@ -92,6 +126,8 @@ def _build_form_tab_body(theme: Theme, lang: str) -> QWidget:
         return build_match_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
     if STATE.active_tab == TAB_DOCUMENTS:
         return build_documents_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
+    if STATE.active_tab == TAB_INTERVIEW:
+        return build_mock_interview_tab(theme, lang, on_request_rerender=_refresh)
     if STATE.active_tab == TAB_HISTORY:
         return build_history_tab(theme, lang, on_request_rerender=_refresh, on_navigate_tab=_navigate_tab)
     return build_setup_tab(theme, lang, on_request_rerender=_refresh)
@@ -104,7 +140,13 @@ def _mode_tabs(lang: str) -> list[str]:
 
 def _stage_tabs(lang: str) -> list[str]:
     txt = s(lang)
-    return [txt["tab_setup"], txt["tab_match"], txt["tab_documents"], txt["tab_history"]]
+    return [
+        txt["tab_setup"],
+        txt["tab_match"],
+        txt["tab_documents"],
+        txt["tab_interview"],
+        txt["tab_history"],
+    ]
 
 
 def _stage_tab_enabled(index: int) -> bool:
@@ -112,6 +154,17 @@ def _stage_tab_enabled(index: int) -> bool:
         return STATE.has_results()
     if index == TAB_DOCUMENTS:
         return bool(STATE.documents or STATE.modern_cv_data)
+    if index == TAB_INTERVIEW:
+        # Available whenever the user has any profile material to ground
+        # questions on (resume / LinkedIn / extracted candidate), or a
+        # match result. Demo mode also opens it for showcasing.
+        return bool(
+            STATE.demo_mode
+            or STATE.has_results()
+            or STATE.candidate
+            or (STATE.resume and STATE.resume.text)
+            or (STATE.linkedin and STATE.linkedin.text)
+        )
     if index == TAB_HISTORY:
         return bool(STATE.runs_history)
     return True
@@ -119,6 +172,7 @@ def _stage_tab_enabled(index: int) -> bool:
 
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    _consume_handoff()
     try:
         STATE.runs_history = [
             run for run in store.list_runs()
@@ -295,6 +349,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                 _stage_tab_enabled(TAB_SETUP),
                 _stage_tab_enabled(TAB_MATCH),
                 _stage_tab_enabled(TAB_DOCUMENTS),
+                _stage_tab_enabled(TAB_INTERVIEW),
                 _stage_tab_enabled(TAB_HISTORY),
             ],
         )
