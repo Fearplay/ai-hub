@@ -146,8 +146,8 @@ def _row(
     info.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     il = vbox(spacing=2, margins=(0, 0, 0, 0))
     info.setLayout(il)
-    il.addWidget(BodyLabel(summary.role or "—", theme=theme, size=14, weight=QFont.Weight.Bold))
-    il.addWidget(MutedLabel(f"{summary.company or '—'} · {summary.timestamp}", theme=theme, size=12))
+    il.addWidget(BodyLabel(summary.role or "-", theme=theme, size=14, weight=QFont.Weight.Bold))
+    il.addWidget(MutedLabel(f"{summary.company or '-'} · {summary.timestamp}", theme=theme, size=12))
     folder_label = ElidedLabel(
         summary.folder,
         color=theme.text_subtle,

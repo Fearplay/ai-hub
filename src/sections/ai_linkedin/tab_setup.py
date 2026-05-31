@@ -21,6 +21,7 @@ from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
+    FlowLayout,
     IconLabel,
     IconOnlyButton,
     MutedLabel,
@@ -136,6 +137,7 @@ def _option_chip(
     on_click: Callable[[], None],
 ) -> ClickFrame:
     chip = ClickFrame()
+    chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     chip.setStyleSheet(
         f"""
         ClickFrame {{
@@ -183,24 +185,46 @@ def _step_targeting(
     body_layout = vbox(spacing=6, margins=(0, 0, 0, 0))
     body.setLayout(body_layout)
 
-    body_layout.addWidget(BodyLabel(txt["setup_target_roles_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
+    # Required field: label carries a red "*" and an inline error appears
+    # under the box when the user tries to continue / run with no role.
+    roles_label_row = QFrame()
+    roles_label_row.setStyleSheet("background: transparent;")
+    roles_label_layout = hbox(spacing=4, margins=(0, 0, 0, 0))
+    roles_label_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    roles_label_row.setLayout(roles_label_layout)
+    roles_label_layout.addWidget(BodyLabel(txt["setup_target_roles_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
+    roles_label_layout.addWidget(custom_label("*", color="#EF4444", size=13, weight=QFont.Weight.Bold))
+    roles_label_layout.addStretch(1)
+    body_layout.addWidget(roles_label_row)
+
     roles_field = themed_text_edit(theme, placeholder=txt["setup_target_roles_hint"], min_height=70)
     roles_field.setPlainText("\n".join(STATE.target_roles))
+    body_layout.addWidget(roles_field)
+
+    roles_error = custom_label(txt["error_no_target_role"], color="#EF4444", size=11)
+    roles_error.setVisible(bool(STATE.show_roles_error and not STATE.target_roles))
+    body_layout.addWidget(roles_error)
 
     def _on_roles_changed() -> None:
         text = roles_field.toPlainText()
         STATE.target_roles = [line.strip() for line in text.splitlines() if line.strip()]
+        if STATE.target_roles:
+            STATE.show_roles_error = False
+        try:
+            roles_error.setVisible(bool(STATE.show_roles_error and not STATE.target_roles))
+        except RuntimeError:
+            pass
         on_state_change()
 
     roles_field.textChanged.connect(_on_roles_changed)
-    body_layout.addWidget(roles_field)
 
     body_layout.addSpacing(4)
     body_layout.addWidget(BodyLabel(txt["setup_audience_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
     audience_holder = QFrame()
     audience_holder.setStyleSheet("background: transparent;")
-    audience_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    audience_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    # FlowLayout so the chips wrap to a second row on narrow widths
+    # instead of overflowing under the next widget (image 2 overlap).
+    audience_layout = FlowLayout(audience_holder, margin=0, h_spacing=8, v_spacing=8)
     audience_holder.setLayout(audience_layout)
 
     def _make_audience_chip(opt: dict) -> ClickFrame:
@@ -217,15 +241,13 @@ def _step_targeting(
 
     for opt in audience_options(lang):
         audience_layout.addWidget(_make_audience_chip(opt))
-    audience_layout.addStretch(1)
     body_layout.addWidget(audience_holder)
 
     body_layout.addSpacing(4)
     body_layout.addWidget(BodyLabel(txt["setup_tone_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
     tone_holder = QFrame()
     tone_holder.setStyleSheet("background: transparent;")
-    tone_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    tone_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    tone_layout = FlowLayout(tone_holder, margin=0, h_spacing=8, v_spacing=8)
     tone_holder.setLayout(tone_layout)
 
     def _set_tone(key: str) -> None:
@@ -237,7 +259,6 @@ def _step_targeting(
             theme, label=opt["label"], active=STATE.tone == opt["key"],
             on_click=lambda k=opt["key"]: _set_tone(k),
         ))
-    tone_layout.addStretch(1)
     body_layout.addWidget(tone_holder)
     body_layout.addSpacing(8)
 
@@ -317,7 +338,7 @@ def _step_inputs(
     if STATE.resume:
         body_layout.addWidget(_file_chip(theme, parsed=_to_parsed(STATE.resume), on_clear=_clear_resume, clear_tooltip=txt["menu_new_build"]))
     else:
-        body_layout.addWidget(MutedLabel("\u2014", theme=theme, size=12))
+        body_layout.addWidget(MutedLabel("-", theme=theme, size=12))
     body_layout.addSpacing(8)
 
     body_layout.addWidget(upload_zone(
@@ -335,7 +356,7 @@ def _step_inputs(
     if STATE.linkedin_export:
         body_layout.addWidget(_file_chip(theme, parsed=_to_parsed(STATE.linkedin_export), on_clear=_clear_linkedin, clear_tooltip=txt["menu_new_build"]))
     else:
-        body_layout.addWidget(MutedLabel("\u2014", theme=theme, size=12))
+        body_layout.addWidget(MutedLabel("-", theme=theme, size=12))
     body_layout.addSpacing(8)
 
     body_layout.addWidget(BodyLabel(txt["setup_github_label"], theme=theme, size=12, weight=QFont.Weight.DemiBold))
@@ -408,29 +429,15 @@ def _step_output(
     body_layout.addWidget(lang_holder)
     body_layout.addSpacing(8)
 
+    # Clarifying questions are now automatic (the AI decides whether to
+    # ask), so the manual toggle is gone - this is a static info row.
     followups_row = QFrame()
     followups_row.setStyleSheet("background: transparent;")
     fr_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    fr_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    fr_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     followups_row.setLayout(fr_layout)
 
-    followups_check = QCheckBox()
-    followups_check.setChecked(STATE.ask_followups or settings_store.get_ask_followups())
-    followups_check.setStyleSheet(f"QCheckBox {{ color: {theme.text}; }}")
-
-    def _set_followups(state: int) -> None:
-        value = state == Qt.CheckState.Checked.value
-        STATE.ask_followups = value
-        try:
-            settings_store.set_ask_followups(value)
-        except Exception as exc:
-            logger_service.log_exception(
-                "ai_linkedin.tab_setup", "set_ask_followups_failed", exc,
-            )
-        on_state_change()
-
-    followups_check.stateChanged.connect(_set_followups)
-    fr_layout.addWidget(followups_check)
+    fr_layout.addWidget(IconLabel(Icons.QUIZ_OUTLINED, color=theme.primary, size=18))
 
     info = QFrame()
     info.setStyleSheet("background: transparent;")
@@ -450,6 +457,7 @@ def _footer_bar(
     lang: str,
     txt: dict,
     on_navigate_tab: Callable[[int], None],
+    on_rerender: Callable[[], None],
 ) -> QFrame:
     bar = QFrame()
     # See ``ai_linkedin/tab_output.py`` for the rationale: unscoped
@@ -473,6 +481,10 @@ def _footer_bar(
             logger_service.log_event(
                 "WARNING", "ai_linkedin.tab_setup", "continue_no_roles",
             )
+            # Surface the required-field error in the UI instead of only
+            # logging it (the old silent-fail UX the user complained about).
+            STATE.show_roles_error = True
+            safe(on_rerender)
             return
         provider = settings_store.get_provider()
         key_name = (
@@ -577,5 +589,5 @@ def build_setup_tab(
             bar.setValue(min(saved_scroll_y, bar.maximum()))
         runtime_dispatch(_restore_scroll)
 
-    layout.addWidget(_footer_bar(theme, lang, txt, on_navigate_tab))
+    layout.addWidget(_footer_bar(theme, lang, txt, on_navigate_tab, _rebuild_preserving_scroll))
     return container

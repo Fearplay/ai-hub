@@ -31,6 +31,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
+    QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -86,11 +87,19 @@ class _QuestionRowState:
         layout = chip.layout()
         if layout is None:
             return
-        while layout.count():
-            item = layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+        # Update the existing label in place rather than delete+recreate -
+        # rebuilding the QLabel on every toggle made the chip flicker.
+        item = layout.itemAt(0)
+        existing = item.widget() if item is not None else None
+        if isinstance(existing, QLabel):
+            existing.setText(label)
+            existing.setStyleSheet(
+                f"color: {'#FFFFFF' if active else self.theme.text}; background: transparent;"
+            )
+            font = existing.font()
+            font.setWeight(QFont.Weight.DemiBold if active else QFont.Weight.Medium)
+            existing.setFont(font)
+            return
         text = custom_label(
             label,
             color="#FFFFFF" if active else self.theme.text,

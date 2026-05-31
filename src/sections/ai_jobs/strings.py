@@ -731,7 +731,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "contract_internship": "St\u00e1\u017e",
         "contract_freelance": "Freelance",
         "max_results_label": "Po\u010det aktivn\u00edch nab\u00eddek, kter\u00e9 chce\u0161 st\u00e1hnout",
-        "max_results_hint": "Tohle je c\u00edlov\u00fd po\u010det nab\u00eddek, na kter\u00e9 se opravdu d\u00e1 p\u0159ihl\u00e1sit. AI Hub na pozad\u00ed sahne pro v\u00edc kandid\u00e1t\u016f, ov\u011b\u0159\u00ed ka\u017ed\u00fd odkaz a mrtv\u00e9 odst\u0159ihne \u2013 tak\u017ee 15 tady znamen\u00e1 a\u017e 15 st\u00e1le otev\u0159en\u00fdch (plus p\u00e1r uzav\u0159en\u00fdch pro p\u0159ehled). V\u011bt\u0161\u00ed \u010d\u00edsla stoj\u00ed v\u00edc token\u016f.",
+        "max_results_hint": "Tohle je c\u00edlov\u00fd po\u010det nab\u00eddek, na kter\u00e9 se opravdu d\u00e1 p\u0159ihl\u00e1sit. AI Hub na pozad\u00ed sahne pro v\u00edc kandid\u00e1t\u016f, ov\u011b\u0159\u00ed ka\u017ed\u00fd odkaz a mrtv\u00e9 odst\u0159ihne - tak\u017ee 15 tady znamen\u00e1 a\u017e 15 st\u00e1le otev\u0159en\u00fdch (plus p\u00e1r uzav\u0159en\u00fdch pro p\u0159ehled). V\u011bt\u0161\u00ed \u010d\u00edsla stoj\u00ed v\u00edc token\u016f.",
 
         # location presets -----------------------------------------------
         "loc_any": "Kdekoli",
@@ -927,7 +927,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "results_dropped_note_template": "{count} odkaz(\u016f) bylo b\u011bhem ov\u011b\u0159ov\u00e1n\u00ed zahozeno.",
         "results_inactive_count_template": "{count} nab\u00eddka(y) je v seznamu, ale u\u017e nep\u0159ij\u00edm\u00e1 \u017e\u00e1dosti, vrac\u00ed chybu 404 nebo nejde otev\u0159\u00edt.",
         "results_inactive_pill": "U\u017e nenab\u00edr\u00e1",
-        "results_inactive_tooltip": "AI Hub zjistil, \u017ee tahle nab\u00eddka u\u017e neplat\u00ed \u2013 str\u00e1nka bu\u010f \u0159\u00edk\u00e1, \u017ee je uzav\u0159en\u00e1 (nap\u0159. \u201eU\u017e nep\u0159ij\u00edm\u00e1 \u017e\u00e1dosti\u201c), vrac\u00ed chybu 404, nebo p\u0159esm\u011brov\u00e1v\u00e1 na obecn\u00fd placeholder.",
+        "results_inactive_tooltip": "AI Hub zjistil, \u017ee tahle nab\u00eddka u\u017e neplat\u00ed - str\u00e1nka bu\u010f \u0159\u00edk\u00e1, \u017ee je uzav\u0159en\u00e1 (nap\u0159. \u201eU\u017e nep\u0159ij\u00edm\u00e1 \u017e\u00e1dosti\u201c), vrac\u00ed chybu 404, nebo p\u0159esm\u011brov\u00e1v\u00e1 na obecn\u00fd placeholder.",
         "results_inactive_section_title": "Uzav\u0159en\u00e9 nab\u00eddky",
         "results_relaxed_pill": "M\u00e9n\u011b relevantn\u00ed",
         "results_relaxed_tooltip": "AI Hub roz\u0161\u00ed\u0159il hled\u00e1n\u00ed (sousedn\u00ed role nebo bl\u00edzk\u00e1 m\u011bsta), proto\u017ee p\u0159esn\u00fdch shod podle tv\u00fdch filtr\u016f nebylo dost. Po\u0159\u00e1d aktivn\u00ed - jen m\u00e9n\u011b s tv\u00fdm CV.",

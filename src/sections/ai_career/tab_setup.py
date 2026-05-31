@@ -165,6 +165,22 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
     url_layout.addWidget(fetch_btn)
     body_layout.addWidget(url_row)
 
+    fetch_status = SubtleLabel("", theme=theme, size=11)
+    fetch_status.setVisible(False)
+    body_layout.addWidget(fetch_status)
+
+    def _set_fetch_status(message: str, *, error: bool = False) -> None:
+        try:
+            fetch_status.setText(message)
+            fetch_status.setVisible(bool(message))
+            fetch_status.setStyleSheet(
+                f"color: {'#EF4444' if error else theme.text_subtle}; background: transparent;"
+            )
+        except RuntimeError:
+            logger_service.log_event(
+                "INFO", "ai_career.tab_setup", "fetch_status_stale",
+            )
+
     text_area = themed_text_edit(theme, placeholder=txt["job_text_hint"], min_height=140)
     text_area.setPlainText(STATE.job_text)
     def _set_text() -> None:
@@ -178,24 +194,53 @@ def _step_1(theme: Theme, txt: dict, on_state_change: Callable[[], None]) -> QWi
         url = url_field.text().strip()
         if not url:
             return
+        # Targeted updates only - no full section rebuild. Rebuilding the
+        # whole tab on fetch start + finish is what made the UI flicker.
         STATE.activity = "scraping"
         STATE.last_error = ""
-        REFS.request_context_refresh()
-        REFS.dispatch(_request_full_refresh)
+        try:
+            fetch_btn.setEnabled(False)
+            fetch_btn.setText(txt["job_url_btn_loading"])
+        except RuntimeError:
+            pass
+        _set_fetch_status("")
+        REFS.request_context_refresh()  # sidebar Activity, no rebuild
 
         def _worker() -> None:
-            text, error = pipeline.fetch_job_text(url)
-            if text:
-                STATE.job_text = text
-                STATE.job_url = url
-                STATE.job_text_source = "scrape"
-                STATE.activity = "ready"
-                STATE.last_error = ""
-            else:
-                STATE.activity = "error"
-                STATE.last_error = error or txt["job_url_failed"]
-            REFS.request_context_refresh()
-            REFS.dispatch(_request_full_refresh)
+            try:
+                text, error = pipeline.fetch_job_text(url)
+            except Exception as exc:
+                logger_service.log_exception(
+                    "ai_career.tab_setup", "fetch_worker_failed", exc,
+                )
+                text, error = "", str(exc)
+
+            def _apply() -> None:
+                try:
+                    fetch_btn.setEnabled(True)
+                    fetch_btn.setText(txt["job_url_btn"])
+                    if text:
+                        # Setting the text fires ``_set_text`` which marks
+                        # the source as "paste"; correct it to "scrape"
+                        # afterwards so the provenance stays accurate.
+                        text_area.setPlainText(text)
+                        STATE.job_text = text
+                        STATE.job_url = url
+                        STATE.job_text_source = "scrape"
+                        STATE.activity = "ready"
+                        STATE.last_error = ""
+                        _set_fetch_status("")
+                    else:
+                        STATE.activity = "error"
+                        STATE.last_error = error or txt["job_url_failed"]
+                        _set_fetch_status(STATE.last_error, error=True)
+                except RuntimeError:
+                    logger_service.log_event(
+                        "INFO", "ai_career.tab_setup", "fetch_apply_stale",
+                    )
+                REFS.request_context_refresh()
+
+            runtime_dispatch(_apply)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -440,25 +485,11 @@ def build_setup_tab(
     followups_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     followups_col_layout = vbox(spacing=2, margins=(0, 0, 0, 0))
     followups_col.setLayout(followups_col_layout)
-
-    followups_row = QFrame()
-    followups_row.setStyleSheet("background: transparent;")
-    followups_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
-    followups_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    followups_row.setLayout(followups_layout)
-    fu_check = QCheckBox(txt["footer_followup_label"])
-    fu_check.setChecked(settings_store.get_ask_followups())
-    fu_check.setStyleSheet(
-        f"""
-        QCheckBox {{ color: {theme.text}; font-size: 11px; font-weight: 600; spacing: 8px; }}
-        QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {theme.border}; border-radius: 4px; background-color: {theme.surface_2}; }}
-        QCheckBox::indicator:checked {{ background-color: {theme.primary}; border: 1px solid {theme.primary}; }}
-        """
+    # The AI now always decides whether clarifying questions are needed -
+    # the manual toggle is gone. A subtle hint explains the behaviour.
+    followups_col_layout.addWidget(
+        SubtleLabel(txt["footer_followup_auto_hint"], theme=theme, size=11, italic=True)
     )
-    fu_check.stateChanged.connect(lambda s: settings_store.set_ask_followups(bool(fu_check.isChecked())))
-    followups_layout.addWidget(fu_check)
-    followups_layout.addStretch(1)
-    followups_col_layout.addWidget(followups_row)
     controls_layout.addWidget(followups_col, 1)
 
     run_btn = PrimaryButton(txt["footer_run_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
@@ -537,19 +568,23 @@ def build_setup_tab(
 
     def _open_followup_dialog_now() -> None:
         def _on_submit(answers: list[dict]) -> None:
+            # No full rebuild here - it caused the flicker the user saw
+            # when answering. The single unavoidable rebuild happens in
+            # ``_go_to_match`` once scoring completes.
             STATE.followup_qa = answers
             STATE.activity = "analyzing"
             REFS.request_context_refresh()
-            REFS.dispatch(_request_full_refresh)
+            runtime_dispatch(_refresh_run_button)
             threading.Thread(target=_phase2_match, daemon=True).start()
 
         def _on_cancel() -> None:
+            # Dialog dismissed - just reset state + button in place; the
+            # setup tab is already on screen, so no rebuild is needed.
             STATE.followup_qa = []
             STATE.activity = "ready"
             STATE.run_stage = ""
             REFS.request_context_refresh()
             runtime_dispatch(_refresh_run_button)
-            REFS.dispatch(_request_full_refresh)
 
         open_followup_dialog(
             get_main_window(),
@@ -610,22 +645,25 @@ def build_setup_tab(
                     runtime_dispatch(_refresh_run_button)
                     return
 
-                if settings_store.get_ask_followups():
-                    STATE.run_stage = "followups"
+                # Always run the clarify step - the model itself decides
+                # whether any questions are warranted (it returns 0-N).
+                # We only pause for the dialog when it actually asked
+                # something; otherwise we go straight to scoring.
+                STATE.run_stage = "followups"
+                runtime_dispatch(_refresh_run_button)
+                STATE.activity = "followups"
+                REFS.request_context_refresh()
+                res = pipeline.generate_followup_questions(output_lang=lang)
+                if not res.ok:
+                    runtime_dispatch(lambda: _set_status(res.error, error=True))
+                    STATE.run_stage = ""
                     runtime_dispatch(_refresh_run_button)
-                    STATE.activity = "followups"
+                    return
+                if STATE.followup_questions:
+                    STATE.activity = "waiting_user"
                     REFS.request_context_refresh()
-                    res = pipeline.generate_followup_questions(output_lang=lang)
-                    if not res.ok:
-                        runtime_dispatch(lambda: _set_status(res.error, error=True))
-                        STATE.run_stage = ""
-                        runtime_dispatch(_refresh_run_button)
-                        return
-                    if STATE.followup_questions:
-                        STATE.activity = "waiting_user"
-                        REFS.request_context_refresh()
-                        REFS.dispatch(_open_followup_dialog_now)
-                        return
+                    REFS.dispatch(_open_followup_dialog_now)
+                    return
 
                 _phase2_match()
             except Exception as exc:

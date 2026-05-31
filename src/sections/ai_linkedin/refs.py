@@ -20,6 +20,8 @@ from typing import Callable, Optional
 from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.ai_linkedin.state import STATE
 
 
 @dataclass
@@ -39,11 +41,14 @@ class LinkedInRefs:
             )
 
     def request_context_refresh(self) -> None:
-        """Request a right-hand context panel refresh from any thread.
+        """Feed the left-sidebar Activity indicator from any thread.
 
-        Coalesces multiple bursty calls (e.g. COST listener firing on
-        every LLM call) into one queued render.
+        The right context panel was removed; this remains the single
+        chokepoint pipeline workers + view handlers call after mutating
+        ``STATE.activity``, so it now publishes that status to the global
+        ``ACTIVITY`` tracker the sidebar subscribes to.
         """
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
         self._refresh.schedule(lambda: self.rerender_context)

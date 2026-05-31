@@ -68,6 +68,40 @@ MODE_MAIN = "main"
 MODE_LOGS = "logs"
 
 
+class _FittedScrollArea(QScrollArea):
+    """Scroll area that sizes its inner widget to the real ``heightForWidth``.
+
+    Word-wrapped description labels report a ``sizeHint`` height assuming a
+    narrower width than they actually render at, so the card column's
+    combined ``sizeHint`` overestimates the true content height by ~100 px.
+    A vanilla ``QScrollArea`` (``setWidgetResizable(True)``) sizes the inner
+    from that inflated hint, and the trailing layout stretch turns the
+    surplus into a dead band below the last card (the "gap under O aplikaci"
+    the user reported). We size the inner ourselves on every resize: full
+    viewport width (so labels wrap correctly and there's no horizontal
+    scroll) and ``max(viewport, heightForWidth)`` so the column fills the
+    viewport when short and is exactly content-tall when it scrolls.
+    """
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self.refit()
+
+    def refit(self) -> None:
+        inner = self.widget()
+        vp = self.viewport()
+        if inner is None or vp is None:
+            return
+        vw = vp.width()
+        if vw <= 0:
+            return
+        if inner.hasHeightForWidth():
+            content_h = inner.heightForWidth(vw)
+        else:
+            content_h = inner.sizeHint().height()
+        inner.resize(vw, max(vp.height(), content_h))
+
+
 _LEVEL_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+\|\s+(\w+)\s+\|"
 )
@@ -964,10 +998,11 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             ol = vbox(spacing=0, margins=(24, 20, 24, 20))
             outer.setLayout(ol)
             ol.addWidget(_logs_view(theme, txt, on_back=_show_main))
-            body_layout.addWidget(outer)
+            body_layout.addWidget(outer, 1)
         else:
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
+            scroll = _FittedScrollArea()
+            scroll.setWidgetResizable(False)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
             inner = QFrame()
@@ -981,7 +1016,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             il.addWidget(_about_card(theme, lang, txt))
             il.addStretch(1)
             scroll.setWidget(inner)
-            body_layout.addWidget(scroll)
+            body_layout.addWidget(scroll, 1)
 
     def _show_logs() -> None:
         logger_service.log_event("INFO", "settings.view", "logs_view_open")

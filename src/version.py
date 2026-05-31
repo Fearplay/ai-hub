@@ -9,7 +9,7 @@ never a second copy to forget.
 
 from __future__ import annotations
 
-__version__ = "1.5.1"
+__version__ = "1.6.2"
 
 # Friendly product name paired with the version in the UI.
 APP_NAME = "AI Hub"

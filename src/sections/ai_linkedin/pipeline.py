@@ -372,7 +372,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
             user=user,
             schema=schema.CLARIFY_SCHEMA,
             schema_name="clarifying_questions",
-            max_output_tokens=1200,
+            max_output_tokens=2500,
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
@@ -380,7 +380,18 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
         )
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
-        return _set_error("Provider did not return a clarifying-questions JSON.")
+        # Clarifying questions are optional - the model decides whether
+        # to ask any. If it returned no parseable JSON (truncation, prose
+        # wrapper, reasoning model quirk), log it for the debug viewer but
+        # proceed with zero questions instead of blocking the whole build.
+        logger_service.log_event(
+            "ERROR",
+            "ai_linkedin.pipeline",
+            "generate_followups_no_json",
+            text_chars=len(result.text or ""),
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
 
     questions = result.data.get("questions") or []
     cleaned: list[dict] = []
@@ -1546,7 +1557,7 @@ def _render_headlines_md(payload: dict, is_cs: bool) -> str:
         focus = (v.get("focus") or "").strip()
         audience = (v.get("audience") or "").strip()
         anchors = ", ".join(v.get("evidence_anchors") or [])
-        lines.append(f"## {i}. {focus or audience or '—'} ({chars} chars)")
+        lines.append(f"## {i}. {focus or audience or '-'} ({chars} chars)")
         lines.append("")
         lines.append(text)
         if anchors:
@@ -1807,7 +1818,7 @@ def _render_recommendations_md(payload: dict, is_cs: bool) -> str:
     for tpl in payload.get("templates") or []:
         if not isinstance(tpl, dict):
             continue
-        lines.append(f"## {tpl.get('suggested_recipient_label') or '—'} _({tpl.get('recipient_type') or ''})_")
+        lines.append(f"## {tpl.get('suggested_recipient_label') or '-'} _({tpl.get('recipient_type') or ''})_")
         body = (tpl.get("message") or "").strip()
         if body:
             lines.append("")

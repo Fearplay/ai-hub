@@ -18,6 +18,8 @@ from typing import Any, Callable, Optional
 from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.ai_jobs.state import STATE
 
 
 @dataclass
@@ -35,8 +37,10 @@ class JobsRefs:
             )
 
     def request_context_refresh(self) -> None:
-        # Coalesce high-frequency refresh bursts (search pipeline fires
-        # 50+ activity changes per run) into one queued render.
+        # The right context panel was removed; this feeds the left-sidebar
+        # Activity indicator. ACTIVITY.set only notifies on change, so the
+        # 50+ bursty calls per search run stay cheap.
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
         self._refresh.schedule(lambda: self.rerender_context)

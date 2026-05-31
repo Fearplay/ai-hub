@@ -231,7 +231,7 @@ def render_full_profile_html(
         if existing:
             cert_rows = "".join(
                 f'<li><strong>{escape(c.get("name") or "")}</strong> ({escape(c.get("issuer") or "")}, '
-                f'{escape(c.get("year") or "")}) — {escape(c.get("priority") or "")}<br>'
+                f'{escape(c.get("year") or "")}) - {escape(c.get("priority") or "")}<br>'
                 f'<span class="muted">{escape(c.get("linkedin_description") or "")}</span></li>'
                 for c in existing if isinstance(c, dict)
             )
@@ -242,7 +242,7 @@ def render_full_profile_html(
         recommended = certifications_rewrites.get("recommended") or []
         if recommended:
             rec_rows = "".join(
-                f'<li><strong>{escape(c.get("name") or "")}</strong> ({escape(c.get("issuer") or "")}) — '
+                f'<li><strong>{escape(c.get("name") or "")}</strong> ({escape(c.get("issuer") or "")}) - '
                 f'{escape(c.get("why_it_matters") or "")}</li>'
                 for c in recommended if isinstance(c, dict)
             )
@@ -295,7 +295,7 @@ def render_full_profile_html(
         existing = courses.get("existing") or []
         if existing:
             existing_rows = "".join(
-                f'<li><strong>{escape(c.get("title") or "")}</strong> — '
+                f'<li><strong>{escape(c.get("title") or "")}</strong> - '
                 f'{escape(c.get("provider") or "")} ({escape(c.get("year") or "")})</li>'
                 for c in existing if isinstance(c, dict)
             )
@@ -306,7 +306,7 @@ def render_full_profile_html(
         recommended = courses.get("recommended") or []
         if recommended:
             rec_rows = "".join(
-                f'<li><strong>{escape(c.get("title") or "")}</strong> — '
+                f'<li><strong>{escape(c.get("title") or "")}</strong> - '
                 f'{escape(c.get("provider") or "")} (~{c.get("estimated_hours", 0)}h)<br>'
                 f'<span class="muted">{escape(c.get("why_it_matters") or "")}</span></li>'
                 for c in recommended if isinstance(c, dict)
@@ -369,7 +369,7 @@ def render_full_profile_html(
             if not items:
                 continue
             list_html = "".join(
-                f'<li>{"✅" if i.get("ok") else "🟡"} <strong>{escape(i.get("label") or "")}</strong> — '
+                f'<li>{"✅" if i.get("ok") else "🟡"} <strong>{escape(i.get("label") or "")}</strong> - '
                 f'{escape(i.get("reason") or "")}</li>'
                 for i in items
             )
@@ -398,13 +398,13 @@ def render_full_profile_html(
         for anchor, title in toc_entries
     )
 
-    target_roles_html = ", ".join(escape(r) for r in target_roles) or "—"
+    target_roles_html = ", ".join(escape(r) for r in target_roles) or "-"
     css = _css(theme)
 
     return (
         "<!doctype html>\n<html><head>\n"
         '<meta charset="utf-8" />\n'
-        f'<title>{escape(name)} — LinkedIn profile build</title>\n'
+        f'<title>{escape(name)} - LinkedIn profile build</title>\n'
         f'<style>{css}</style>\n'
         "</head><body>\n"
         f'<header class="hero">'

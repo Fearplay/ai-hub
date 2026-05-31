@@ -41,6 +41,7 @@ from src.components.nav_item import (
     reorderable_nav_item,
 )
 from src.components.profile_card import profile_card
+from src.components.session_status import session_status_block
 from src.components.theme_toggle import theme_toggle
 from src.i18n import t
 from src.qt.icons import Icons
@@ -282,6 +283,19 @@ def sidebar(
     footer.setStyleSheet("background: transparent;")
     footer_layout = vbox(spacing=4, margins=(0, 6, 0, 12))
     footer.setLayout(footer_layout)
+
+    # Session cost + Activity status (replaces the old right context
+    # panel). Sits at the very top of the footer, above the account card,
+    # separated by a thin divider. Subscribes to the global COST +
+    # ACTIVITY trackers and updates in place; the subscriptions tear down
+    # when this sidebar instance is destroyed on a theme/language toggle.
+    status_holder = QFrame()
+    status_holder.setStyleSheet("background: transparent;")
+    status_layout = vbox(spacing=8, margins=(20, 4, 20, 6))
+    status_holder.setLayout(status_layout)
+    status_layout.addWidget(session_status_block(theme, lang))
+    status_layout.addWidget(HSeparator(theme))
+    footer_layout.addWidget(status_holder)
 
     profile_holder = QFrame()
     profile_holder.setStyleSheet("background: transparent;")

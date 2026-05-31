@@ -358,12 +358,26 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
             user=user,
             schema=schema.FOLLOWUP_QUESTIONS_SCHEMA,
             schema_name="clarifying_questions",
-            max_output_tokens=1200,
+            max_output_tokens=2500,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_career.pipeline", "generate_followups_provider_error", exc,
+        )
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
-        return _set_error("Provider did not return a follow-up questions JSON.")
+        # Clarifying questions are optional - the model decides whether
+        # to ask any. A missing / unparseable JSON (truncation, prose
+        # wrapper) must not block the run: log it and proceed with zero
+        # questions, which is the same outcome as a perfect-fit resume.
+        logger_service.log_event(
+            "ERROR",
+            "ai_career.pipeline",
+            "generate_followups_no_json",
+            text_chars=len(result.text or ""),
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
     questions = result.data.get("questions") or []
     cleaned: list[dict] = []
     for q in questions:

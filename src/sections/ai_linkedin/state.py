@@ -200,6 +200,11 @@ class LinkedInState:
     tone: str = TONE_PROFESSIONAL
     output_lang: str = ""  # "" means follow current UI language
 
+    # Set when the user tries to continue / run without any target role,
+    # so the Setup tab can render the inline required-field error instead
+    # of failing silently (only a debug-log line) like it used to.
+    show_roles_error: bool = False
+
     # Whether the pipeline should ask clarifying questions before the
     # first generation pass. The same dialog the AI Career section
     # already uses is cloned into this folder so the UX is consistent.

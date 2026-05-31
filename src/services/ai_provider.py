@@ -140,6 +140,51 @@ def _build_system(system: str, *, allow_no_clause: bool) -> str:
     return f"{NO_HALLUCINATION_CLAUSE}\n\n---\n\n{system}"
 
 
+def _extract_balanced_json(text: str) -> Optional[str]:
+    """Return the first balanced ``{...}`` / ``[...]`` block in ``text``.
+
+    Reasoning-style models occasionally wrap the JSON in prose ("Here is
+    the JSON you asked for:\n{...}\nLet me know if..."), which makes a
+    naive :func:`json.loads` fail even though a perfectly good object is
+    sitting in the middle of the string. We scan for the first opening
+    brace / bracket and walk forward tracking string state + nesting
+    depth so a brace inside a string literal never ends the block early.
+    Returns ``None`` when no balanced block is found.
+    """
+    start = -1
+    open_ch = ""
+    for i, ch in enumerate(text):
+        if ch in "{[":
+            start = i
+            open_ch = ch
+            break
+    if start < 0:
+        return None
+    close_ch = "}" if open_ch == "{" else "]"
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _try_parse_json(text: str) -> Optional[Any]:
     if not text:
         return None
@@ -150,10 +195,20 @@ def _try_parse_json(text: str) -> Optional[Any]:
             text = text.split("\n", 1)[1]
         if text.endswith("```"):
             text = text[: -3]
+        text = text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        return None
+        pass
+    # Model wrapped the JSON in prose - pull out the first balanced block
+    # and try again before giving up.
+    block = _extract_balanced_json(text)
+    if block is not None:
+        try:
+            return json.loads(block)
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 def _build_openai_user_content(

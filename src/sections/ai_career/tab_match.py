@@ -249,7 +249,7 @@ def _bullet_column(
     layout.addWidget(title_label)
 
     if not items:
-        layout.addWidget(SubtleLabel("—", theme=theme, size=12))
+        layout.addWidget(SubtleLabel("-", theme=theme, size=12))
     else:
         for item in items:
             row = QFrame()
@@ -642,7 +642,7 @@ def build_match_tab(
     ev_title.setFont(f)
     ev_layout.addWidget(ev_title)
     if not evidence:
-        ev_layout.addWidget(SubtleLabel("—", theme=theme, size=12))
+        ev_layout.addWidget(SubtleLabel("-", theme=theme, size=12))
     else:
         for e in evidence:
             row = QFrame()

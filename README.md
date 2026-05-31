@@ -10,9 +10,11 @@
 
 A desktop AI Hub built in Python with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6 for Python).
-Three-column layout: navigation in the left sidebar, the main workspace
-in the middle, and a context panel on the right. The default landing
-view is the **Dashboard** - a navigation grid with one card per visible
+Two-column layout: navigation in the left sidebar - with a compact
+**session cost + Activity** status block in its footer - and the main
+workspace filling the rest of the window (the old right-hand context
+panel was removed so every section gets the full width). The default
+landing view is the **Dashboard** - a navigation grid with one card per visible
 AI module, so the user can jump straight into any assistant from a cold
 launch. **AI CV / Career**, **AI LinkedIn Profile Builder**, **AI
 Finance**, **AI Job Search**, and **AI Bug Report** are fully wired to
@@ -37,9 +39,12 @@ persists in `~/AI Hub/settings.json` so your layout survives restarts.
 The secondary group (**Dashboard** above **Settings**) sits directly
 below the AI module list under a thin divider; both are non-reorderable
 so the navigation grid and the settings page are always one click away.
-The **account card** sits in the sidebar footer, directly above the
-language + theme toggles (avatar + your display name); clicking it opens
-a small inline dialog to set or edit that name.
+The sidebar footer stacks a compact **session cost + Activity** status
+block (calls / tokens / ~$ this session, plus a live Ready / Working /
+Error dot - the info that used to live in the right context panel),
+then the **account card** (avatar + your display name), then the
+language + theme toggles; clicking the account card opens a small inline
+dialog to set or edit that name.
 
 ## Requirements
 
@@ -298,18 +303,16 @@ without leaving the section.
 
 ### Live market data (opt-in default-on)
 
-AI Finance renders a live ticker strip via
+AI Finance fetches live quotes via
 [`yfinance`](https://pypi.org/project/yfinance/). It hits public Yahoo
 Finance endpoints only - no API key, no account, no user identification.
-The default symbols are S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), DOW JONES
-(`^DJI`), BTC/USD (`BTC-USD`), and EUR/CZK (`EURCZK=X`). Results are
-cached in-process for 60 seconds. The Markets card in the right
-context panel has its own **Refresh** button next to *Edit* that
-bypasses that throttle and triggers a fresh fetch; if Yahoo returns
-no quotes (offline, proxy, dead symbol), the card now surfaces an
-explicit error instead of staying stuck on the generic "no data" hint.
-Flip **Settings -> Live market data** off to keep AI Finance fully
-offline; the right-hand panel then falls back to its empty state.
+The **currency converter** calculator uses it for live FX rates (and the
+service can quote any Yahoo symbol - `^GSPC`, `^IXIC`, `^DJI`,
+`BTC-USD`, `EURCZK=X`, ...). Results are cached in-process for 60
+seconds. Flip **Settings -> Live market data** off to keep AI Finance
+fully offline. (The old always-on Markets ticker card lived in the
+right context panel, which has been removed app-wide; the data service
+itself stays for the converter.)
 
 **Stooq fallback (automatic).** When yfinance fails for a given symbol
 (Yahoo TLS hiccup, the periodic endpoint shuffle, an empty history on
@@ -396,7 +399,7 @@ ai-hub/
     │   ├── tab_bar.py            # generic tab strip
     │   ├── chat_message.py
     │   ├── chat_input.py
-    │   ├── context_panel.py      # shell + helpers for the right panel
+    │   ├── session_status.py     # sidebar-footer cost + Activity block (subscribes to COST + ACTIVITY)
     │   ├── file_drop_zone.py     # shared upload zone (real OS drag-drop + click + paste-path)
     │   ├── language_toggle.py    # EN / CS toggle
     │   ├── theme_toggle.py       # dark / light toggle
@@ -406,6 +409,7 @@ ai-hub/
     │   ├── settings_store.py      # JSON preferences (provider, model, flags)
     │   ├── ai_provider.py         # run(system, user, schema, ...) -> OpenAI / Anthropic
     │   ├── cost_tracker.py        # session counter (calls / tokens / $)
+    │   ├── activity_tracker.py    # global Activity state (ready / busy / error) for the sidebar
     │   ├── job_scraper.py         # URL -> job posting text
     │   ├── file_parser.py         # PDF / DOCX / TXT / HTML -> plain text
     │   ├── github_client.py       # public profile + repo summary
@@ -420,7 +424,7 @@ ai-hub/
     │   ├── __init__.py           # auto-discovery (PRIMARY + SECONDARY groups)
     │   ├── _base.py              # Section dataclass (with nav_group)
     │   ├── SECTION_TEMPLATE/     # template for a new section (READ ME)
-    │   ├── dashboard/            # navigation grid + recent-runs / cost / quick-actions panel
+    │   ├── dashboard/            # navigation grid (one card per visible AI module)
     │   ├── my_profile/           # shared career profile hub (upload once, reuse everywhere)
     │   ├── ai_career/            # fully wired to AI (HR expert, CV / cover letter, mock interview)
     │   ├── ai_linkedin/          # fully wired to AI (LinkedIn Profile Builder, 20+ sections)
@@ -444,7 +448,6 @@ Every folder under `src/sections/` has:
 - `view.py` - the main center column
 - `strings.py` - EN + CS translations for that section
 - `data.py` (optional) - mock data
-- `context.py` (optional) - the right context panel
 
 Adding a new section never opens `src/app.py` or `src/components/sidebar.py`.
 Details in
@@ -452,7 +455,7 @@ Details in
 
 ## What it does
 
-- Three-column layout, scrollable sidebar (header / scroll / footer).
+- Two-column layout (left sidebar + full-width workspace), scrollable sidebar (header / scroll / footer with the cost + Activity status block).
 - **Language toggle** EN <-> CS in the sidebar (default English, per the team).
 - Section auto-discovery (primary + secondary; Settings is the only secondary entry).
 - **Unified Demo mode** - every AI section ships a `Show demo data` entry under its header `...` menu. Picking it fills the section with curated offline payloads (AI Career persona, AI LinkedIn profile, AI Finance budget, AI Jobs result list, AI Bug Report sample, AI Doc Assistant sample, AI Legal sample) and lights up an orange `DEMO` pill in the header so it is always obvious which view is mock. Demo mode is **free** - the pipeline short-circuits every provider call, so users can showcase the app on a fresh install without an API key or a single token. Picking `Hide demo data` clears the curated state and restores the empty Setup tab.
@@ -462,17 +465,17 @@ Details in
   the dark sidebar (`src/qt/window_chrome.py`, no-op on macOS / Linux).
 - **Snappy theme + language switch** - flipping the sidebar pill reapplies
   the global QSS, rebuilds the sidebar widget, and rebuilds **only** the
-  active section's center + right column (other sections pick up the new
+  active section's center column (other sections pick up the new
   language on their next click). The full window is no longer torn down on
   every toggle, so the previously-3-second freeze on the AI Career section
   is gone.
-- **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, follow-up-question + market-data toggles, debug logs.
-- **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) plus a right context panel modelled on a "continue where you left off" feed: **recent saved runs** (from `store.list_runs()`, each click reopens the section), the live **session cost** (calls / input + output tokens / total $), and **quick actions**.
+- **Settings** - API keys (OpenAI / Anthropic / GitHub) in the OS keystore, provider + model picker, web-search + market-data toggles, debug logs.
+- **Dashboard** - the default landing view. Redesigned accent-gradient tiles (one per visible AI module) fill the full-width workspace. The live **session cost** (calls / tokens / total $) it used to surface now lives in the left sidebar footer, visible from every section.
 - **My Profile** - a shared career hub so you upload your CV / LinkedIn export / GitHub URL / notes **once** (opened from the account card's `⋮` menu in the sidebar footer - it is no longer a standalone nav row):
   - one structured LLM extraction (cached) into a unified `CAREER_PROFILE_SCHEMA` - identity, contact, summary, skills, experiences, education, certifications, languages, projects, links.
   - the parsed profile is persisted to `~/AI Hub/career_profile.json` and rendered as a read-only card; a **Build / re-extract** button refreshes it.
   - **Demo mode** (shared `...` pattern + orange `DEMO` pill) fills a curated profile offline; demo data is only written to disk if you explicitly build while demo is on.
-  - the right panel shows the profile status + quick jumps to AI Career / AI Job Search / AI LinkedIn. EN + CS throughout.
+  - the full-width view shows the profile status + quick jumps to AI Career / AI Job Search / AI LinkedIn. EN + CS throughout.
 - **Shared profile + one-click handoffs** - AI Career, AI Job Search, and AI LinkedIn each show a *"Using your shared profile"* banner (with **Edit profile** / **Use it here**) that prefills their setup from `career_profile.json` without re-uploading. From an AI Job Search result card, **Tailor CV** sends the posting to AI Career and **Tune LinkedIn** seeds AI LinkedIn's target role - both jump straight to the right section via the in-memory `handoff` service (no cross-section imports).
 - **AI CV / Career** - two modes toggled in the section header:
   - **Chat** (Version B) - conversational HR assistant; you can attach documents (PDF / DOCX / TXT / MD / HTML) to a bubble and the context carries through follow-ups.
@@ -481,6 +484,7 @@ Details in
     - upload the resume (PDF / DOCX / TXT / HTML), optionally a LinkedIn export,
     - GitHub URL with automatic fetch of public repos,
     - 3 structured LLM steps (Candidate / JobSpec / MatchAnalysis) + per-document generators (Tailored CV, Modern CV, Cover Letter, Match Report, Interview Prep, Skill Gap, Evidence),
+    - **automatic clarifying questions** - the analysis always asks the model whether anything is unclear and only opens the shared follow-up dialog when it actually returns questions (no manual "ask first" toggle); if the model returns nothing it proceeds straight to the build,
     - inline refine ("Problem 1, Problem 2..." -> AI revision),
     - export to MD / HTML / DOCX / PDF (with **clickable hyperlinks** in the PDF) and save the full analysis to `outputs/ai_career/<role>-<timestamp>/` (every "Save complete analysis" lands in a **fresh** timestamped folder).
   - **Mock Interview** tab - an interactive simulator that reuses the chat bubbles: the AI plays the hiring manager for your target role, asks one tailored question at a time, then coaches each answer with the **STAR** method (feedback + what worked + what to improve + a grounded **model answer**) before asking a follow-up. Runs through `ai_provider.run` with a structured `INTERVIEW_TURN_SCHEMA`; demo mode plays canned turns for free.
@@ -489,6 +493,7 @@ Details in
   - **Setup** - target roles, audience (recruiter / peer / customer), tone (professional / friendly / bold / academic), output language (EN / CS), CV + LinkedIn export uploads, GitHub URL, free-form notes.
   - **Sections** picker - presets (essentials / full polish / job hunt / thought leadership) + 12-section grid with checkboxes (Headline, About, Experience, Education, Certifications, Skills, Featured, Projects, Services, Courses, Recommendations, Posts).
   - One LLM **profile-extraction** call followed by per-section generators that all reuse the cached profile JSON (cost-aware - never re-sends the raw CV text).
+  - **automatic clarifying questions** - like AI Career, the build always lets the model decide whether to ask; the follow-up dialog opens only when questions come back, and a parse hiccup never blocks the run (it logs and continues).
   - **Anti-cringe + no-hallucination** prompts; an unsupported-claims report flags any AI bullet that wasn't backed by source evidence.
   - **Profile completeness checklist** with priority levels (critical / important / nice to have) and a 0-100 profile score.
   - **Output** tab renders every generated section as a card (with copy-to-clipboard) + the checklist + the score.
@@ -502,14 +507,13 @@ Details in
   - **Insurance** - reviews existing policies, renders a 3x3 **severity heatmap** of coverage gaps (critical / high / medium x policy type), flags duplicates, and suggests next steps.
   - **Calculators** - six pure-Python calculators (compound interest, mortgage payment, loan affordability, retirement planner, savings goal, currency converter). The currency converter pulls live FX via the `market_data` service.
   - **Templates** - lists every saved AI Finance run from `outputs/ai_finance/<run-slug>-<timestamp>/`. Each card has an **Open folder** action that pops the OS file browser straight to the PDFs / Markdown of that run; an empty-state card explains how to create your first one when there are no saved runs yet.
-  - **Demo mode** - same shared `...` menu entry as every other AI section ("Show demo data" / "Hide demo data" + orange `DEMO` pill in the header). It swaps every pipeline call for a curated mock JSON (budget / analysis / investments / tax / insurance / savings plan / tip). The section has something to show on first launch - charts, tables, the right-hand AI tip - without spending any tokens. Picking "Hide demo data" goes straight back to live AI calls.
-  - **AI Tip card** (right context panel) - dynamic, generated per analysis via `generate_tip` (cached in `STATE.tip` so flipping themes / languages does not re-spend tokens). The card has a **Generate new tip** button when you want a fresh take. Stays empty until your first analysis is done.
-  - **Right-hand context panel** - **live, user-editable market overview** via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**). The card seeds with `^GSPC`, `^IXIC`, `^DJI`, `BTC-USD`, `EURCZK=X` and exposes an **Upravit / Edit** button - the dialog lets the user add / remove tickers (any Yahoo symbol) and persists the list to `~/AI Hub/settings.json`. The previous "unable to get local issuer certificate" SSL failure on stock Windows is gone now that the curl_cffi backend points at `certifi.where()`. The "Recent analyses" card stays empty until the user runs a real pipeline; nothing fakes the numbers.
-  - **Empty-by-default UX** - Budget / Invest / Analysis / Taxes / Insurance start blank and only paint structured cards once you click their primary CTA. The two-column form / result layout collapses into a single column on narrow widths, and the chat quick-action chips wrap onto multiple rows instead of stretching off-screen.
+  - **Demo mode** - same shared `...` menu entry as every other AI section ("Show demo data" / "Hide demo data" + orange `DEMO` pill in the header). It swaps every pipeline call for a curated mock JSON (budget / analysis / investments / tax / insurance / savings plan / tip). The section has something to show on first launch - charts, tables - without spending any tokens. Picking "Hide demo data" goes straight back to live AI calls.
+  - **Live market data** still powers the **currency converter** calculator via [`yfinance`](https://pypi.org/project/yfinance/) (free, public Yahoo Finance endpoints; **no API key, no account, no user identification**), with the curl_cffi backend pointed at `certifi.where()` so the old "unable to get local issuer certificate" SSL failure on stock Windows stays fixed. (The standalone market-overview / AI-tip / recent-analyses cards lived in the old right-hand panel, which has been removed app-wide.)
+  - **Empty-by-default UX** - Budget / Invest / Analysis / Taxes / Insurance start blank and only paint structured cards once you click their primary CTA. The form / result layout collapses into a single column on narrow widths, and the chat quick-action chips wrap onto multiple rows instead of stretching off-screen.
 - **AI Job Search** - find currently-open positions on the public web and score them against your profile:
   - **12-step setup form** (Setup tab): Role keywords, profile (CV / bio / LinkedIn URL), location preset or custom region, technologies + seniority pill (Junior / Medior / Senior / Lead), exclusions (keywords / companies / locations / work-type chips), sources picker (~70 portals grouped Global / Remote / Europe / CZ-SK / Tech-Startup / Freelance / Recommended + custom URLs textarea - including Czech specialists like JenPrace.cz / IT.jobs.cz / Pracomat / EasyJobs.cz / WTTJ Czechia, Polish Pracuj.pl + JustJoin.IT, US Dice / Built In / The Muse, AT karriere.at, UK Reed / TotalJobs, remote-only JustRemote / NoDesk / Jobspresso / 4 Day Week, freelance Arc.dev / Gun.io / Guru), posting age (Any / 24h / 3d / 7d / 14d / 30d) with "verify links" + "show postings without date" toggles, work-mode radios + contract chips (HPP / ICO / contract / DPP-DPC / internship / freelance) + result count, search mode (Exact / Smart / Broad / Career discovery), minimum salary + currency + output language (Auto / EN / CS), sticky footer Run button, secondary actions (Save as template / Clear / Load last search), and a Saved profiles list whose whole cards can rerun a saved search.
   - **Active-target over-fetch + top-up** - the result count is the number of **applicable** postings you want, not "raw URLs the AI returned". Internally the discovery pass over-fetches by 2x (capped at 40 candidates), every URL is verified, and a follow-up discovery pass automatically fires (with the already-seen URLs blacklisted in the prompt) if too many came back closed. Result: when you ask for 15, you get up to 15 you can actually apply to, plus a small "closed listings" section for transparency.
-  - **Optional clarifying questions** - same shared modal as AI CV / Career and AI Bug Report. When **Settings -> Ask follow-up questions** is on, the pipeline runs a quick Pass 0 *before* discovery to ask 0-8 short questions about the brief (seniority mismatches, contradictory keywords, missing remote / salary preference, *"you mentioned Python but not how many years"*). Answers feed into the discovery, per-position scoring, and skill-gap prompts so the model stops guessing. The footer hosts a "Let the AI ask clarifying questions first" toggle and a one-line hint; flip it off when you want a one-click run.
+  - **Optional clarifying questions** - same shared modal as AI Bug Report. When the footer's **Let the AI ask clarifying questions first** toggle is on, the pipeline runs a quick Pass 0 *before* discovery to ask 0-8 short questions about the brief (seniority mismatches, contradictory keywords, missing remote / salary preference, *"you mentioned Python but not how many years"*). Answers feed into the discovery, per-position scoring, and skill-gap prompts so the model stops guessing. The footer hosts a "Let the AI ask clarifying questions first" toggle and a one-line hint; flip it off when you want a one-click run.
   - **Five-pass pipeline**: (1) hosted **web-search discovery** with rich context (search mode, exclusions, age, sources, salary, optional already-seen-URL list for top-up), (2) strict-JSON **extraction** into `JOB_LISTINGS_SCHEMA` (title / company / location / posted / posted-ISO / salary text / contract type / summary / URL / source / work-mode), (3) **URL verification** through the shared `job_scraper` (httpx + Playwright fallback - listings that return HTTP 404 / 410, redirect to a "Stránka neexistuje" placeholder, or whose page still loads but says "No longer accepting applications" / "Už nepřijímá žádosti" / "Tahle nabídka už je pryč" / "Nabídka není up-to-date" stay visible with a red **"No longer hiring"** badge whose tooltip shows the matched phrase or HTTP status, so you can verify the detection by clicking through; only hard scrape crashes - DNS / SSL / firewall - are dropped), (4) **per-position match scoring** in parallel (`MATCH_SCHEMA`: match %, matched / missing skills, AI recommendation - active postings only, closed ones skip scoring to save tokens), (5) **aggregate skill-gap analysis** (`SKILL_GAP_SCHEMA`: most-requested skills with counts, your strong sides, missing skills, 1-6 actionable advice paragraphs). Pass 4 + 5 are skipped automatically when no profile material was provided.
   - **Lean Results tab** with a small "Match XX%" pill per card (green / amber / red bands) plus salary + contract + work-mode chips. Per-position chips and the AI recommendation paragraph render **primarily in the saved HTML** so the on-screen list stays scannable. Each card also has **Tailor CV** / **Tune LinkedIn** handoff buttons and a **Save to applications** button.
   - **New since last run + cross-run dedup** - each search is diffed against a per-search "seen URLs" sidecar (`~/AI Hub/jobs_seen_urls.json`, keyed by a keyword slug). Postings you have not seen before get a green **New** pill, the Results header shows an *"X new since last run"* badge, and an **All / New** toggle filters the list down to fresh openings. Within-run dedup already collapses duplicate URLs; this adds the cross-run layer.
@@ -520,22 +524,22 @@ Details in
   - **Active-target ordering** - the search always tries to return the number of *applicable* openings you asked for. The pipeline starts strict (three top-up passes that respect your filters), and only falls back to a single relaxed broad pass (adjacent roles / nearby cities) if the strict run still cannot fill the quota. Relaxed hits are flagged with an amber **"Less relevant"** pill (in-app and in the HTML export) so you can tell at a glance which postings came from the broader search. Closed / inactive listings are still surfaced for transparency but never count toward the active target.
   - **Rich HTML export** (`Save as HTML`) with match pill, matched / missing chip blocks, recommendation per posting, the new "Less relevant" pill for relaxed-pass hits, a separate "Closed listings" section for postings that are no longer hiring, and the full skill-gap section. Each save lands in a fresh `outputs/ai_jobs/<query>-search-<timestamp>/` folder and registers in the global `~/AI Hub/history.json`.
   - **History restore** - clicking a saved search row loads its `summary.json` back into the app, repopulates Results / Skill gap, and lets you continue from the previous run.
-  - **Activity badge** (right context panel) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`) plus a "Open skill gap" quick action that jumps straight to the new tab.
+  - **Activity status** (left sidebar footer) reflects every pipeline stage (`searching`, `extracting`, `verifying`, `scoring`, `gap_analysis`, `saving`, `ready`, `error`).
 - **AI Bug Report** - turn a description, screenshots, and supporting docs / logs into a polished Word bug report:
   - **Vision input** - the combined drop zone accepts both screenshots (PNG / JPG / WEBP / GIF / BMP / HEIC) and text-like attachments (TXT / LOG / JSON / PDF / DOCX / MD / HTML). Screenshots are sent to the model via the providers' native vision APIs (`image_url` content blocks for OpenAI, `image` source blocks for Anthropic), text-like docs are parsed locally with `src/services/file_parser.py`.
   - **One or more bug scenarios** through a strict `BUG_REPORT_SCHEMA` (`title`, `summary`, `scenarios[]`, per-attachment summary, additional notes). The AI decides whether the inputs describe one bug or several distinct scenarios; Word export includes every detected scenario with its own severity, priority, environment, STR, expected vs actual, and notes.
-  - **Optional clarifying questions** (same pattern as AI CV / Career and AI LinkedIn) - when **Settings -> Ask follow-up questions** is on, the section runs a fast Pass 0 that asks the model to list 0-8 short questions before the main bug-report call. The shared `src/components/followup_dialog.py` modal opens with chip-style options + an **Other...** free-text field per question; the answers are folded into the main prompt so the report no longer says *"(inferred)"* against facts the user could have just told the AI. A footer toggle ("Let the AI ask clarifying questions first") lets you flip the behaviour off per-section without leaving Settings.
+  - **Optional clarifying questions** (same shared modal as AI Job Search) - when the footer's **Let the AI ask clarifying questions first** toggle is on, the section runs a fast Pass 0 that asks the model to list 0-8 short questions before the main bug-report call. The shared `src/components/followup_dialog.py` modal opens with chip-style options + an **Other...** free-text field per question; the answers are folded into the main prompt so the report no longer says *"(inferred)"* against facts the user could have just told the AI. A footer toggle ("Let the AI ask clarifying questions first") lets you flip the behaviour off per-section without leaving Settings.
   - **Gated preview** - Preview is disabled until a report exists. The input footer appears only on Input; Preview shows just the report actions (**Save as Word document**, **Open output folder**, **Back to Input**) and the generated content.
   - **Word export** via `python-docx` - the Preview actions write DOCX, Markdown, and `summary.json` to `outputs/ai_bug_report/<title-slug>-<timestamp>/` and register the run in `~/AI Hub/history.json`.
   - **History restore + menu-only demo** - clicking a saved bug-report row reloads it back into Preview. Demo data is available only from the header `...` menu, not as a persistent footer button.
 - **AI Marketing** - built from the supplied design (chat with an "Instagram post", phone mockup, brief panel).
 - **AI Legal assistant** - fully AI-wired chat with a legal document:
-  - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the right-hand panel; the text body feeds the prompts, only the extracted plain text leaves your machine.
+  - **Multi-format upload** - drag a `PDF`, `DOCX`, `HTML`, `TXT` (or `MD`) document onto the upload zone; the text body feeds the prompts, only the extracted plain text leaves your machine.
   - **Four quick-action chips** - Summarise / Find risks / Explain legal terms / Suggest changes - each opens a tailored prompt and streams the reply back into the chat. Plain typing in the input field also works.
   - **No-lawyer disclaimer** - inline banner under the header reminds the user the assistant does not replace legal advice; every long reply re-states it in plain language.
   - **Compact header** - the Legal section drops the trailing *How to use* / `…` buttons and uses a tighter top bar so the chat has more vertical space; other sections keep their full chrome via the new `show_help_button` / `show_menu_button` / `compact` flags on `src/components/header.py`.
 - **Shared file-upload component** (`src/components/file_drop_zone.py`) - one place for click-to-browse, best-effort OS drag-and-drop, and clipboard-paste-path. AI Career, AI LinkedIn, and AI Legal all use it.
-- Right context panel showing **session cost** (calls / tokens / $) and a real-time **Activity** badge that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - the badge updates from background worker threads via `REFS.request_context_refresh()` so the user never sees a stale "Ready" while the LLM is busy.
+- **Left-sidebar status block** showing **session cost** (calls / tokens / $) and a real-time **Activity** dot that reflects the pipeline stage (`scraping`, `analyzing`, `generating`, `scoring`, `saving`, `error`, `ready`) - it updates from background worker threads via the global `cost_tracker.COST` + `activity_tracker.ACTIVITY` singletons (sections push their stage through `REFS.request_context_refresh()`), so the user never sees a stale "Ready" while the LLM is busy. This replaces the old per-section right context panel, which was removed so every section gets the full window width.
 
 ## Hidden UI
 
@@ -581,7 +585,7 @@ is no longer wired into the sidebar.
 
 ## Not yet (deliberately)
 
-- Streaming responses in the UI (the first iteration blocks with a loader in the context panel).
+- Streaming responses in the UI (the first iteration blocks with a loader + the sidebar Activity status).
 - Multi-language `OUTPUT_LANGUAGE` per document (one run = one output language; driven by the global lang toggle).
 - AI in the remaining sections - the architecture is ready, sections are filled in following the AI Career template.
 

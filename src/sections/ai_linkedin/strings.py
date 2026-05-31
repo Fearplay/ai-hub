@@ -48,15 +48,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_demo_clear": "Hide demo data",
         "demo_pill": "DEMO",
         # Setup tab
-        "setup_step1_title": "Step 1 — Targeting",
+        "setup_step1_title": "Step 1 - Targeting",
         "setup_step1_desc": "Tell the AI who this profile is aimed at.",
         "setup_target_roles_label": "Target roles",
-        "setup_target_roles_hint": "One per line — e.g. Senior Software QA Engineer, QA Automation Lead",
+        "setup_target_roles_hint": "One per line - e.g. Senior Software QA Engineer, QA Automation Lead",
         "setup_audience_label": "Audience",
         "setup_tone_label": "Tone",
         "setup_offer_services_label": "Offer freelance services on LinkedIn",
         "setup_offer_services_hint": "Toggles the optional Services section.",
-        "setup_step2_title": "Step 2 — Inputs",
+        "setup_step2_title": "Step 2 - Inputs",
         "setup_step2_desc": "Drop a CV, paste a LinkedIn export and (optionally) a GitHub URL.",
         "setup_resume_title": "Resume / CV",
         "setup_resume_hint": "PDF, DOCX, TXT, MD or HTML.",
@@ -69,14 +69,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup_github_hint": "Optional. Empty = skip.",
         "setup_github_skip": "Skip GitHub",
         "setup_notes_label": "Free-form notes (optional)",
-        "setup_notes_hint": "Anything else the AI should know — preferred roles, scope numbers, mentoring stories.",
-        "setup_step3_title": "Step 3 — Output",
-        "setup_step3_desc": "Pick output language and decide whether to ask clarifying questions.",
+        "setup_notes_hint": "Anything else the AI should know - preferred roles, scope numbers, mentoring stories.",
+        "setup_step3_title": "Step 3 - Output",
+        "setup_step3_desc": "Pick the output language. The AI asks clarifying questions on its own when needed.",
         "setup_lang_label": "Output language",
         "setup_lang_en": "English",
         "setup_lang_cs": "Čeština",
-        "setup_followups_label": "Ask clarifying questions before generating",
-        "setup_followups_hint": "Recommended. The AI surfaces gaps before it writes anything.",
+        "setup_followups_label": "Clarifying questions are automatic",
+        "setup_followups_hint": "The AI surfaces gaps and asks only when something is unclear - no toggle needed.",
         "setup_continue_button": "Continue to sections",
         # Sections tab
         "sections_title": "Pick what to build",
@@ -97,7 +97,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "output_save_button": "Save complete profile package",
         "output_open_folder_button": "Open last run folder",
         "output_score_card_title": "Profile score",
-        "output_score_card_desc": "Deterministic score from the cached state — no extra LLM call.",
+        "output_score_card_desc": "Deterministic score from the cached state - no extra LLM call.",
         "output_score_breakdown_label": "Breakdown",
         "output_headlines_title": "Headlines",
         "output_about_title": "About / Intro",
@@ -127,7 +127,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "output_volunteer_title": "Volunteer experience",
         "output_publications_title": "Publications",
         "output_honors_title": "Honors & awards",
-        "output_no_evidence_skip": "No evidence found — skip until you have something concrete.",
+        "output_no_evidence_skip": "No evidence found - skip until you have something concrete.",
         "output_copy": "Copy",
         "output_refine": "Refine with AI",
         "output_chars_left": "chars left",
@@ -264,9 +264,9 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "howto_quality_title": "Quality tips",
         "howto_quality_text": (
-            "Turn on 'Ask clarifying questions' on the first run — it asks before inventing. Pick the"
-            " audience that matches your goal (recruiter vs. peer). Use 'Refine with AI' on any card to"
-            " make it tighter."
+            "The AI asks clarifying questions on its own when something is unclear - it checks before"
+            " inventing. Pick the audience that matches your goal (recruiter vs. peer). Use 'Refine with"
+            " AI' on any card to make it tighter."
         ),
         "howto_wont_title": "What it will NOT do",
         "howto_wont_text": (
@@ -322,7 +322,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_demo_clear": "Skrýt demo data",
         "demo_pill": "DEMO",
         # Setup tab
-        "setup_step1_title": "Krok 1 — Cílení",
+        "setup_step1_title": "Krok 1 - Cílení",
         "setup_step1_desc": "Řekni AI, na koho profil cílí.",
         "setup_target_roles_label": "Cílové pozice",
         "setup_target_roles_hint": "Po jedné na řádek - např. Senior Software QA Engineer, QA Automation Lead",
@@ -330,7 +330,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup_tone_label": "Tón",
         "setup_offer_services_label": "Nabízet freelance služby na LinkedInu",
         "setup_offer_services_hint": "Zapne volitelnou sekci Služby.",
-        "setup_step2_title": "Krok 2 — Vstupy",
+        "setup_step2_title": "Krok 2 - Vstupy",
         "setup_step2_desc": "Vlož CV, případně LinkedIn export a GitHub URL.",
         "setup_resume_title": "Životopis / CV",
         "setup_resume_hint": "PDF, DOCX, TXT, MD nebo HTML.",
@@ -344,13 +344,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup_github_skip": "Přeskočit GitHub",
         "setup_notes_label": "Volné poznámky (volitelné)",
         "setup_notes_hint": "Cokoliv dalšího, co by AI měla vědět - preferované role, scope čísla, mentoring příběhy.",
-        "setup_step3_title": "Krok 3 — Výstup",
-        "setup_step3_desc": "Vyber jazyk výstupu a rozhodni, jestli se má AI doptat.",
+        "setup_step3_title": "Krok 3 - Výstup",
+        "setup_step3_desc": "Vyber jazyk výstupu. AI se sama doptá, když je to potřeba.",
         "setup_lang_label": "Jazyk výstupu",
         "setup_lang_en": "English",
         "setup_lang_cs": "Čeština",
-        "setup_followups_label": "Doptat se na chybějící informace",
-        "setup_followups_hint": "Doporučeno. AI před generováním upozorní na mezery.",
+        "setup_followups_label": "Doplňující otázky jsou automatické",
+        "setup_followups_hint": "AI upozorní na mezery a zeptá se, jen když je něco nejasné - žádný přepínač není potřeba.",
         "setup_continue_button": "Pokračovat na sekce",
         # Sections tab
         "sections_title": "Vyber, co se má vyrobit",
@@ -432,17 +432,17 @@ STRINGS: dict[str, dict[str, str]] = {
         "section_posts_hint": "Vyber typy postů (učení, launch, job search, …).",
         # Audience labels
         "audience_recruiter": "Recruiter",
-        "audience_hiring": "Hiring manager",
-        "audience_founder": "Founder / lead",
+        "audience_hiring": "Náborový manažer",
+        "audience_founder": "Zakladatel / vedoucí",
         "audience_peer": "Kolegové / komunita",
         # Tone labels
         "tone_professional": "Profesionální",
-        "tone_junior_friendly": "Junior-friendly",
+        "tone_junior_friendly": "Pro juniory",
         "tone_senior": "Senior",
         "tone_confident_honest": "Sebevědomý ale upřímný",
         "tone_technical": "Technický",
         "tone_simple": "Jednoduchý",
-        "tone_recruiter_friendly": "Recruiter-friendly",
+        "tone_recruiter_friendly": "Pro recruitery",
         # Post kinds
         "post_kind_learning_update": "Učební update",
         "post_kind_project_launch": "Launch projektu",
@@ -506,7 +506,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "chat_qa_improve_headline": "Vylepši můj headline",
         "chat_qa_write_learning_post": "Napiš learning-update post",
         "chat_qa_critique_about": "Zhodnoť moji About sekci",
-        "chat_qa_recruiter_dm": "Naváhej recruiter outreach DM",
+        "chat_qa_recruiter_dm": "Navrhni DM na recruitera",
         "chat_intro": (
             "Ahoj! Jsem tvůj LinkedIn voice expert. Můžeš mě poprosit, abych"
             " vylepšil tvůj headline, zhodnotil About sekci, napsal"
@@ -538,7 +538,7 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "howto_quality_title": "Tipy ke kvalitě",
         "howto_quality_text": (
-            "Při prvním běhu zapni 'Doptat se' - AI se nejdřív zeptá, než si začne vymýšlet. Vyber"
+            "AI se sama doptá, když je něco nejasné - zeptá se dřív, než si začne vymýšlet. Vyber"
             " publikum podle cíle (recruiter vs. kolegové). Na každé kartě je 'Doladit s AI', když"
             " chceš sevřenější verzi."
         ),

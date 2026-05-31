@@ -170,14 +170,14 @@ def _audience_label(value: str, lang: str) -> str:
     for opt in audience_options(lang):
         if opt["key"] == value:
             return opt["label"]
-    return value or "—"
+    return value or "-"
 
 
 def _tone_label(value: str, lang: str) -> str:
     for opt in tone_options(lang):
         if opt["key"] == value:
             return opt["label"]
-    return value or "—"
+    return value or "-"
 
 
 def recent_runs(lang: str) -> list[dict]:

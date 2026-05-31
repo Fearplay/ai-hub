@@ -113,6 +113,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "footer_followup_label": "Ask clarifying questions before running",
         "footer_followup_desc": "AI surfaces unclear items (e.g. 'Have you worked with Python?') and pauses for your answers.",
+        "footer_followup_auto_hint": "The AI asks clarifying questions only when something is unclear.",
+        "job_url_btn_loading": "Downloading...",
         "footer_run_btn": "Run analysis",
         "footer_run_running": "Running analysis...",
         "footer_run_followups_running": "Looking for unclear items...",
@@ -400,6 +402,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "footer_followup_label": "Před spuštěním se ptát na nejasné věci",
         "footer_followup_desc": "AI najde nejasná místa (např. 'Pracoval jsi s Pythonem?') a počká na tvoje odpovědi.",
+        "footer_followup_auto_hint": "AI se na upřesnění zeptá jen tehdy, když je něco nejasné.",
+        "job_url_btn_loading": "Stahuji...",
         "footer_run_btn": "Spustit analýzu",
         "footer_run_running": "Probíhá analýza...",
         "footer_run_followups_running": "Hledám nejasnosti...",

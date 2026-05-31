@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from src.qt.icons import Icons
 from src.sections._base import Section
-from src.sections.dashboard.context import build_context
 from src.sections.dashboard.strings import STRINGS
 from src.sections.dashboard.view import build_view
 
@@ -14,11 +13,6 @@ SECTION = Section(
     icon=Icons.DASHBOARD_OUTLINED,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
-    # The dashboard now ships a right-hand context panel (recent runs,
-    # session cost, quick actions) so it uses the regular three-column
-    # shell instead of the old wide layout. ``build_context`` populates
-    # the 336 px panel; the centre column keeps the module card grid.
-    build_context=build_context,
     # The dashboard is an auxiliary entry point - it surfaces every
     # primary section as a card grid, but it is not itself an AI
     # feature. Living in the secondary nav (above Settings) keeps the

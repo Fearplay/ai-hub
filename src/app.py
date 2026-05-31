@@ -1,17 +1,19 @@
 """Application shell.
 
 Owns three pieces of state - active section, theme mode, language - and
-wires the auto-discovered section registry into the three-column layout.
-This file should NOT reference any individual section by key. Adding a
-new section happens by creating a folder under ``src/sections/`` (see
-``src/sections/SECTION_TEMPLATE/``).
+wires the auto-discovered section registry into the two-column layout
+(left navigation sidebar + center section view). The right context panel
+was removed; session cost + Activity now live in the left sidebar (see
+``src/components/session_status.py``). This file should NOT reference any
+individual section by key. Adding a new section happens by creating a
+folder under ``src/sections/`` (see ``src/sections/SECTION_TEMPLATE/``).
 
-Section clicks do an in-place swap of the center + right panels (and
-re-highlight the sidebar row) instead of rebuilding the whole window;
-without this, the marketing/career sections feel sluggish to switch into
-because the sidebar + heavy phone mockup get re-instantiated every time.
-Theme and language toggles also use the same in-place swap (sidebar +
-active section + context) instead of rebuilding the entire window -
+Section clicks do an in-place swap of the center view (and re-highlight
+the sidebar row) instead of rebuilding the whole window; without this,
+the marketing/career sections feel sluggish to switch into because the
+sidebar + heavy phone mockup get re-instantiated every time. Theme and
+language toggles also use the same in-place swap (sidebar + active
+section) instead of rebuilding the entire window -
 :meth:`AIHubApp._smart_rebuild` is the single place that does it. The
 :meth:`AIHubApp.build` path is only hit on the very first show.
 """
@@ -31,7 +33,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.components.context_panel import empty_context_panel
 from src.components.sidebar import SetActive, UpdateTheme, sidebar
 from src.i18n import DEFAULT_LANG, normalize_lang
 from src.qt import qss_for_theme
@@ -41,6 +42,7 @@ from src.sections import SECTION_BY_KEY, SECTIONS
 from src.sections._base import Section
 from src.services import logger as logger_service
 from src.services import settings_store
+from src.services.activity_tracker import ACTIVITY
 from src.theme import Theme, get_theme
 
 
@@ -118,12 +120,9 @@ class AIHubApp(QMainWindow):
 
         self._main_holder: Optional[QWidget] = None
         self._main_layout: Optional[QStackedLayout] = None
-        self._context_holder: Optional[QWidget] = None
-        self._context_layout: Optional[QStackedLayout] = None
         self._sidebar_set_active: Optional[SetActive] = None
         self._sidebar_update_theme: Optional[UpdateTheme] = None
         self._main_widget: Optional[QWidget] = None
-        self._context_widget: Optional[QWidget] = None
         self._central_layout: Optional[QHBoxLayout] = None
         self._sidebar_widget: Optional[QWidget] = None
         # Cached global stylesheet so ``_apply_global_qss`` can skip
@@ -196,11 +195,7 @@ class AIHubApp(QMainWindow):
             to_key=key,
         )
 
-        if (
-            self._main_layout is None
-            or self._context_layout is None
-            or self._sidebar_set_active is None
-        ):
+        if self._main_layout is None or self._sidebar_set_active is None:
             self.active_section = key
             self.build()
             return
@@ -209,14 +204,17 @@ class AIHubApp(QMainWindow):
         section_theme = self._section_theme(section)
 
         new_main = section.safe_build_view(section_theme, self.lang)
-        new_context = self._safe_context_for(section, section_theme)
+
+        # New section starts idle as far as the sidebar status block is
+        # concerned. Any background job the section kicks off will push a
+        # fresh "busy" the moment it runs.
+        ACTIVITY.reset()
 
         self.setUpdatesEnabled(False)
         try:
             self.active_section = key
             self._apply_global_qss(section_theme)
             self._swap_main(new_main)
-            self._swap_context(new_context)
             # Restyle the sidebar to the new section's accent *before*
             # flipping the active row, so the logo tile / active row /
             # footer toggles pick up the accent on the same frame as the
@@ -229,8 +227,8 @@ class AIHubApp(QMainWindow):
             self.update()
 
     def _refresh_active_section(self) -> None:
-        """Rebuild the currently active section's center + right column."""
-        if self._main_layout is None or self._context_layout is None:
+        """Rebuild the currently active section's center column."""
+        if self._main_layout is None:
             logger_service.log_event(
                 "WARNING", "app", "refresh_no_containers"
             )
@@ -246,11 +244,9 @@ class AIHubApp(QMainWindow):
         )
         section_theme = self._section_theme(section)
         new_main = section.safe_build_view(section_theme, self.lang)
-        new_context = self._safe_context_for(section, section_theme)
         self.setUpdatesEnabled(False)
         try:
             self._swap_main(new_main)
-            self._swap_context(new_context)
         finally:
             self.setUpdatesEnabled(True)
             self.update()
@@ -291,13 +287,6 @@ class AIHubApp(QMainWindow):
         if section and section.accent:
             return base_theme.with_accent(section.accent)
         return base_theme
-
-    def _safe_context_for(self, section: Optional[Section], theme: Theme) -> QWidget:
-        if section and section.build_context:
-            return section.safe_build_context(theme, self.lang)
-        if section and section.wide_layout:
-            return QWidget()
-        return empty_context_panel(theme)
 
     def _resolve_section(self) -> Optional[Section]:
         section = SECTION_BY_KEY.get(self.active_section)
@@ -357,52 +346,6 @@ class AIHubApp(QMainWindow):
             except Exception:
                 pass
 
-    @staticmethod
-    def _context_panel_width(widget: QWidget) -> int:
-        """Return the fixed width of the context panel, or 0 (wide layout).
-
-        The right column is always a ``setFixedWidth(336)`` panel - either
-        returned directly (the dashboard's ``build_context``) or wrapped in
-        a plain ``QFrame`` (most AI sections wrap ``context_panel_shell``).
-        We therefore look at the widget *and* its descendants for the first
-        sizeable fixed-width frame (``min == max``, well above the tiny
-        fixed-size avatars / icon tiles) and use its width. ``wide_layout``
-        sections return a bare placeholder with no such frame, so we fall
-        back to 0 and the centre column spans the full width.
-        """
-        for candidate in (widget, *widget.findChildren(QWidget)):
-            mn, mx = candidate.minimumWidth(), candidate.maximumWidth()
-            if mn == mx and 200 <= mx < 16777215:
-                return mx
-        return 0
-
-    def _sync_context_holder_width(self, widget: QWidget) -> None:
-        """Pin the right-hand holder to the context panel's real width.
-
-        The context panel is ``setFixedWidth(336)`` but its ``sizeHint``
-        is wider (a non-wrapping child reports a ~468 px preferred width).
-        ``QStackedLayout`` sizes the holder to that inflated hint, which
-        reserved a ~130 px empty strip to the *right* of the panel (the
-        band the user circled). Pinning the holder to the panel's own
-        fixed width makes the panel sit flush against the window edge,
-        while ``wide_layout`` sections collapse the holder to zero.
-        """
-        if self._context_holder is None:
-            return
-        self._context_holder.setFixedWidth(self._context_panel_width(widget))
-
-    def _swap_context(self, new_widget: QWidget) -> None:
-        if self._context_layout is None:
-            return
-        old_widget = self._context_widget
-        self._context_widget = new_widget
-        self._context_layout.addWidget(new_widget)
-        self._context_layout.setCurrentWidget(new_widget)
-        self._sync_context_holder_width(new_widget)
-        if old_widget is not None:
-            self._context_layout.removeWidget(old_widget)
-            old_widget.deleteLater()
-
     def _swap_sidebar(
         self,
         new_widget: QWidget,
@@ -420,7 +363,7 @@ class AIHubApp(QMainWindow):
         self._sidebar_update_theme = update_theme
 
     def _smart_rebuild(self) -> None:
-        """In-place rebuild of sidebar + active section + context.
+        """In-place rebuild of sidebar + active section.
 
         Triggered by ``toggle_theme`` / ``toggle_lang``. Avoids
         recreating the central widget / outer layout (and the heavy
@@ -429,11 +372,7 @@ class AIHubApp(QMainWindow):
         left dormant - they pick up the new lang / accent on their
         next ``set_section`` call which already runs ``safe_build_view``.
         """
-        if (
-            self._central_layout is None
-            or self._main_layout is None
-            or self._context_layout is None
-        ):
+        if self._central_layout is None or self._main_layout is None:
             # First show: the central widget hasn't been built yet.
             self.build()
             return
@@ -461,20 +400,19 @@ class AIHubApp(QMainWindow):
             if section
             else QWidget()
         )
-        new_context = self._safe_context_for(section, section_theme)
         self.setUpdatesEnabled(False)
         try:
             self._apply_global_qss(section_theme)
             self._swap_sidebar(sidebar_widget, set_active, update_theme)
             self._swap_main(new_main)
-            self._swap_context(new_context)
 
             central = self.centralWidget()
             if central is not None:
                 central.setStyleSheet(f"background-color: {section_theme.bg};")
-            for holder in (self._main_holder, self._context_holder):
-                if holder is not None:
-                    holder.setStyleSheet(f"background-color: {section_theme.bg};")
+            if self._main_holder is not None:
+                self._main_holder.setStyleSheet(
+                    f"background-color: {section_theme.bg};"
+                )
         finally:
             self.setUpdatesEnabled(True)
             self.update()
@@ -499,10 +437,9 @@ class AIHubApp(QMainWindow):
             if section
             else QWidget()
         )
-        context_view = self._safe_context_for(section, section_theme)
 
-        # Build the three-column layout from scratch on theme/lang
-        # changes (the toggles affect every widget in the tree).
+        # Build the two-column layout (sidebar + center) from scratch on
+        # theme/lang changes (the toggles affect every widget in the tree).
         central = QWidget()
         central.setStyleSheet(f"background-color: {section_theme.bg};")
         layout = QHBoxLayout(central)
@@ -535,19 +472,6 @@ class AIHubApp(QMainWindow):
         self._main_layout = main_stack
         self._main_widget = main_view
         layout.addWidget(main_holder, 1)
-
-        context_holder = QWidget()
-        context_holder.setStyleSheet(f"background-color: {section_theme.bg};")
-        context_stack = QStackedLayout(context_holder)
-        context_stack.setContentsMargins(0, 0, 0, 0)
-        context_stack.setSpacing(0)
-        context_stack.addWidget(context_view)
-        context_stack.setCurrentWidget(context_view)
-        self._context_holder = context_holder
-        self._context_layout = context_stack
-        self._context_widget = context_view
-        layout.addWidget(context_holder)
-        self._sync_context_holder_width(context_view)
 
         self.setCentralWidget(central)
 
