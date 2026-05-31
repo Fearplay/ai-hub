@@ -40,7 +40,7 @@ CATEGORY_ERROR = "error"
 # running". Everything not listed here - and not an error - is treated
 # as "busy" so any new pipeline stage shows the working indicator
 # without needing to be enumerated.
-_READY_VALUES = {"", "ready", "idle", "done", "complete", "completed"}
+_READY_VALUES = {"", "ready", "idle", "done", "complete", "completed", "saved"}
 _ERROR_VALUES = {"error", "failed", "failure"}
 
 

@@ -155,6 +155,11 @@ class CareerState:
 
     documents: dict[str, str] = field(default_factory=dict)
     refine_problems: dict[str, list[str]] = field(default_factory=dict)
+    # The "Opravit dokument" panel on the Documents tab is collapsible so
+    # the document preview gets the full height. Collapsed by default once
+    # a document exists; forced open while no document has been generated
+    # yet so the user can always reach the generate button.
+    refine_open: bool = False
 
     activity: str = "ready"  # "ready" | "scraping" | "parsing" | "analyzing" | "generating" | "exporting" | "error"
     last_error: str = ""

@@ -147,6 +147,9 @@ def _builder_tab_enabled(index: int) -> bool:
 
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    # Keep the current language on REFS so background workers can resolve
+    # the localized sidebar Activity label (see ``LinkedInRefs``).
+    REFS.lang = lang
     _consume_handoff()
     try:
         STATE.runs_history = [
@@ -246,14 +249,14 @@ def build_view(theme: Theme, lang: str) -> QWidget:
 
         def _worker() -> None:
             try:
-                result = pipeline.save_full_profile()
+                # refresh_ui=False: we rebuild once below; let the pipeline
+                # leave Activity on the persistent "Profil uložen" state.
+                result = pipeline.save_full_profile(refresh_ui=False)
             except Exception as exc:
                 logger_service.log_exception(
                     "ai_linkedin.view", "menu_save_full_worker", exc,
                 )
                 result = None
-            STATE.activity = "ready"
-            REFS.request_context_refresh()
             if result is not None:
                 logger_service.log_event(
                     "INFO" if result.ok else "ERROR",

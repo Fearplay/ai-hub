@@ -581,7 +581,17 @@ def build_setup_tab(
     # tick - by then the QScrollArea knows its real viewport size and
     # ``verticalScrollBar().maximum()`` reflects the full inner height.
     saved_scroll_y = STATE.setup_scroll_y
-    if saved_scroll_y > 0:
+    if STATE.show_roles_error and not STATE.target_roles:
+        # Validation just failed: the required-field error lives at the
+        # top of the targeting step. Jump to the top so the user sees it
+        # instead of restoring the previous (often bottom) scroll offset
+        # and leaving the error off-screen (image 3).
+        def _scroll_to_error() -> None:
+            bar = scroll.verticalScrollBar()
+            if bar is not None:
+                bar.setValue(0)
+        runtime_dispatch(_scroll_to_error)
+    elif saved_scroll_y > 0:
         def _restore_scroll() -> None:
             bar = scroll.verticalScrollBar()
             if bar is None:

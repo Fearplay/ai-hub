@@ -128,6 +128,10 @@ def _row(
             border: 1px solid {theme.border};
             border-radius: 12px;
         }}
+        QFrame#JobsHistoryRow:hover {{
+            background-color: {rgba(theme.primary, 0.06)};
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
         """
     )
     layout = hbox(spacing=12, margins=(16, 12, 16, 12))

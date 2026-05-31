@@ -495,6 +495,38 @@ def _build_active_doc_panel(
     rc_layout = vbox(spacing=10, margins=(18, 12, 18, 12))
     refine_card.setLayout(rc_layout)
 
+    # Collapsible header. The refine controls used to sit permanently
+    # below the preview and ate ~200 px of height, so the document was
+    # barely visible (image 1). The body is collapsed by default once a
+    # document exists; the preview scroll area (stretch=1) reclaims the
+    # freed space. While no document has been generated yet we force it
+    # open so the generate button stays reachable.
+    refine_header = ClickFrame()
+    refine_header.setStyleSheet("background: transparent;")
+    rh_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    rh_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    refine_header.setLayout(rh_layout)
+    rh_layout.addWidget(
+        TitleLabel(
+            txt["doc_refine_section_title"], theme=theme, size=14,
+            weight=QFont.Weight.DemiBold,
+        ),
+        1,
+    )
+    refine_open = STATE.refine_open or not has_text
+    refine_chevron = IconLabel(
+        Icons.KEYBOARD_ARROW_DOWN if refine_open else Icons.CHEVRON_RIGHT,
+        color=theme.text_muted,
+        size=20,
+    )
+    rh_layout.addWidget(refine_chevron)
+    rc_layout.addWidget(refine_header)
+
+    refine_body = QWidget()
+    refine_body.setStyleSheet("background: transparent;")
+    rb_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    refine_body.setLayout(rb_layout)
+
     # Explicit "which document to fix" selector. The active sub-tab
     # already drives the generate / refine target; surfacing it here (and
     # letting the user switch it) makes the target unambiguous so the AI
@@ -523,9 +555,9 @@ def _build_active_doc_panel(
 
     target_combo.currentIndexChanged.connect(_on_target_changed)
     tr_layout.addWidget(target_combo, 1)
-    rc_layout.addWidget(target_row)
+    rb_layout.addWidget(target_row)
 
-    rc_layout.addWidget(refine_block)
+    rb_layout.addWidget(refine_block)
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
     br_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
@@ -536,7 +568,7 @@ def _build_active_doc_panel(
     br_layout.addWidget(generate_btn)
     br_layout.addStretch(1)
     br_layout.addWidget(refine_btn)
-    rc_layout.addWidget(btn_row)
+    rb_layout.addWidget(btn_row)
     progress_bar = QProgressBar()
     progress_bar.setRange(0, 0)
     progress_bar.setTextVisible(False)
@@ -555,7 +587,20 @@ def _build_active_doc_panel(
         }}
         """
     )
-    rc_layout.addWidget(progress_bar)
+    rb_layout.addWidget(progress_bar)
+
+    rc_layout.addWidget(refine_body)
+    refine_body.setVisible(refine_open)
+
+    def _toggle_refine() -> None:
+        STATE.refine_open = not STATE.refine_open
+        now_open = STATE.refine_open or not has_text
+        refine_body.setVisible(now_open)
+        refine_chevron.set_icon(
+            Icons.KEYBOARD_ARROW_DOWN if now_open else Icons.CHEVRON_RIGHT
+        )
+
+    refine_header.clicked.connect(_toggle_refine)
     layout.addWidget(refine_card)
 
     def _refresh_buttons() -> None:

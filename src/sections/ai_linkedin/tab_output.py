@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import threading
 from typing import Callable
 
@@ -51,22 +48,6 @@ def _request_full_refresh() -> None:
         )
         return
     request_section_refresh()
-
-
-def _open_in_explorer(path: str) -> None:
-    if not path or not os.path.isdir(path):
-        return
-    try:
-        if os.name == "nt":
-            os.startfile(path)  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
-    except Exception as exc:
-        logger_service.log_exception(
-            "ai_linkedin.tab_output", "open_in_explorer_failed", exc, path=path,
-        )
 
 
 def _empty_state(theme: Theme, txt: dict, on_navigate_tab: Callable[[int], None]) -> QWidget:
@@ -167,6 +148,28 @@ def _markdown_text_block(theme: Theme, text: str) -> BodyLabel:
     label.setTextFormat(Qt.TextFormat.MarkdownText)
     label.setWordWrap(True)
     return label
+
+
+def _strip_leading_h1(md: str) -> str:
+    """Drop a leading top-level ``# Heading`` from card markdown.
+
+    Every section renderer prepends ``# <Section title>`` so the exported
+    ``.md`` / ``.html`` files have a heading, but the Output card already
+    shows that title in its own header. Rendering the H1 again duplicated
+    the title and - because Qt gives a Markdown H1 a large top margin -
+    pushed the body down behind a big empty gap (image 7). We only strip
+    it for the on-screen card; the saved files keep their full heading.
+    """
+    lines = md.splitlines()
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx < len(lines) and lines[idx].lstrip().startswith("# "):
+        idx += 1
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        return "\n".join(lines[idx:])
+    return md
 
 
 def _evidence_label(anchor: str, txt: dict) -> str:
@@ -330,7 +333,7 @@ def _build_results_cards(theme: Theme, lang: str, txt: dict) -> list[QFrame]:
         ("13_unsupported_claims.md", Icons.WARNING_AMBER_OUTLINED, txt["output_unsupported_title"]),
     ]
     for fname, icon, title in name_icon_title:
-        body = md_outputs.get(fname) or ""
+        body = _strip_leading_h1(md_outputs.get(fname) or "")
         if body.strip():
             cards.append(_generic_text_card(theme, txt, icon=icon, title=title, body_text=body))
     return cards
@@ -390,27 +393,44 @@ def build_output_tab(
     footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     footer.setLayout(footer_layout)
 
-    open_btn = GhostButton(txt["output_open_folder_button"], theme=theme, icon=Icons.FOLDER_OPEN)
-    if not STATE.last_run_folder:
-        open_btn.setEnabled(False)
-    open_btn.clicked.connect(lambda: _open_in_explorer(STATE.last_run_folder or ""))
-    footer_layout.addWidget(open_btn)
+    # The "Open last run folder" button used to live here, but it
+    # duplicated the "Otevřít složku runu" item already in the header
+    # "..." menu, so it was removed (image 8).
     footer_layout.addStretch(1)
 
     save_btn = PrimaryButton(txt["output_save_button"], theme=theme, icon=Icons.SAVE_OUTLINED)
 
     def _on_save() -> None:
+        # Disable + relabel immediately so a slow save can't be triggered
+        # twice and the user gets instant feedback.
+        save_btn.setEnabled(False)
+        save_btn.setText(txt["output_save_running"])
         STATE.activity = "saving"
         REFS.request_context_refresh()
 
         def _worker() -> None:
+            result = None
             try:
-                pipeline.save_full_profile()
+                # refresh_ui=False: no full section rebuild, so the tab no
+                # longer flashes a blank page on save. The sidebar Activity
+                # ("Profil uložen") + the confirmation below tell the user
+                # it worked (image 8).
+                result = pipeline.save_full_profile(refresh_ui=False)
             except Exception as exc:
                 logger_service.log_exception(
                     "ai_linkedin.tab_output", "save_worker_failed", exc,
                 )
-            REFS.dispatch(_request_full_refresh)
+
+            def _finish() -> None:
+                save_btn.setEnabled(True)
+                save_btn.setText(txt["output_save_button"])
+                if result is not None and result.ok:
+                    QMessageBox.information(
+                        get_main_window(),
+                        txt["output_save_button"],
+                        txt["output_save_done_template"].format(path=result.folder),
+                    )
+            REFS.dispatch(_finish)
         threading.Thread(target=_worker, daemon=True).start()
 
     save_btn.clicked.connect(_on_save)

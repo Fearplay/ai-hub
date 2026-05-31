@@ -158,12 +158,17 @@ def _hero_card(theme: Theme, *, icon: str, title: str, description: str) -> QFra
 def _run_card(theme: Theme, lang: str, run: dict) -> QFrame:
     txt = s(lang)
     card = QFrame()
+    card.setObjectName("FinanceRunCard")
     card.setStyleSheet(
         f"""
-        QFrame {{
+        QFrame#FinanceRunCard {{
             background-color: {theme.surface};
             border: 1px solid {theme.border};
             border-radius: 12px;
+        }}
+        QFrame#FinanceRunCard:hover {{
+            background-color: {rgba(theme.primary, 0.06)};
+            border: 1px solid {rgba(theme.primary, 0.45)};
         }}
         """
     )

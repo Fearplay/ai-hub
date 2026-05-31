@@ -137,6 +137,10 @@ def _row(
             border: 1px solid {theme.border};
             border-radius: 12px;
         }}
+        QFrame#CareerHistoryRow:hover {{
+            background-color: {rgba(theme.primary, 0.06)};
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
         """
     )
     layout = hbox(spacing=10, margins=(14, 10, 14, 10))

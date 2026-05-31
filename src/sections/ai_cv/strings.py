@@ -172,6 +172,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "doc_regenerate_btn": "Regenerate",
         "doc_running": "Generating...",
 
+        "doc_refine_section_title": "Fix document",
         "refine_target_label": "Document to fix",
         "problem_label_template": "Problem {n}",
         "problem_hint": "Problem {n}: what is wrong or missing?",
@@ -462,7 +463,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "doc_regenerate_btn": "Vygenerovat znovu",
         "doc_running": "Generuji...",
 
-        "refine_target_label": "Opravit dokument",
+        "doc_refine_section_title": "Opravit dokument",
+        "refine_target_label": "Dokument k úpravě",
         "problem_label_template": "Problém {n}",
         "problem_hint": "Problém {n}: co je špatně nebo chybí?",
         "add_problem_btn": "+ Přidat další problém",

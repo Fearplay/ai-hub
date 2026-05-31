@@ -260,7 +260,11 @@ class LinkedInState:
     chat_last_error: str = ""
 
     # --- UX flags ------------------------------------------------------
-    activity: str = "ready"  # "ready" | "scraping" | "parsing" | "extracting" | "analyzing" | "generating" | "scoring" | "saving" | "error"
+    activity: str = "ready"  # "ready" | "scraping" | "parsing" | "extracting" | "analyzing" | "generating" | "scoring" | "saving" | "saved" | "error"
+    # While ``activity == "generating"`` this holds the section key being
+    # built (SEC_HEADLINE, SEC_ABOUT, ...) so the sidebar can show
+    # "Generuji: <section>" instead of a generic "Generuji LinkedIn texty".
+    activity_section: str = ""
     run_stage: str = ""  # "" | "running" | "followups" | "saving"
     last_error: str = ""
     last_run_folder: str = ""

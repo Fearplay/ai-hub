@@ -289,6 +289,12 @@ def build_sections_tab(
     # AI decide whether clarifying questions are needed.
     footer_layout.addStretch(1)
     run_btn = PrimaryButton(txt["sections_run_button"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
+    # Reflect an in-flight build: the section rebuilds when the worker
+    # finishes (run_stage back to ""), so a non-empty stage means we are
+    # still busy and the button must stay disabled to block double-clicks.
+    if STATE.run_stage:
+        run_btn.setText(txt["sections_run_running"])
+        run_btn.setEnabled(False)
     footer_layout.addWidget(run_btn)
     root_layout.addWidget(footer)
 
@@ -474,6 +480,10 @@ def build_sections_tab(
                 "run_no_api_key", provider=provider,
             )
             return
+        # Disable immediately so a slow first AI call can't be triggered
+        # several times before the section rebuilds (image 6).
+        run_btn.setEnabled(False)
+        run_btn.setText(txt["sections_run_running"])
         # Always run the clarify step; the model decides whether to ask
         # anything and the dialog only opens when it returns questions.
         _phase_run(ask_followups=True)
