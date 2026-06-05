@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QScrollArea,
     QSizePolicy,
     QWidget,
@@ -22,7 +21,7 @@ from src.qt.theme import rgba
 from src.qt.widgets import (
     BodyLabel,
     ClickFrame,
-    GhostButton,
+    FlowLayout,
     IconLabel,
     MutedLabel,
     PrimaryButton,
@@ -50,6 +49,7 @@ from src.sections.ai_linkedin.state import (
     SECTION_IDS,
     STATE,
     TAB_OUTPUT,
+    TAB_SETUP,
 )
 from src.sections.ai_linkedin.strings import s
 from src.theme import Theme
@@ -216,21 +216,19 @@ def build_sections_tab(
     section_card_target.setLayout(sc_layout)
     sc_layout.addWidget(TitleLabel(txt["sections_title"], theme=theme, size=15, weight=QFont.Weight.Bold))
     sc_layout.addWidget(MutedLabel(txt["sections_desc"], theme=theme, size=12))
-    spacer1 = QWidget()
-    spacer1.setFixedHeight(8)
-    sc_layout.addWidget(spacer1)
+    # Use layout spacing instead of bare QWidget spacers - those rendered
+    # as faint horizontal bands above/below the preset row (image 5).
+    sc_layout.addSpacing(8)
 
     presets_holder = QWidget()
     presets_holder.setStyleSheet("background: transparent;")
-    presets_layout = QGridLayout(presets_holder)
-    presets_layout.setContentsMargins(0, 0, 0, 0)
-    presets_layout.setHorizontalSpacing(8)
-    presets_layout.setVerticalSpacing(8)
+    # FlowLayout so preset chips wrap instead of overflowing on narrow
+    # widths (they no longer have the right context panel stealing space).
+    presets_layout = FlowLayout(presets_holder, margin=0, h_spacing=8, v_spacing=8)
+    presets_holder.setLayout(presets_layout)
     sc_layout.addWidget(presets_holder)
 
-    spacer2 = QWidget()
-    spacer2.setFixedHeight(10)
-    sc_layout.addWidget(spacer2)
+    sc_layout.addSpacing(10)
 
     grid_holder = QWidget()
     grid_holder.setStyleSheet("background: transparent;")
@@ -254,16 +252,12 @@ def build_sections_tab(
     posts_card.setLayout(posts_layout)
     posts_layout.addWidget(TitleLabel(txt["sections_post_kinds_title"], theme=theme, size=15, weight=QFont.Weight.Bold))
     posts_layout.addWidget(MutedLabel(txt["sections_post_kinds_desc"], theme=theme, size=12))
-    spacer3 = QWidget()
-    spacer3.setFixedHeight(8)
-    posts_layout.addWidget(spacer3)
+    posts_layout.addSpacing(8)
 
     post_kinds_holder = QWidget()
     post_kinds_holder.setStyleSheet("background: transparent;")
-    pk_layout = QGridLayout(post_kinds_holder)
-    pk_layout.setContentsMargins(0, 0, 0, 0)
-    pk_layout.setHorizontalSpacing(8)
-    pk_layout.setVerticalSpacing(8)
+    pk_layout = FlowLayout(post_kinds_holder, margin=0, h_spacing=8, v_spacing=8)
+    post_kinds_holder.setLayout(pk_layout)
     posts_layout.addWidget(post_kinds_holder)
     body_layout.addWidget(posts_card)
     body_layout.addStretch(1)
@@ -291,10 +285,16 @@ def build_sections_tab(
     footer_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     footer.setLayout(footer_layout)
 
-    followup_btn = GhostButton(txt["sections_followup_button"], theme=theme, icon=Icons.QUIZ_OUTLINED)
-    footer_layout.addWidget(followup_btn)
+    # The separate "ask first" button is gone - the run always lets the
+    # AI decide whether clarifying questions are needed.
     footer_layout.addStretch(1)
     run_btn = PrimaryButton(txt["sections_run_button"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
+    # Reflect an in-flight build: the section rebuilds when the worker
+    # finishes (run_stage back to ""), so a non-empty stage means we are
+    # still busy and the button must stay disabled to block double-clicks.
+    if STATE.run_stage:
+        run_btn.setText(txt["sections_run_running"])
+        run_btn.setEnabled(False)
     footer_layout.addWidget(run_btn)
     root_layout.addWidget(footer)
 
@@ -308,7 +308,6 @@ def build_sections_tab(
             (txt["sections_preset_everything"], "everything"),
             (txt["sections_preset_custom"], "custom"),
         ]
-        col = 0
         for label, key in chips:
             chip = _preset_chip(
                 theme,
@@ -316,8 +315,7 @@ def build_sections_tab(
                 active=active == key,
                 on_click=(lambda k=key: _on_preset(k)) if key != "custom" else (lambda: None),
             )
-            presets_layout.addWidget(chip, 0, col)
-            col += 1
+            presets_layout.addWidget(chip)
 
     def _on_preset(name: str) -> None:
         _apply_preset(name)
@@ -354,7 +352,6 @@ def build_sections_tab(
     def _render_post_kinds() -> None:
         _clear_layout(pk_layout)
         options = post_kind_options(lang)
-        col = 0
         for opt in options:
             chip = _preset_chip(
                 theme,
@@ -362,8 +359,7 @@ def build_sections_tab(
                 active=opt["key"] in STATE.selected_post_kinds,
                 on_click=lambda k=opt["key"]: _toggle_post_kind(k),
             )
-            pk_layout.addWidget(chip, 0, col)
-            col += 1
+            pk_layout.addWidget(chip)
 
     def _toggle_post_kind(key: str) -> None:
         if key in STATE.selected_post_kinds:
@@ -467,6 +463,10 @@ def build_sections_tab(
             logger_service.log_event(
                 "WARNING", "ai_linkedin.tab_sections", "run_no_target_roles",
             )
+            # The required "target roles" field lives on the Setup tab, so
+            # flag the error and jump there instead of failing silently.
+            STATE.show_roles_error = True
+            on_navigate_tab(TAB_SETUP)
             return
         provider = settings_store.get_provider()
         key_name = (
@@ -480,14 +480,14 @@ def build_sections_tab(
                 "run_no_api_key", provider=provider,
             )
             return
-        ask = STATE.ask_followups
-        _phase_run(ask_followups=ask)
-
-    def _on_followup_first() -> None:
-        STATE.ask_followups = True
+        # Disable immediately so a slow first AI call can't be triggered
+        # several times before the section rebuilds (image 6).
+        run_btn.setEnabled(False)
+        run_btn.setText(txt["sections_run_running"])
+        # Always run the clarify step; the model decides whether to ask
+        # anything and the dialog only opens when it returns questions.
         _phase_run(ask_followups=True)
 
     run_btn.clicked.connect(_on_run)
-    followup_btn.clicked.connect(_on_followup_first)
 
     return container

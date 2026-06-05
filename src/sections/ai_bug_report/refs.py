@@ -22,6 +22,8 @@ from typing import Callable, Optional
 from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.ai_bug_report.state import STATE
 
 
 @dataclass
@@ -31,10 +33,13 @@ class BugReportRefs:
     _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def request_context_refresh(self) -> None:
-        """Schedule the right-hand context panel to repaint on the GUI thread.
+        """Feed the left-sidebar Activity indicator from any thread.
 
-        Coalesces bursty calls into one queued render.
+        The right context panel was removed; pipeline workers still call
+        this after mutating ``STATE.activity``, so it publishes the
+        status to the global ``ACTIVITY`` tracker the sidebar reads.
         """
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
 

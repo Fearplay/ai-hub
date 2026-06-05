@@ -64,13 +64,13 @@ Inside `src/sections/<key>/` you may add (all optional except as noted):
  `~/AI Hub/history.json`. Every "Save complete analysis" call must
  request a fresh `new_run_dir(...)` - never reuse the previous run
  folder, otherwise two saves silently overwrite each other (see
- `ai_career.pipeline.save_full_analysis`).
+ `ai_cv.pipeline.save_full_analysis`).
 - **Pipeline functions log start / end / errors** through
  `src.services.logger.log_event` and `log_exception`. AI calls must
  emit a `*_start` line (with `kind`, `output_lang`, `demo_mode`) and a
  matching `*_done` or `*_failed` line (with `chars=` for sizes, never
  the raw text). This is what makes silent provider errors visible in
- **Settings -> Debug logs**. See `src/sections/ai_career/pipeline.py`
+ **Settings -> Debug logs**. See `src/sections/ai_cv/pipeline.py`
  (`generate_document`, `refine_document`, `send_chat_message`,
  `save_full_analysis`) for the canonical pattern. The companion rule
  [sections.mdc](sections.mdc) has the full list of mandatory log

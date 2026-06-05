@@ -1643,7 +1643,7 @@ def _build_footer(
                 STATE.activity = "waiting_user"
                 REFS.request_context_refresh()
                 # Dispatch onto the GUI thread - ``BugReportRefs`` does
-                # not expose its own ``dispatch`` helper (only ``ai_career``
+                # not expose its own ``dispatch`` helper (only ``ai_cv``
                 # / ``ai_jobs`` REFS do), so go through the shared
                 # ``runtime.dispatch`` directly. ``sections.mdc`` lists
                 # this as the canonical "generic GUI-thread call" pattern.

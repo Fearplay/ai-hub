@@ -1,7 +1,7 @@
 """Click-to-browse upload zone for the AI Jobs profile uploader.
 
 Thin wrapper around :func:`src.components.file_drop_zone.file_drop_zone`
-mirroring :mod:`src.sections.ai_career.upload` so the section reuses the
+mirroring :mod:`src.sections.ai_cv.upload` so the section reuses the
 shared OS drag-and-drop / paste-path / browse implementation. Only the
 ``log_area`` differs - failures show up under ``ai_jobs.upload`` in
 Settings -> Debug logs so we can tell where they came from.

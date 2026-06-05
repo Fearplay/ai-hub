@@ -7,7 +7,7 @@ alwaysApply: true
 
 The repo-root `outputs/` folder collects every saved AI run from every
 section. To keep it browsable when the user accumulates dozens of runs
-across AI Career / AI Jobs / AI Finance / AI LinkedIn / future
+across AI CV / AI Jobs / AI Finance / AI LinkedIn / future
 sections, **every** call into `src.services.store.new_run_dir(...)` must
 pass a `section=<section_key>` argument so the run lands in
 `outputs/<section_key>/<run-slug>-<timestamp>/`.
@@ -16,7 +16,7 @@ pass a `section=<section_key>` argument so the run lands in
 
 ```
 outputs/
-  ai_career/
+  ai_cv/
     senior-qa-engineer-gen-20260516-141700/
         Tailored_CV.pdf
         Cover_Letter.pdf
@@ -48,7 +48,7 @@ section.
  the same key that lives in `src/sections/<key>/` and is set in the
  ``key=`` field of the section's `section.py`. Do **not** invent a
  different name (no `ai-jobs` vs `ai_jobs`, no nicknames like
- `cv` for `ai_career`) - mirror the code identifier so debug logs
+ `cv` for `ai_cv`) - mirror the code identifier so debug logs
  and on-disk paths line up.
 
  ```python

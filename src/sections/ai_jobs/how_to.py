@@ -1,6 +1,6 @@
 """How-to dialog content for the AI Jobs section.
 
-Mirrors :mod:`src.sections.ai_career.how_to` - three short blocks
+Mirrors :mod:`src.sections.ai_cv.how_to` - three short blocks
 explaining what the section does, what to give it, and how to keep
 costs sane. The localised copy lives in ``strings.py`` so swapping the
 EN/CS toggle re-renders the dialog without touching this file.

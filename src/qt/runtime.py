@@ -23,7 +23,7 @@ Public API:
   every callback.
 
 This is the Qt analogue of the old ``REFS.dispatch`` plumbing in
-:mod:`src.sections.ai_career.refs` and friends. The per-section
+:mod:`src.sections.ai_cv.refs` and friends. The per-section
 ``refs.py`` modules now route through this dispatcher rather than
 walking ``page.session.connection.loop``.
 """

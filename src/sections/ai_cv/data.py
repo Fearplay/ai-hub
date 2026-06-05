@@ -1,7 +1,7 @@
 """Static metadata + demo seed for the AI Career section.
 
 The :data:`DEMO_*` constants are curated mock payloads that match the
-JSON Schemas in :mod:`src.sections.ai_career.schema`. They power the
+JSON Schemas in :mod:`src.sections.ai_cv.schema`. They power the
 section's free, offline Demo mode (see ``pipeline.load_demo``) - turn
 it on via the ``...`` header menu and every analysis tab populates
 without sending a single token to the provider.

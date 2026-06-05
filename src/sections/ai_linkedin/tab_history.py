@@ -120,6 +120,10 @@ def _row(theme: Theme, txt: dict, summary: store.RunSummary, *, on_open_app: Cal
             border: 1px solid {theme.border};
             border-radius: 12px;
         }}
+        QFrame#LinkedInHistoryRow:hover {{
+            background-color: {rgba(theme.primary, 0.06)};
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
         """
     )
     layout = hbox(spacing=10, margins=(14, 10, 14, 10))
@@ -142,7 +146,7 @@ def _row(theme: Theme, txt: dict, summary: store.RunSummary, *, on_open_app: Cal
     open_btn = IconOnlyButton(Icons.FOLDER_OPEN, color=theme.text_muted, size=18, bg_hover=theme.surface_2, tooltip=txt["history_open"])
     # ``QToolButton.clicked`` emits ``bool checked`` - bind it to a
     # throwaway first arg so the captured ``folder`` default is not
-    # overwritten by ``True``/``False`` (see ai_career.tab_history for
+    # overwritten by ``True``/``False`` (see ai_cv.tab_history for
     # the same pattern + the upstream traceback this fixed).
     open_btn.clicked.connect(lambda _checked=False, folder=summary.folder: _open_in_explorer(folder))
     layout.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignTop)

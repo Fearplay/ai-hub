@@ -12,6 +12,8 @@ from typing import Callable, Optional
 
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.my_profile.state import STATE
 
 
 @dataclass
@@ -25,6 +27,9 @@ class MyProfileRefs:
             logger_service.log_exception("my_profile.refs", "dispatch_failed", exc)
 
     def request_context_refresh(self) -> None:
+        # The right context panel was removed; feed the left-sidebar
+        # Activity indicator instead.
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
         self.dispatch(self.rerender_context)

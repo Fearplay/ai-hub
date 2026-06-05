@@ -29,6 +29,8 @@ from typing import Callable, Optional
 from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.ai_legal.state import STATE
 
 
 @dataclass
@@ -39,14 +41,15 @@ class LegalRefs:
     _refresh: CoalescedRefresh = field(default_factory=CoalescedRefresh)
 
     def request_context_refresh(self) -> None:
-        """Schedule the right-hand context panel to repaint on the GUI thread.
+        """Feed the left-sidebar Activity indicator from any thread.
 
         Pipeline workers call this from background threads after
         mutating ``STATE.activity`` / ``STATE.uploaded_file`` /
-        ``STATE.last_error`` so the badge, document chip and error
-        labels reflect the new values on the next event loop tick.
-        Coalesces bursty calls into one queued render.
+        ``STATE.last_error``. The right context panel was removed, so
+        this now publishes the activity status to the global ``ACTIVITY``
+        tracker the sidebar subscribes to.
         """
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
 

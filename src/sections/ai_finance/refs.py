@@ -1,6 +1,6 @@
 """Cross-thread refresh helpers for the AI Finance section.
 
-Mirror of :mod:`src.sections.ai_career.refs`. Worker threads in
+Mirror of :mod:`src.sections.ai_cv.refs`. Worker threads in
 ``pipeline.py`` mutate :data:`src.sections.ai_finance.state.STATE` and
 then need the UI to repaint - both the right-hand context panel
 (``rerender_context``) and, occasionally, the entire section tree
@@ -18,6 +18,8 @@ from typing import Any, Callable, Optional
 from src.qt.lifecycle import CoalescedRefresh
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.services import logger as logger_service
+from src.services.activity_tracker import ACTIVITY
+from src.sections.ai_finance.state import STATE
 
 
 @dataclass
@@ -35,6 +37,9 @@ class FinanceRefs:
             )
 
     def request_context_refresh(self) -> None:
+        # The right context panel was removed; this feeds the left-sidebar
+        # Activity indicator from any thread.
+        ACTIVITY.set_from_value(STATE.activity)
         if self.rerender_context is None:
             return
         self._refresh.schedule(lambda: self.rerender_context)

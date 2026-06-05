@@ -5,8 +5,8 @@ from __future__ import annotations
 
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
-        "nav_label": "AI CV / Career",
-        "title": "AI CV / Career",
+        "nav_label": "AI CV",
+        "title": "AI CV",
         # Shared career profile banner (My Profile section).
         "shared_title_use": "Reuse your saved profile",
         "shared_title_applied": "Using your shared profile",
@@ -113,6 +113,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "footer_followup_label": "Ask clarifying questions before running",
         "footer_followup_desc": "AI surfaces unclear items (e.g. 'Have you worked with Python?') and pauses for your answers.",
+        "footer_followup_auto_hint": "The AI asks clarifying questions only when something is unclear.",
+        "job_url_btn_loading": "Downloading...",
         "footer_run_btn": "Run analysis",
         "footer_run_running": "Running analysis...",
         "footer_run_followups_running": "Looking for unclear items...",
@@ -170,6 +172,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "doc_regenerate_btn": "Regenerate",
         "doc_running": "Generating...",
 
+        "doc_refine_section_title": "Fix document",
+        "refine_target_label": "Document to fix",
         "problem_label_template": "Problem {n}",
         "problem_hint": "Problem {n}: what is wrong or missing?",
         "add_problem_btn": "+ Add another problem",
@@ -241,7 +245,7 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "how_to_title": "How to use this assistant",
         "how_to_section_what": "What this section does",
-        "how_to_what_text": "AI Career compares your resume against a specific job posting and produces an honest match report, a tailored CV, a cover letter, an interview-prep brief, and a skill-gap plan you can act on. Everything is grounded in the candidate evidence you provided - the AI is forbidden from inventing facts.",
+        "how_to_what_text": "AI CV compares your resume against a specific job posting and produces an honest match report, a tailored CV, a cover letter, an interview-prep brief, and a skill-gap plan you can act on. Everything is grounded in the candidate evidence you provided - the AI is forbidden from inventing facts.",
         "how_to_section_inputs": "Inputs you should prepare",
         "how_to_inputs_text": "Drop your resume (PDF, DOCX, TXT or HTML) and either paste or fetch the job posting URL. Optionally drop a LinkedIn export and add your GitHub username for richer evidence. The more context you give, the better the match report.",
         "how_to_section_quality": "Quality tips",
@@ -292,7 +296,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "history_run_company_template": "{company}",
     },
     "cs": {
-        "nav_label": "AI Životopis / Kariéra",
+        "nav_label": "AI Životopis",
         # Shared career profile banner (My Profile section).
         "shared_title_use": "Použít uložený profil",
         "shared_title_applied": "Používáš svůj sdílený profil",
@@ -303,7 +307,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "shared_item_cv": "Životopis",
         "shared_item_linkedin": "LinkedIn",
         "shared_item_github": "GitHub",
-        "title": "AI Životopis / Kariéra",
+        "title": "AI Životopis",
         "subtitle": "Přizpůsob životopis na konkrétní inzerát, napiš motivační dopis a připrav se na pohovor.",
 
         "mode_chat": "Chat",
@@ -400,6 +404,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "footer_followup_label": "Před spuštěním se ptát na nejasné věci",
         "footer_followup_desc": "AI najde nejasná místa (např. 'Pracoval jsi s Pythonem?') a počká na tvoje odpovědi.",
+        "footer_followup_auto_hint": "AI se na upřesnění zeptá jen tehdy, když je něco nejasné.",
+        "job_url_btn_loading": "Stahuji...",
         "footer_run_btn": "Spustit analýzu",
         "footer_run_running": "Probíhá analýza...",
         "footer_run_followups_running": "Hledám nejasnosti...",
@@ -457,6 +463,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "doc_regenerate_btn": "Vygenerovat znovu",
         "doc_running": "Generuji...",
 
+        "doc_refine_section_title": "Opravit dokument",
+        "refine_target_label": "Dokument k úpravě",
         "problem_label_template": "Problém {n}",
         "problem_hint": "Problém {n}: co je špatně nebo chybí?",
         "add_problem_btn": "+ Přidat další problém",
@@ -528,7 +536,7 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "how_to_title": "Jak používat tohoto asistenta",
         "how_to_section_what": "Co tahle sekce dělá",
-        "how_to_what_text": "AI Career porovná tvůj životopis s konkrétním inzerátem a vytvoří poctivý report shody, životopis na míru, motivační dopis, přípravu na pohovor a plán doplnění mezer, podle kterého můžeš jednat. Všechno staví jen na důkazech, které jsi dodal - AI nesmí vymýšlet.",
+        "how_to_what_text": "AI Životopis porovná tvůj životopis s konkrétním inzerátem a vytvoří poctivý report shody, životopis na míru, motivační dopis, přípravu na pohovor a plán doplnění mezer, podle kterého můžeš jednat. Všechno staví jen na důkazech, které jsi dodal - AI nesmí vymýšlet.",
         "how_to_section_inputs": "Co si připravit",
         "how_to_inputs_text": "Vlož svůj životopis (PDF, DOCX, TXT nebo HTML) a buď stáhni inzerát z URL, nebo ho vlož ručně. Volitelně přidej LinkedIn export a GitHub uživatelské jméno - důkazů bude víc. Čím víc kontextu, tím přesnější analýza.",
         "how_to_section_quality": "Tipy ke kvalitě",

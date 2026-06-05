@@ -687,10 +687,16 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
         STATE.location_preset, STATE.location_custom,
     )
 
+    # A blank resolved query means the user left location on the default
+    # "any" preset (or an empty custom field), i.e. they never picked a
+    # place to search. Tell the follow-up model so it MUST ask, instead
+    # of silently searching worldwide (e.g. US jobs for a CZ user).
+    location_specified = bool(location_query.strip())
     user_msg = prompts.build_followup_user(
         output_lang=output_lang,
         keywords=STATE.keywords,
         location_label=location_label or location_query,
+        location_specified=location_specified,
         work_mode=STATE.work_mode,
         seniority=STATE.seniority,
         profile_text=STATE.profile_text,

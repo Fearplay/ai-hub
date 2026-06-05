@@ -48,10 +48,10 @@ from src.qt.widgets import (
     wrap_label_slot,
 )
 from src.services import logger as logger_service
-from src.sections.ai_career import pipeline
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import STATE
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv import pipeline
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import STATE
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 
@@ -60,7 +60,7 @@ def _request_full_refresh() -> None:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_mock_interview", "request_full_refresh_import", exc,
+            "ai_cv.tab_mock_interview", "request_full_refresh_import", exc,
         )
         return
     request_section_refresh()
@@ -216,11 +216,13 @@ def _feedback_card(theme: Theme, txt: dict, msg: dict) -> QWidget:
 
     improved = (msg.get("improved") or "").strip()
     if improved:
+        # Sample answer as a plain labelled block - no nested bordered
+        # frame. The boxed border inside the green feedback card looked
+        # like a stray box around the text, so we drop it and rely on the
+        # uppercase heading for separation.
         box = QFrame()
-        box.setStyleSheet(
-            f"background-color: {theme.surface}; border: 1px solid {theme.border}; border-radius: 10px;"
-        )
-        box_layout = vbox(spacing=4, margins=(12, 10, 12, 10))
+        box.setStyleSheet("background: transparent;")
+        box_layout = vbox(spacing=4, margins=(0, 6, 0, 0))
         box.setLayout(box_layout)
         box_layout.addWidget(SubtleLabel(
             txt["interview_improved_label"].upper(), theme=theme, size=10, weight=QFont.Weight.Bold,
@@ -276,7 +278,7 @@ def _run_turn(lang: str, *, candidate_answer: str, is_opening: bool, on_request_
             )
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.tab_mock_interview", "interview_worker_failed", exc,
+                "ai_cv.tab_mock_interview", "interview_worker_failed", exc,
             )
             turn, error = {}, str(exc) or "unexpected error"
 
@@ -309,10 +311,16 @@ def _run_turn(lang: str, *, candidate_answer: str, is_opening: bool, on_request_
 def _empty_state(theme: Theme, lang: str, txt: dict, on_request_rerender: Callable[[], None]) -> QWidget:
     holder = QFrame()
     holder.setStyleSheet("background: transparent;")
-    layout = vbox(spacing=12, margins=(40, 50, 40, 50))
-    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    # NB: do NOT set an AlignCenter flag on the layout itself - that makes
+    # Qt size the wrap-prone description from its single-line sizeHint, so
+    # the wrapped text clips (only one line's height is allocated). Instead
+    # the labels span the full width (their text is centered) and the block
+    # is centred vertically with stretches, which collapse so the scroll
+    # area can scroll when the window is too short to fit everything.
+    layout = vbox(spacing=12, margins=(40, 28, 40, 28))
     holder.setLayout(layout)
 
+    layout.addStretch(1)
     layout.addWidget(
         IconLabel(Icons.QUESTION_ANSWER_OUTLINED, color=theme.primary, size=44),
         alignment=Qt.AlignmentFlag.AlignHCenter,
@@ -322,20 +330,19 @@ def _empty_state(theme: Theme, lang: str, txt: dict, on_request_rerender: Callab
     layout.addWidget(title_label)
     desc = MutedLabel(txt["interview_empty_desc"], theme=theme, size=13)
     desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    desc.setMaximumWidth(520)
-    layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
+    layout.addWidget(desc)
 
     if not _has_context():
         hint = SubtleLabel(txt["interview_no_context_hint"], theme=theme, size=12, italic=True)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setMaximumWidth(520)
-        layout.addWidget(hint, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(hint)
 
     start_btn = PrimaryButton(txt["interview_start_btn"], theme=theme, icon=Icons.PLAY_ARROW_ROUNDED)
     start_btn.clicked.connect(
         lambda: _run_turn(lang, candidate_answer="", is_opening=True, on_request_rerender=on_request_rerender)
     )
     layout.addWidget(start_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+    layout.addStretch(1)
     return holder
 
 
@@ -418,8 +425,18 @@ def build_mock_interview_tab(
 
     if STATE.interview_messages:
         def _restart() -> None:
+            # Wipe the transcript and immediately kick off a fresh opening
+            # question for the SAME target role/candidate (reset_interview
+            # leaves those untouched). Previously this dropped the user
+            # back on the "Start interview" screen and made them click
+            # again; now "Start over" restarts the conversation in place.
             STATE.reset_interview()
-            on_request_rerender()
+            _run_turn(
+                lang,
+                candidate_answer="",
+                is_opening=True,
+                on_request_rerender=on_request_rerender,
+            )
 
         restart_btn = GhostButton(txt["interview_restart_btn"], theme=theme, icon=Icons.RESTART_ALT)
         restart_btn.clicked.connect(_restart)
@@ -427,7 +444,18 @@ def build_mock_interview_tab(
     layout.addWidget(header)
 
     if not STATE.interview_messages and not STATE.interview_running:
-        layout.addWidget(_empty_state(theme, lang, txt, on_request_rerender), 1)
+        # Wrap the intro in a scroll area so the multi-line description +
+        # button never clip at the 1220x760 minimum window size. With
+        # ``setWidgetResizable(True)`` the content stays vertically
+        # centered when there is room and scrolls only when there isn't.
+        empty_scroll = QScrollArea()
+        empty_scroll.setWidgetResizable(True)
+        empty_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        empty_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        empty_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        empty_scroll.setStyleSheet(f"QScrollArea {{ background-color: {theme.bg}; border: none; }}")
+        empty_scroll.setWidget(_empty_state(theme, lang, txt, on_request_rerender))
+        layout.addWidget(empty_scroll, 1)
         return container
 
     # Transcript.

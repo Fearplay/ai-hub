@@ -1,6 +1,6 @@
 """JSON schemas for the AI Career structured outputs.
 
-Three schemas, used by :mod:`src.sections.ai_career.pipeline`:
+Three schemas, used by :mod:`src.sections.ai_cv.pipeline`:
 
 * :data:`CANDIDATE_SCHEMA` - the structured representation of the user
   produced from the uploaded CV (+ optional LinkedIn export + GitHub).

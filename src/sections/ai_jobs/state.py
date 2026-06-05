@@ -165,7 +165,7 @@ OUTPUT_LANGUAGES = (OUTPUT_LANG_AUTO, OUTPUT_LANG_EN, OUTPUT_LANG_CS)
 class UploadedFile:
     """Mirror of the AI Career uploaded-file record.
 
-    Kept local to the section so the ai_career state never has to be
+    Kept local to the section so the ai_cv state never has to be
     imported from here - sections are isolated.
     """
 

@@ -15,11 +15,11 @@ from src.qt.icons import Icons
 from src.qt.runtime import dispatch as runtime_dispatch
 from src.qt.runtime import get_main_window
 from src.qt.widgets import Pill, vbox
-from src.sections.ai_career import pipeline
-from src.sections.ai_career.data import SECTION_ICON
-from src.sections.ai_career.how_to import open_career_how_to
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import (
+from src.sections.ai_cv import pipeline
+from src.sections.ai_cv.data import SECTION_ICON
+from src.sections.ai_cv.how_to import open_career_how_to
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import (
     MODE_CHAT,
     MODE_FORM,
     STATE,
@@ -29,13 +29,13 @@ from src.sections.ai_career.state import (
     TAB_MATCH,
     TAB_SETUP,
 )
-from src.sections.ai_career.strings import s
-from src.sections.ai_career.tab_chat import build_chat_tab
-from src.sections.ai_career.tab_documents import build_documents_tab
-from src.sections.ai_career.tab_history import build_history_tab
-from src.sections.ai_career.tab_match import build_match_tab
-from src.sections.ai_career.tab_mock_interview import build_mock_interview_tab
-from src.sections.ai_career.tab_setup import build_setup_tab
+from src.sections.ai_cv.strings import s
+from src.sections.ai_cv.tab_chat import build_chat_tab
+from src.sections.ai_cv.tab_documents import build_documents_tab
+from src.sections.ai_cv.tab_history import build_history_tab
+from src.sections.ai_cv.tab_match import build_match_tab
+from src.sections.ai_cv.tab_mock_interview import build_mock_interview_tab
+from src.sections.ai_cv.tab_setup import build_setup_tab
 from src.services import handoff
 from src.services import logger as logger_service
 from src.services import store
@@ -54,7 +54,7 @@ def _consume_handoff() -> None:
     pre-fill the position fields and jump to the Form/Setup flow so the
     user lands ready to run.
     """
-    payload = handoff.take("ai_career")
+    payload = handoff.take("ai_cv")
     if not payload:
         return
     try:
@@ -71,17 +71,17 @@ def _consume_handoff() -> None:
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
         logger_service.log_event(
-            "INFO", "ai_career.view", "handoff_consumed",
+            "INFO", "ai_cv.view", "handoff_consumed",
             has_url=bool(job_url), has_text=bool(job_text), has_role=bool(target_role),
         )
     except Exception as exc:
-        logger_service.log_exception("ai_career.view", "handoff_consume_failed", exc)
+        logger_service.log_exception("ai_cv.view", "handoff_consume_failed", exc)
 
 
 def _open_in_explorer(path: str) -> None:
     if not path or not os.path.isdir(path):
         logger_service.log_event(
-            "WARNING", "ai_career.view", "open_in_explorer_no_path", path=str(path),
+            "WARNING", "ai_cv.view", "open_in_explorer_no_path", path=str(path),
         )
         return
     try:
@@ -93,7 +93,7 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["xdg-open", path])
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.view", "open_in_explorer_failed", exc, path=path,
+            "ai_cv.view", "open_in_explorer_failed", exc, path=path,
         )
 
 
@@ -102,16 +102,16 @@ def _show_message(message: str) -> None:
         return
     parent = get_main_window()
     try:
-        QMessageBox.information(parent, "AI Career", message)
+        QMessageBox.information(parent, "AI CV", message)
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.view", "show_message_failed", exc,
+            "ai_cv.view", "show_message_failed", exc,
         )
 
 
 def _navigate_tab(index: int) -> None:
     logger_service.log_event(
-        "INFO", "ai_career.view", "navigate_tab",
+        "INFO", "ai_cv.view", "navigate_tab",
         prev_mode=STATE.mode,
         prev_tab=STATE.active_tab,
         new_tab=index,
@@ -172,18 +172,24 @@ def _stage_tab_enabled(index: int) -> bool:
 
 def build_view(theme: Theme, lang: str) -> QWidget:
     txt = s(lang)
+    # Keep the current language on REFS so background workers can resolve
+    # the localized Activity-panel label (see ``CareerRefs._activity_label``).
+    REFS.lang = lang
     _consume_handoff()
     try:
         STATE.runs_history = [
             run for run in store.list_runs()
             if (
-                (getattr(run, "note", "") or "").strip().lower() == "ai_career"
+                # New "ai_cv" runs plus legacy "ai_career" runs saved
+                # before the section was renamed (no data is relocated).
+                (getattr(run, "note", "") or "").strip().lower() in ("ai_cv", "ai_career")
+                or "/outputs/ai_cv/" in (getattr(run, "folder", "") or "").replace("\\", "/").lower()
                 or "/outputs/ai_career/" in (getattr(run, "folder", "") or "").replace("\\", "/").lower()
             )
         ]
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.view", "warm_history_failed", exc,
+            "ai_cv.view", "warm_history_failed", exc,
         )
 
     container = QFrame()
@@ -195,7 +201,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         open_career_how_to(get_main_window(), theme, lang)
 
     def _menu_new_run() -> None:
-        logger_service.log_event("INFO", "ai_career.view", "menu_new_run")
+        logger_service.log_event("INFO", "ai_cv.view", "menu_new_run")
         STATE.reset_all()
         STATE.mode = MODE_FORM
         STATE.active_tab = TAB_SETUP
@@ -211,9 +217,9 @@ def build_view(theme: Theme, lang: str) -> QWidget:
             store.ensure_dirs()
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.view", "menu_open_folder_ensure_dirs", exc,
+                "ai_cv.view", "menu_open_folder_ensure_dirs", exc,
             )
-        section_root = str(store.section_runs_dir("ai_career"))
+        section_root = str(store.section_runs_dir("ai_cv"))
         if os.path.isdir(section_root):
             _open_in_explorer(section_root)
             return
@@ -237,7 +243,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                 result = pipeline.save_full_analysis()
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.view", "menu_save_full_worker", exc,
+                    "ai_cv.view", "menu_save_full_worker", exc,
                 )
                 result = None  # type: ignore[assignment]
             STATE.activity = "ready"
@@ -252,12 +258,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         open_career_how_to(get_main_window(), theme, lang)
 
     def _menu_load_demo() -> None:
-        logger_service.log_event("INFO", "ai_career.view", "menu_load_demo")
+        logger_service.log_event("INFO", "ai_cv.view", "menu_load_demo")
         try:
             pipeline.load_demo()
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.view", "menu_load_demo_failed", exc,
+                "ai_cv.view", "menu_load_demo_failed", exc,
             )
             return
         STATE.mode = MODE_FORM
@@ -265,12 +271,12 @@ def build_view(theme: Theme, lang: str) -> QWidget:
         _refresh()
 
     def _menu_clear_demo() -> None:
-        logger_service.log_event("INFO", "ai_career.view", "menu_clear_demo")
+        logger_service.log_event("INFO", "ai_cv.view", "menu_clear_demo")
         try:
             pipeline.clear_demo()
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.view", "menu_clear_demo_failed", exc,
+                "ai_cv.view", "menu_clear_demo_failed", exc,
             )
             return
         STATE.active_tab = TAB_SETUP
@@ -330,7 +336,7 @@ def build_view(theme: Theme, lang: str) -> QWidget:
                 return
             if not _stage_tab_enabled(index):
                 logger_service.log_event(
-                    "INFO", "ai_career.view", "tab_blocked",
+                    "INFO", "ai_cv.view", "tab_blocked",
                     requested_tab=index,
                     has_match=STATE.has_results(),
                     has_documents=bool(STATE.documents or STATE.modern_cv_data),

@@ -29,7 +29,7 @@ footprint is 4 MB, which is harmless on every supported OS.
 
 Format::
 
-    2026-05-09 19:47:11.123 | INFO  | ai_career.pipeline   | activity_change       | prev=ready new=analyzing
+    2026-05-09 19:47:11.123 | INFO  | ai_cv.pipeline   | activity_change       | prev=ready new=analyzing
 
 The five columns are ``timestamp | level | area | event | data``. Area
 is right-padded to 22 chars and event to 26 chars so adjacent rows line
@@ -282,11 +282,11 @@ def log_event(level: str | int, area: str, event: str, **kwargs: Any) -> None:
 
     Example::
 
-        log_event("INFO", "ai_career.view", "mode_change", index=1, new_mode="form")
+        log_event("INFO", "ai_cv.view", "mode_change", index=1, new_mode="form")
 
     becomes::
 
-        2026-05-09 13:47:11.123 | INFO  | ai_career.view         | mode_change                | index=1 new_mode='form'
+        2026-05-09 13:47:11.123 | INFO  | ai_cv.view         | mode_change                | index=1 new_mode='form'
     """
     _emit(level, area, event, _format_kwargs(kwargs))
 
@@ -295,7 +295,7 @@ def log_state(area: str, event: str, **state: Any) -> None:
     """Convenience alias for ``log_event("INFO", area, event, **state)``.
 
     Used at "snapshot the world after a user action" call sites so the
-    intent reads obviously in code: ``log_state("ai_career.view",
+    intent reads obviously in code: ``log_state("ai_cv.view",
     "mode_changed", mode=STATE.mode, tab=STATE.active_tab)``.
     """
     _emit("INFO", area, event, _format_kwargs(state))
@@ -329,7 +329,7 @@ def timed_call(area: str, event: str) -> Callable[[F], F]:
 
     Usage::
 
-        @timed_call("ai_career.pipeline", "extract_candidate")
+        @timed_call("ai_cv.pipeline", "extract_candidate")
         def extract_candidate(*, output_lang: str) -> PipelineResult:
             ...
 

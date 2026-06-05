@@ -9,7 +9,6 @@ AI Career (order 30) since the typical journey is "find a posting"
 from __future__ import annotations
 
 from src.sections._base import Section
-from src.sections.ai_jobs.context import build_context
 from src.sections.ai_jobs.data import ACCENT, SECTION_ICON
 from src.sections.ai_jobs.strings import STRINGS
 from src.sections.ai_jobs.view import build_view
@@ -20,7 +19,6 @@ SECTION = Section(
     icon=SECTION_ICON,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
-    build_context=build_context,
     accent=ACCENT,
     order=25,
 )

@@ -32,6 +32,7 @@ from src.qt.widgets import (
     IconLabel,
     MutedLabel,
     PrimaryButton,
+    ScrollSafeComboBox,
     SubtleLabel,
     TitleLabel,
     custom_label,
@@ -41,9 +42,9 @@ from src.qt.widgets import (
 )
 from src.services import exporter, store
 from src.services import logger as logger_service
-from src.sections.ai_career import modern_cv_render, pipeline, themes
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import (
+from src.sections.ai_cv import modern_cv_render, pipeline, themes
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import (
     DOC_COVER_LETTER,
     DOC_EVIDENCE,
     DOC_INTERVIEW_PREP,
@@ -55,7 +56,7 @@ from src.sections.ai_career.state import (
     STATE,
     TAB_MATCH,
 )
-from src.sections.ai_career.strings import s
+from src.sections.ai_cv.strings import s
 from src.theme import Theme
 
 
@@ -115,7 +116,7 @@ def _layout_display_name(slug: str, txt: dict) -> str:
 def _ensure_run_folder(role: str, company: str = "") -> str:
     if STATE.last_run_folder and os.path.isdir(STATE.last_run_folder):
         return STATE.last_run_folder
-    folder = store.new_run_dir(role or "ai-career-run", company, section="ai_career")
+    folder = store.new_run_dir(role or "ai-career-run", company, section="ai_cv")
     STATE.last_run_folder = str(folder)
     return STATE.last_run_folder
 
@@ -130,7 +131,7 @@ def _open_in_explorer(path: str) -> None:
             subprocess.Popen(["xdg-open", path])
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.tab_documents", "open_in_explorer_failed", exc, path=path,
+            "ai_cv.tab_documents", "open_in_explorer_failed", exc, path=path,
         )
 
 
@@ -152,6 +153,40 @@ def _empty_card(theme: Theme, txt: dict, icon: str, *, title_key: str, desc_key:
     desc.setMinimumWidth(360)
     layout.addWidget(desc, alignment=Qt.AlignmentFlag.AlignHCenter)
     return holder
+
+
+def _styled_target_combo(theme: Theme) -> ScrollSafeComboBox:
+    """Dropdown matching the app's themed combo styling (AI Jobs setup)."""
+    combo = ScrollSafeComboBox()
+    combo.setCursor(Qt.CursorShape.PointingHandCursor)
+    combo.setStyleSheet(
+        f"""
+        QComboBox {{
+            background-color: {theme.surface_2};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: 10px;
+            padding: 6px 12px;
+            min-height: 20px;
+        }}
+        QComboBox:hover {{
+            border: 1px solid {rgba(theme.primary, 0.45)};
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 22px;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: {theme.surface};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            selection-background-color: {rgba(theme.primary, 0.20)};
+            selection-color: {theme.text};
+            outline: 0;
+        }}
+        """
+    )
+    return combo
 
 
 def _markdown_card(theme: Theme, body_text: str) -> QFrame:
@@ -459,7 +494,70 @@ def _build_active_doc_panel(
     )
     rc_layout = vbox(spacing=10, margins=(18, 12, 18, 12))
     refine_card.setLayout(rc_layout)
-    rc_layout.addWidget(refine_block)
+
+    # Collapsible header. The refine controls used to sit permanently
+    # below the preview and ate ~200 px of height, so the document was
+    # barely visible (image 1). The body is collapsed by default once a
+    # document exists; the preview scroll area (stretch=1) reclaims the
+    # freed space. While no document has been generated yet we force it
+    # open so the generate button stays reachable.
+    refine_header = ClickFrame()
+    refine_header.setStyleSheet("background: transparent;")
+    rh_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    rh_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    refine_header.setLayout(rh_layout)
+    rh_layout.addWidget(
+        TitleLabel(
+            txt["doc_refine_section_title"], theme=theme, size=14,
+            weight=QFont.Weight.DemiBold,
+        ),
+        1,
+    )
+    refine_open = STATE.refine_open or not has_text
+    refine_chevron = IconLabel(
+        Icons.KEYBOARD_ARROW_DOWN if refine_open else Icons.CHEVRON_RIGHT,
+        color=theme.text_muted,
+        size=20,
+    )
+    rh_layout.addWidget(refine_chevron)
+    rc_layout.addWidget(refine_header)
+
+    refine_body = QWidget()
+    refine_body.setStyleSheet("background: transparent;")
+    rb_layout = vbox(spacing=10, margins=(0, 0, 0, 0))
+    refine_body.setLayout(rb_layout)
+
+    # Explicit "which document to fix" selector. The active sub-tab
+    # already drives the generate / refine target; surfacing it here (and
+    # letting the user switch it) makes the target unambiguous so the AI
+    # always knows whether to fix the Modern CV, the cover letter, etc.
+    target_kinds = _visible_doc_kinds() or list(DOC_KINDS)
+    if kind not in target_kinds:
+        target_kinds = list(DOC_KINDS)
+    target_row = QFrame()
+    target_row.setStyleSheet("background: transparent;")
+    tr_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
+    tr_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    target_row.setLayout(tr_layout)
+    tr_layout.addWidget(MutedLabel(txt["refine_target_label"], theme=theme, size=12))
+    target_combo = _styled_target_combo(theme)
+    for k in target_kinds:
+        target_combo.addItem(txt[_DOC_TAB_LABEL_KEYS[k]])
+    target_combo.setCurrentIndex(target_kinds.index(kind))
+
+    def _on_target_changed(idx: int) -> None:
+        if not (0 <= idx < len(target_kinds)):
+            return
+        new_kind = target_kinds[idx]
+        if new_kind != STATE.active_document:
+            STATE.active_document = new_kind
+            on_request_rerender()
+
+    target_combo.currentIndexChanged.connect(_on_target_changed)
+    tr_layout.addWidget(target_combo, 1)
+    rb_layout.addWidget(target_row)
+
+    rb_layout.addWidget(refine_block)
     btn_row = QFrame()
     btn_row.setStyleSheet("background: transparent;")
     br_layout = hbox(spacing=8, margins=(0, 0, 0, 0))
@@ -470,7 +568,7 @@ def _build_active_doc_panel(
     br_layout.addWidget(generate_btn)
     br_layout.addStretch(1)
     br_layout.addWidget(refine_btn)
-    rc_layout.addWidget(btn_row)
+    rb_layout.addWidget(btn_row)
     progress_bar = QProgressBar()
     progress_bar.setRange(0, 0)
     progress_bar.setTextVisible(False)
@@ -489,7 +587,20 @@ def _build_active_doc_panel(
         }}
         """
     )
-    rc_layout.addWidget(progress_bar)
+    rb_layout.addWidget(progress_bar)
+
+    rc_layout.addWidget(refine_body)
+    refine_body.setVisible(refine_open)
+
+    def _toggle_refine() -> None:
+        STATE.refine_open = not STATE.refine_open
+        now_open = STATE.refine_open or not has_text
+        refine_body.setVisible(now_open)
+        refine_chevron.set_icon(
+            Icons.KEYBOARD_ARROW_DOWN if now_open else Icons.CHEVRON_RIGHT
+        )
+
+    refine_header.clicked.connect(_toggle_refine)
     layout.addWidget(refine_card)
 
     def _refresh_buttons() -> None:
@@ -767,7 +878,7 @@ def build_documents_tab(
                 runtime_dispatch(lambda p=path: _show_status(txt["export_ok_template"].format(path=str(p)), False))
             except Exception as exc:
                 logger_service.log_exception(
-                    "ai_career.tab_documents", "export_failed", exc, kind=kind, action=action,
+                    "ai_cv.tab_documents", "export_failed", exc, kind=kind, action=action,
                 )
                 runtime_dispatch(lambda e=exc: _show_status(txt["export_failed_template"].format(error=str(e)), True))
             finally:

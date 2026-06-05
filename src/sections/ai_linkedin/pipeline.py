@@ -1,6 +1,6 @@
 """Orchestration for the AI LinkedIn section.
 
-The pipeline mirrors the structure used by :mod:`src.sections.ai_career.pipeline`
+The pipeline mirrors the structure used by :mod:`src.sections.ai_cv.pipeline`
 but speaks the LinkedIn voice: the first call extracts a normalised
 LinkedIn profile JSON; every subsequent generator (headlines, about,
 experience rewrite, skills buckets, featured, projects, services,
@@ -28,6 +28,7 @@ from src.services.cost_tracker import COST
 from src.sections.ai_linkedin import data as linkedin_data
 from src.sections.ai_linkedin import prompts, schema, summary_html
 from src.sections.ai_linkedin.refs import REFS, safe
+from src.sections.ai_linkedin.strings import s
 from src.sections.ai_linkedin.state import (
     AUDIENCE_RECRUITER,
     DEFAULT_SECTIONS,
@@ -93,7 +94,7 @@ def _set_activity(value: str) -> None:
     Routed through :meth:`REFS.request_context_refresh` so background
     workers can repaint the activity label without the user having to
     poke the window. See the matching helper in
-    ``src.sections.ai_career.pipeline._set_activity`` for the rationale.
+    ``src.sections.ai_cv.pipeline._set_activity`` for the rationale.
     """
     prev = STATE.activity
     STATE.activity = value
@@ -187,7 +188,15 @@ def _resolve_targeting() -> tuple[list[str], str, str]:
 
 
 def _resolve_output_lang(lang: str) -> str:
-    return (lang or "en").strip().lower() or "en"
+    token = (lang or "").strip().lower()
+    if token:
+        return token
+    # An empty ``STATE.output_lang`` means "follow the UI language". Fall
+    # back to the language the section is currently rendered in (kept on
+    # REFS by ``build_view``) instead of silently defaulting to English,
+    # which produced English headings in the Czech saved summary (image 8).
+    ui_lang = (getattr(REFS, "lang", "") or "").strip().lower()
+    return ui_lang or "en"
 
 
 # --- Step 0: input gathering -------------------------------------------------
@@ -372,7 +381,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
             user=user,
             schema=schema.CLARIFY_SCHEMA,
             schema_name="clarifying_questions",
-            max_output_tokens=1200,
+            max_output_tokens=2500,
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
@@ -380,7 +389,18 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
         )
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
-        return _set_error("Provider did not return a clarifying-questions JSON.")
+        # Clarifying questions are optional - the model decides whether
+        # to ask any. If it returned no parseable JSON (truncation, prose
+        # wrapper, reasoning model quirk), log it for the debug viewer but
+        # proceed with zero questions instead of blocking the whole build.
+        logger_service.log_event(
+            "ERROR",
+            "ai_linkedin.pipeline",
+            "generate_followups_no_json",
+            text_chars=len(result.text or ""),
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
 
     questions = result.data.get("questions") or []
     cleaned: list[dict] = []
@@ -779,8 +799,16 @@ _PRIORITY_LOW = "low"
 _PRIORITY_SKIP = "skip"
 
 
-def build_completeness_checklist() -> dict:
-    """Compute a profile-completeness checklist purely from state."""
+def build_completeness_checklist(output_lang: str = "") -> dict:
+    """Compute a profile-completeness checklist purely from state.
+
+    Labels reuse the section ``output_*_title`` strings and the reasons
+    use the ``cl_*`` strings, both resolved in ``output_lang`` (falling
+    back to the UI language). That way the checklist card, the saved
+    ``12_profile_checklist.md`` and the HTML summary all read Czech on a
+    Czech run instead of the old hardcoded English (images 8 & 9).
+    """
+    txt = s(_resolve_output_lang(output_lang))
     profile = STATE.extracted_profile or {}
     items: list[dict] = []
 
@@ -798,10 +826,10 @@ def build_completeness_checklist() -> dict:
     headlines_ok = bool(STATE.headlines and (STATE.headlines.get("variants") or []))
     add(
         SEC_HEADLINE,
-        "Headline / motto",
+        txt["output_headlines_title"],
         _PRIORITY_HIGH,
         headlines_ok,
-        "Generate a recruiter-friendly headline." if not headlines_ok else "Headlines drafted.",
+        txt["cl_headline_done"] if headlines_ok else txt["cl_headline_todo"],
     )
 
     about_ok = bool(
@@ -810,10 +838,10 @@ def build_completeness_checklist() -> dict:
     )
     add(
         SEC_ABOUT,
-        "About / Intro",
+        txt["output_about_title"],
         _PRIORITY_HIGH,
         about_ok,
-        "Generate an About section in your tone." if not about_ok else "About section drafted.",
+        txt["cl_about_done"] if about_ok else txt["cl_about_todo"],
     )
 
     exp_ok = bool(
@@ -822,10 +850,10 @@ def build_completeness_checklist() -> dict:
     )
     add(
         SEC_EXPERIENCE,
-        "Experience rewrite",
+        txt["output_experience_title"],
         _PRIORITY_HIGH,
         exp_ok,
-        "Rewrite each role with bullets + skill tags." if not exp_ok else "Roles rewritten.",
+        txt["cl_experience_done"] if exp_ok else txt["cl_experience_todo"],
     )
 
     skills_ok = bool(
@@ -837,28 +865,28 @@ def build_completeness_checklist() -> dict:
     )
     add(
         SEC_SKILLS,
-        "Skills",
+        txt["output_skills_title"],
         _PRIORITY_HIGH,
         skills_ok,
-        "Generate the 4-bucket skill plan." if not skills_ok else "Skills bucketed.",
+        txt["cl_skills_done"] if skills_ok else txt["cl_skills_todo"],
     )
 
     featured_ok = bool(STATE.featured and (STATE.featured.get("items") or []))
     add(
         SEC_FEATURED,
-        "Featured",
+        txt["output_featured_title"],
         _PRIORITY_MED,
         featured_ok,
-        "Pick 3-5 portfolio-grade items." if not featured_ok else "Featured items proposed.",
+        txt["cl_featured_done"] if featured_ok else txt["cl_featured_todo"],
     )
 
     projects_ok = bool(STATE.projects and (STATE.projects.get("projects") or []))
     add(
         SEC_PROJECTS,
-        "Projects",
+        txt["output_projects_title"],
         _PRIORITY_MED,
         projects_ok,
-        "Add LinkedIn projects with links." if not projects_ok else "Projects drafted.",
+        txt["cl_projects_done"] if projects_ok else txt["cl_projects_todo"],
     )
 
     certs_ok = bool(
@@ -869,18 +897,18 @@ def build_completeness_checklist() -> dict:
     if has_certs_in_source:
         add(
             SEC_CERTIFICATIONS,
-            "Certifications",
+            txt["output_certifications_title"],
             _PRIORITY_MED,
             certs_ok,
-            "Rewrite cert descriptions." if not certs_ok else "Certifications rewritten.",
+            txt["cl_certifications_done"] if certs_ok else txt["cl_certifications_todo"],
         )
     else:
         add(
             SEC_CERTIFICATIONS,
-            "Certifications",
+            txt["output_certifications_title"],
             _PRIORITY_SKIP,
             True,
-            "No certifications in source - skip until you earn one.",
+            txt["cl_certifications_skip"],
         )
 
     courses_ok = bool(
@@ -892,10 +920,10 @@ def build_completeness_checklist() -> dict:
     )
     add(
         SEC_COURSES,
-        "Courses & training",
+        txt["output_courses_title"],
         _PRIORITY_LOW,
         courses_ok,
-        "List courses or get a learning recommendation." if not courses_ok else "Courses listed.",
+        txt["cl_courses_done"] if courses_ok else txt["cl_courses_todo"],
     )
 
     rec_ok = bool(
@@ -904,28 +932,28 @@ def build_completeness_checklist() -> dict:
     )
     add(
         SEC_RECOMMENDATIONS,
-        "Request recommendations",
+        txt["output_recommendations_title"],
         _PRIORITY_MED,
         rec_ok,
-        "Draft recommendation requests." if not rec_ok else "Templates drafted.",
+        txt["cl_recommendations_done"] if rec_ok else txt["cl_recommendations_todo"],
     )
 
     posts_ok = bool(STATE.posts and (STATE.posts.get("posts") or []))
     add(
         SEC_POSTS,
-        "Posts",
+        txt["output_posts_title"],
         _PRIORITY_MED,
         posts_ok,
-        "Draft 1-2 posts to seed activity." if not posts_ok else "Posts drafted.",
+        txt["cl_posts_done"] if posts_ok else txt["cl_posts_todo"],
     )
 
     services_ok = bool(STATE.services and (STATE.services.get("services") or []))
     add(
         SEC_SERVICES,
-        "Services",
+        txt["output_services_title"],
         _PRIORITY_LOW,
         services_ok,
-        "Optional - only if you freelance." if not services_ok else "Services drafted.",
+        txt["cl_services_done"] if services_ok else txt["cl_services_todo"],
     )
 
     summary = {
@@ -1169,15 +1197,19 @@ def run_full_profile_build(
         runner = _SECTION_RUNNERS.get(sec)
         if runner is None:
             continue
+        # Surface which section is being built so the sidebar Activity
+        # shows "Generuji: <section>" instead of a generic "Pracuji…".
+        STATE.activity_section = sec
         res = runner(output_lang=output_lang)
         if not res.ok:
             return res
         if on_step:
             on_step(sec)
 
+    STATE.activity_section = ""
     if SEC_CHECKLIST in sections or True:  # always compute deterministic helpers
         _set_activity("scoring")
-        build_completeness_checklist()
+        build_completeness_checklist(output_lang)
         build_unsupported_claims_report()
         compute_profile_score()
         if on_step:
@@ -1318,8 +1350,14 @@ def _safe_write(path: Path, content: str) -> None:
         )
 
 
-def save_full_profile() -> SaveResult:
-    """Persist every generated section + summary.json + history entry."""
+def save_full_profile(refresh_ui: bool = True) -> SaveResult:
+    """Persist every generated section + summary.json + history entry.
+
+    ``refresh_ui`` controls whether a full section rebuild is dispatched
+    when the save finishes. The Output-tab save button passes ``False``
+    so it can show its own inline confirmation without the section being
+    torn down and rebuilt (the "blank page flash" from image 8).
+    """
     if not STATE.extracted_profile:
         logger_service.log_event(
             "WARNING", "ai_linkedin.pipeline", "save_full_no_profile",
@@ -1347,7 +1385,7 @@ def save_full_profile() -> SaveResult:
     # Refresh deterministic helpers in case the user saves before the
     # combined run finished them.
     if not STATE.completeness:
-        build_completeness_checklist()
+        build_completeness_checklist(output_lang)
     if not STATE.unsupported_claims:
         build_unsupported_claims_report()
     if not STATE.profile_score:
@@ -1463,8 +1501,12 @@ def save_full_profile() -> SaveResult:
             "ai_linkedin.pipeline", "save_full_history_append", exc,
         )
 
-    _set_activity("ready")
-    REFS.dispatch(_request_full_refresh)
+    # Leave the sidebar Activity on a persistent "Profil uložen" instead
+    # of silently snapping back to "Připraveno" so the user can see the
+    # save actually happened (image 8).
+    _set_activity("saved")
+    if refresh_ui:
+        REFS.dispatch(_request_full_refresh)
     logger_service.log_event(
         "INFO",
         "ai_linkedin.pipeline",
@@ -1546,7 +1588,7 @@ def _render_headlines_md(payload: dict, is_cs: bool) -> str:
         focus = (v.get("focus") or "").strip()
         audience = (v.get("audience") or "").strip()
         anchors = ", ".join(v.get("evidence_anchors") or [])
-        lines.append(f"## {i}. {focus or audience or '—'} ({chars} chars)")
+        lines.append(f"## {i}. {focus or audience or '-'} ({chars} chars)")
         lines.append("")
         lines.append(text)
         if anchors:
@@ -1807,7 +1849,7 @@ def _render_recommendations_md(payload: dict, is_cs: bool) -> str:
     for tpl in payload.get("templates") or []:
         if not isinstance(tpl, dict):
             continue
-        lines.append(f"## {tpl.get('suggested_recipient_label') or '—'} _({tpl.get('recipient_type') or ''})_")
+        lines.append(f"## {tpl.get('suggested_recipient_label') or '-'} _({tpl.get('recipient_type') or ''})_")
         body = (tpl.get("message") or "").strip()
         if body:
             lines.append("")

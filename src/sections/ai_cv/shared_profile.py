@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from src.services import career_profile_store
 from src.services import logger as logger_service
-from src.sections.ai_career.state import STATE, UploadedFile
+from src.sections.ai_cv.state import STATE, UploadedFile
 
 
 def _to_uploaded(src: dict) -> UploadedFile:
@@ -28,7 +28,7 @@ def has_shared() -> bool:
     try:
         return career_profile_store.has_profile()
     except Exception as exc:
-        logger_service.log_exception("ai_career.shared_profile", "has_shared_failed", exc)
+        logger_service.log_exception("ai_cv.shared_profile", "has_shared_failed", exc)
         return False
 
 
@@ -54,11 +54,11 @@ def apply() -> None:
             STATE.github_url = github
             STATE.github_skip = False
         logger_service.log_event(
-            "INFO", "ai_career.shared_profile", "apply_done",
+            "INFO", "ai_cv.shared_profile", "apply_done",
             has_resume=bool(resume), has_linkedin=bool(linkedin), has_github=bool(github),
         )
     except Exception as exc:
-        logger_service.log_exception("ai_career.shared_profile", "apply_failed", exc)
+        logger_service.log_exception("ai_cv.shared_profile", "apply_failed", exc)
 
 
 def build_summary(txt: dict) -> str:

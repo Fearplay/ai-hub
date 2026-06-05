@@ -56,7 +56,7 @@ from src.qt.widgets import (
 from src.services import logger as logger_service
 from src.services import secrets, settings_store
 from src.services.file_parser import ParsedFile, human_size
-from src.sections.ai_career.upload import upload_zone
+from src.sections.ai_cv.upload import upload_zone
 from src.sections.ai_doc_assistant import pipeline
 from src.sections.ai_doc_assistant.how_to import open_doc_assistant_how_to
 from src.sections.ai_doc_assistant.state import (

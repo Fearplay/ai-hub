@@ -3,7 +3,7 @@
 Three structured-output calls drive the bulk of the analysis:
 
 1. ``extract_candidate`` - resume text (+ optional LinkedIn / GitHub)
-   -> :class:`Candidate JSON <src.sections.ai_career.schema.CANDIDATE_SCHEMA>`.
+   -> :class:`Candidate JSON <src.sections.ai_cv.schema.CANDIDATE_SCHEMA>`.
 2. ``extract_job_spec`` - scraped or pasted job text -> ``JobSpec JSON``.
 3. ``analyze_match`` - candidate + job spec -> ``MatchAnalysis JSON``
    including interview questions and a skill-gap plan.
@@ -29,10 +29,10 @@ from pathlib import Path
 from src.services import ai_provider, exporter, github_client, job_scraper, store
 from src.services import logger as logger_service
 from src.services.cost_tracker import COST
-from src.sections.ai_career import data as career_data
-from src.sections.ai_career import modern_cv_render, prompts, schema, themes
-from src.sections.ai_career.refs import REFS
-from src.sections.ai_career.state import (
+from src.sections.ai_cv import data as career_data
+from src.sections.ai_cv import modern_cv_render, prompts, schema, themes
+from src.sections.ai_cv.refs import REFS
+from src.sections.ai_cv.state import (
     DOC_COVER_LETTER,
     DOC_EVIDENCE,
     DOC_INTERVIEW_PREP,
@@ -104,7 +104,7 @@ def _request_full_refresh() -> None:
         from src.app import request_section_refresh
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "request_full_refresh_import", exc
+            "ai_cv.pipeline", "request_full_refresh_import", exc
         )
         return
     request_section_refresh()
@@ -125,7 +125,7 @@ def _set_activity(value: str) -> None:
     if prev != value:
         logger_service.log_event(
             "INFO",
-            "ai_career.pipeline",
+            "ai_cv.pipeline",
             "activity_change",
             prev=prev,
             new=value,
@@ -138,7 +138,7 @@ def _set_error(message: str) -> PipelineResult:
     STATE.last_error = message
     REFS.request_context_refresh()
     logger_service.log_event(
-        "ERROR", "ai_career.pipeline", "set_error", message=message
+        "ERROR", "ai_cv.pipeline", "set_error", message=message
     )
     return PipelineResult(ok=False, error=message)
 
@@ -150,14 +150,14 @@ def load_demo() -> None:
     """Populate ``STATE`` with curated mock data, no AI calls.
 
     Used by the ``...`` header menu's "Show demo data" item. Copies the
-    constants from :mod:`src.sections.ai_career.data` so the user can
+    constants from :mod:`src.sections.ai_cv.data` so the user can
     explore Match / Documents / Modern CV without spending tokens.
     The pipeline functions all check ``STATE.demo_mode`` first and
     short-circuit to the same constants, so even if the user clicks
     "Run analysis" while demo is on no provider call is made.
     """
     logger_service.log_event(
-        "INFO", "ai_career.pipeline", "load_demo_start"
+        "INFO", "ai_cv.pipeline", "load_demo_start"
     )
     STATE.demo_mode = True
     STATE.target_role = career_data.DEMO_TARGET_ROLE
@@ -174,7 +174,7 @@ def load_demo() -> None:
     STATE.run_stage = ""
     REFS.request_context_refresh()
     logger_service.log_state(
-        "ai_career.pipeline", "load_demo_state",
+        "ai_cv.pipeline", "load_demo_state",
         has_candidate=True,
         has_job_spec=True,
         has_match=True,
@@ -191,7 +191,7 @@ def clear_demo() -> None:
     run.
     """
     logger_service.log_event(
-        "INFO", "ai_career.pipeline", "clear_demo_start"
+        "INFO", "ai_cv.pipeline", "clear_demo_start"
     )
     STATE.demo_mode = False
     STATE.reset_run()
@@ -252,7 +252,7 @@ def extract_candidate(
         # Demo mode is free + offline. Reseed the curated Candidate
         # JSON so users can "rerun" Setup without leaking tokens.
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "extract_candidate_demo_done"
+            "INFO", "ai_cv.pipeline", "extract_candidate_demo_done"
         )
         STATE.candidate = copy.deepcopy(career_data.DEMO_CANDIDATE)
         _set_activity("ready")
@@ -294,7 +294,7 @@ def extract_candidate(
 def extract_job_spec(*, output_lang: str) -> PipelineResult:
     if STATE.demo_mode:
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "extract_job_spec_demo_done"
+            "INFO", "ai_cv.pipeline", "extract_job_spec_demo_done"
         )
         STATE.job_spec = copy.deepcopy(career_data.DEMO_JOB_SPEC)
         _set_activity("ready")
@@ -339,7 +339,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
         STATE.followup_questions = []
         _set_activity("ready")
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "generate_followups_demo_done"
+            "INFO", "ai_cv.pipeline", "generate_followups_demo_done"
         )
         return PipelineResult(ok=True)
 
@@ -358,12 +358,26 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
             user=user,
             schema=schema.FOLLOWUP_QUESTIONS_SCHEMA,
             schema_name="clarifying_questions",
-            max_output_tokens=1200,
+            max_output_tokens=2500,
         )
     except ai_provider.ProviderError as exc:
+        logger_service.log_exception(
+            "ai_cv.pipeline", "generate_followups_provider_error", exc,
+        )
         return _set_error(str(exc))
     if not isinstance(result.data, dict):
-        return _set_error("Provider did not return a follow-up questions JSON.")
+        # Clarifying questions are optional - the model decides whether
+        # to ask any. A missing / unparseable JSON (truncation, prose
+        # wrapper) must not block the run: log it and proceed with zero
+        # questions, which is the same outcome as a perfect-fit resume.
+        logger_service.log_event(
+            "ERROR",
+            "ai_cv.pipeline",
+            "generate_followups_no_json",
+            text_chars=len(result.text or ""),
+        )
+        STATE.followup_questions = []
+        return PipelineResult(ok=True)
     questions = result.data.get("questions") or []
     cleaned: list[dict] = []
     for q in questions:
@@ -399,7 +413,7 @@ def generate_followup_questions(*, output_lang: str) -> PipelineResult:
 def analyze_match(*, output_lang: str) -> PipelineResult:
     if STATE.demo_mode:
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "analyze_match_demo_done"
+            "INFO", "ai_cv.pipeline", "analyze_match_demo_done"
         )
         STATE.match = copy.deepcopy(career_data.DEMO_MATCH)
         _set_activity("ready")
@@ -526,7 +540,7 @@ def generate_modern_cv_data(
             REFS.request_context_refresh()
             REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "generate_modern_cv_demo_done"
+            "INFO", "ai_cv.pipeline", "generate_modern_cv_demo_done"
         )
         return PipelineResult(ok=True)
 
@@ -702,7 +716,7 @@ def generate_document(
 ) -> PipelineResult:
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "generate_document_start",
         kind=kind,
         output_lang=output_lang,
@@ -728,7 +742,7 @@ def generate_document(
             REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
             "INFO",
-            "ai_career.pipeline",
+            "ai_cv.pipeline",
             "generate_document_demo_done",
             kind=kind,
             chars=len(demo_body),
@@ -747,7 +761,7 @@ def generate_document(
             REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
             "INFO",
-            "ai_career.pipeline",
+            "ai_cv.pipeline",
             "generate_document_done",
             kind=kind,
             chars=len(text),
@@ -786,7 +800,7 @@ def generate_document(
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
-            "ai_career.pipeline",
+            "ai_cv.pipeline",
             "generate_document_provider_error",
             exc,
             kind=kind,
@@ -803,7 +817,7 @@ def generate_document(
         REFS.dispatch(_request_full_refresh)
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "generate_document_done",
         kind=kind,
         chars=len(text),
@@ -824,7 +838,7 @@ def refine_document(
 ) -> PipelineResult:
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "refine_document_start",
         kind=kind,
         output_lang=output_lang,
@@ -847,7 +861,7 @@ def refine_document(
             REFS.request_context_refresh()
             REFS.dispatch(_request_full_refresh)
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "refine_document_demo_done",
+            "INFO", "ai_cv.pipeline", "refine_document_demo_done",
             kind=kind,
         )
         return PipelineResult(ok=True)
@@ -887,7 +901,7 @@ def refine_document(
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
-            "ai_career.pipeline",
+            "ai_cv.pipeline",
             "refine_document_provider_error",
             exc,
             kind=kind,
@@ -904,7 +918,7 @@ def refine_document(
         REFS.dispatch(_request_full_refresh)
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "refine_document_done",
         kind=kind,
         chars=len(text),
@@ -936,7 +950,7 @@ def send_chat_message(
 
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "send_chat_start",
         output_lang=output_lang,
         chars=len(user_text),
@@ -971,7 +985,7 @@ def send_chat_message(
         )
         reply = reply_cs if (output_lang or "").lower().startswith("cs") else reply_en
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "send_chat_demo_done",
+            "INFO", "ai_cv.pipeline", "send_chat_demo_done",
             reply_chars=len(reply),
         )
         return reply, ""
@@ -996,18 +1010,18 @@ def send_chat_message(
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "send_chat_provider_error", exc
+            "ai_cv.pipeline", "send_chat_provider_error", exc
         )
         return "", str(exc)
     text = _clean_ai_text((result.text or "").strip())
     if not text:
         logger_service.log_event(
-            "ERROR", "ai_career.pipeline", "send_chat_empty_response"
+            "ERROR", "ai_cv.pipeline", "send_chat_empty_response"
         )
         return "", "Provider returned an empty response."
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "send_chat_done",
         reply_chars=len(text),
     )
@@ -1055,7 +1069,7 @@ def _interview_candidate_context() -> str:
             return json.dumps(STATE.candidate, ensure_ascii=False)
         except (TypeError, ValueError) as exc:
             logger_service.log_exception(
-                "ai_career.pipeline", "interview_candidate_json_failed", exc,
+                "ai_cv.pipeline", "interview_candidate_json_failed", exc,
             )
     bits: list[str] = []
     if STATE.resume and STATE.resume.text:
@@ -1158,7 +1172,7 @@ def interview_turn(
     """
     question_count = sum(1 for m in STATE.interview_messages if m.get("kind") == "question")
     logger_service.log_event(
-        "INFO", "ai_career.pipeline", "interview_turn_start",
+        "INFO", "ai_cv.pipeline", "interview_turn_start",
         output_lang=output_lang, is_opening=is_opening,
         questions_so_far=question_count, demo_mode=STATE.demo_mode,
     )
@@ -1168,7 +1182,7 @@ def interview_turn(
             output_lang=output_lang, is_opening=is_opening, question_count=question_count,
         )
         logger_service.log_event(
-            "INFO", "ai_career.pipeline", "interview_turn_demo_done",
+            "INFO", "ai_cv.pipeline", "interview_turn_demo_done",
             done=turn.get("done"),
         )
         return turn, ""
@@ -1193,19 +1207,19 @@ def interview_turn(
         )
     except ai_provider.ProviderError as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "interview_turn_provider_error", exc,
+            "ai_cv.pipeline", "interview_turn_provider_error", exc,
         )
         return {}, str(exc)
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "interview_turn_unexpected_error", exc,
+            "ai_cv.pipeline", "interview_turn_unexpected_error", exc,
         )
         return {}, str(exc) or "unexpected error"
 
     payload = result.data if isinstance(result.data, dict) else {}
     if not payload:
         logger_service.log_event(
-            "ERROR", "ai_career.pipeline", "interview_turn_empty_response",
+            "ERROR", "ai_cv.pipeline", "interview_turn_empty_response",
         )
         return {}, "Provider returned an empty response."
 
@@ -1219,7 +1233,7 @@ def interview_turn(
         "done": bool(payload.get("done")),
     }
     logger_service.log_event(
-        "INFO", "ai_career.pipeline", "interview_turn_done",
+        "INFO", "ai_cv.pipeline", "interview_turn_done",
         done=turn["done"], has_question=bool(turn["next_question"]),
         feedback_chars=len(turn["feedback"]),
     )
@@ -1324,7 +1338,7 @@ def _export_cover_letter(
         html_target.write_text(cover_html, encoding="utf-8")
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "export_cover_letter_html_write_failed", exc,
+            "ai_cv.pipeline", "export_cover_letter_html_write_failed", exc,
             target=str(html_target),
         )
 
@@ -1360,14 +1374,14 @@ def save_full_analysis() -> SaveResult:
     complete analysis" to produce two timestamped snapshots, not a
     silent overwrite. ``store.new_run_dir`` already disambiguates
     same-second collisions with a numeric suffix (``-2``, ``-3``, ...).
-    Per-document export buttons in :mod:`src.sections.ai_career.tab_documents`
+    Per-document export buttons in :mod:`src.sections.ai_cv.tab_documents`
     keep coalescing into the same run folder via ``_ensure_run_folder``,
     so individual MD/PDF exports of the same analysis still land in one
     place.
     """
     if not STATE.documents and not STATE.modern_cv_data:
         logger_service.log_event(
-            "WARNING", "ai_career.pipeline", "save_full_no_documents"
+            "WARNING", "ai_cv.pipeline", "save_full_no_documents"
         )
         return SaveResult(ok=False, error="no_documents")
 
@@ -1376,11 +1390,11 @@ def save_full_analysis() -> SaveResult:
     if STATE.job_spec:
         role = str(STATE.job_spec.get("title") or "")
         company = str(STATE.job_spec.get("company") or "")
-    folder_path = Path(store.new_run_dir(role or "ai-career-run", company, section="ai_career"))
+    folder_path = Path(store.new_run_dir(role or "ai-cv-run", company, section="ai_cv"))
     STATE.last_run_folder = str(folder_path)
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "save_full_start",
         folder=str(folder_path),
         role=role,
@@ -1420,7 +1434,7 @@ def save_full_analysis() -> SaveResult:
                 # reachable. The user still gets a PDF; it just won't
                 # carry the chosen accent colour.
                 logger_service.log_exception(
-                    "ai_career.pipeline",
+                    "ai_cv.pipeline",
                     "save_full_cover_letter_themed_failed",
                     exc,
                     folder=str(folder_path),
@@ -1434,7 +1448,7 @@ def save_full_analysis() -> SaveResult:
                     )
                 except RuntimeError as exc2:
                     logger_service.log_exception(
-                        "ai_career.pipeline",
+                        "ai_cv.pipeline",
                         "save_full_cover_letter_fallback_failed",
                         exc2,
                         folder=str(folder_path),
@@ -1470,7 +1484,7 @@ def save_full_analysis() -> SaveResult:
                 # dependency if they want that output.
                 logger_service.log_event(
                     "WARNING",
-                    "ai_career.pipeline",
+                    "ai_cv.pipeline",
                     "save_full_format_unavailable",
                     kind=kind,
                     fmt=fmt,
@@ -1490,7 +1504,7 @@ def save_full_analysis() -> SaveResult:
             )
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.pipeline", "save_full_modern_cv_html_failed", exc,
+                "ai_cv.pipeline", "save_full_modern_cv_html_failed", exc,
                 folder=str(folder_path),
             )
         try:
@@ -1501,7 +1515,7 @@ def save_full_analysis() -> SaveResult:
             )
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.pipeline", "save_full_modern_cv_pdf_failed", exc,
+                "ai_cv.pipeline", "save_full_modern_cv_pdf_failed", exc,
                 folder=str(folder_path),
             )
         try:
@@ -1513,7 +1527,7 @@ def save_full_analysis() -> SaveResult:
             )
         except Exception as exc:
             logger_service.log_exception(
-                "ai_career.pipeline", "save_full_modern_cv_json_failed", exc,
+                "ai_cv.pipeline", "save_full_modern_cv_json_failed", exc,
                 folder=str(folder_path),
             )
 
@@ -1541,7 +1555,7 @@ def save_full_analysis() -> SaveResult:
         )
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "save_full_summary_json_failed", exc,
+            "ai_cv.pipeline", "save_full_summary_json_failed", exc,
             folder=str(folder_path),
         )
 
@@ -1565,7 +1579,7 @@ def save_full_analysis() -> SaveResult:
         (folder_path / "summary.html").write_text(summary_html, encoding="utf-8")
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "save_full_summary_html_failed", exc,
+            "ai_cv.pipeline", "save_full_summary_html_failed", exc,
             folder=str(folder_path),
         )
 
@@ -1590,17 +1604,17 @@ def save_full_analysis() -> SaveResult:
             model="",
             cost_usd=float(COST.cost_usd),
             docs=docs_list,
-            note="ai_career",
+            note="ai_cv",
         )
         store.append_run(summary)
     except Exception as exc:
         logger_service.log_exception(
-            "ai_career.pipeline", "save_full_history_append", exc
+            "ai_cv.pipeline", "save_full_history_append", exc
         )
 
     logger_service.log_event(
         "INFO",
-        "ai_career.pipeline",
+        "ai_cv.pipeline",
         "save_full_done",
         folder=str(folder_path),
     )
@@ -1610,7 +1624,7 @@ def save_full_analysis() -> SaveResult:
 # Combined "Run analysis" entry point ----------------------------------------
 
 
-@logger_service.timed_call("ai_career.pipeline", "run_full_analysis")
+@logger_service.timed_call("ai_cv.pipeline", "run_full_analysis")
 def run_full_analysis(
     *,
     output_lang: str,
@@ -1650,7 +1664,7 @@ def run_full_analysis(
     STATE.activity = "ready"
     REFS.request_context_refresh()
     logger_service.log_state(
-        "ai_career.pipeline", "run_full_analysis_state",
+        "ai_cv.pipeline", "run_full_analysis_state",
         activity=STATE.activity,
         has_candidate=bool(STATE.candidate),
         has_job_spec=bool(STATE.job_spec),

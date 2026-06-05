@@ -9,7 +9,6 @@ reuse it.
 from __future__ import annotations
 
 from src.sections._base import Section
-from src.sections.my_profile.context import build_context
 from src.sections.my_profile.data import ACCENT, SECTION_ICON
 from src.sections.my_profile.strings import STRINGS
 from src.sections.my_profile.view import build_view
@@ -20,7 +19,6 @@ SECTION = Section(
     icon=SECTION_ICON,
     labels={lang: STRINGS[lang]["nav_label"] for lang in STRINGS},
     build_view=build_view,
-    build_context=build_context,
     accent=ACCENT,  # teal - the shared-profile brand colour
     order=10,
     # Not a standalone nav row anymore - it is reached through the
